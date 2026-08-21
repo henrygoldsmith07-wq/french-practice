@@ -10,6 +10,7 @@ import { getSrs, getMetrics, getReviewEvents } from '../lib/storage';
 import { allEntries } from '../lib/vocab';
 import { listeningDifficultyLadder } from '../lib/learningAdaptation';
 import { playbackFor } from '../lib/accents';
+import { shuffleOptions } from './GrammarExercises';
 
 // Listening hub: TTS-narrated tracks (mini-podcasts, dialogues, news,
 // scenes) with listen-first transcripts, per-line highlighting, variable
@@ -199,9 +200,13 @@ function TrackPlayer({ track, baseRate, level = 'B1', onXp, onActivity }) {
     setListened(true);
   };
 
+  // Authored questions keep the correct option at index 0 — shuffle per run
+  // or the top button always scores.
+  const freshQuiz = () => ({ index: 0, correct: 0, picked: null, done: false, gained: 0, questions: track.questions.map(shuffleOptions) });
+
   const answer = (i) => {
     if (quiz.picked != null) return;
-    const question = track.questions[quiz.index];
+    const question = quiz.questions[quiz.index];
     const correct = i === question.answer;
     recordListeningGap(`${track.id}:${quiz.index}`, {
       label: question.q,
@@ -213,12 +218,12 @@ function TrackPlayer({ track, baseRate, level = 'B1', onXp, onActivity }) {
   };
 
   const nextQuestion = () => {
-    if (quiz.index + 1 < track.questions.length) {
+    if (quiz.index + 1 < quiz.questions.length) {
       setQuiz({ ...quiz, index: quiz.index + 1, picked: null });
     } else {
       const gained = Math.max(1, quiz.correct * 5);
       onXp(gained);
-      const score = Math.round((quiz.correct / track.questions.length) * 100);
+      const score = Math.round((quiz.correct / quiz.questions.length) * 100);
       recordSkillScore('listening', score);
       onActivity?.({ type: 'listening', trackId: track.id, score, label: track.title, mode: 'track' });
       setQuiz({ ...quiz, done: true, gained });
@@ -330,7 +335,7 @@ function TrackPlayer({ track, baseRate, level = 'B1', onXp, onActivity }) {
         <h3 className="text-[11px] font-bold uppercase tracking-wider text-ink2">Comprehension check</h3>
         {!quiz ? (
           <button
-            onClick={() => setQuiz({ index: 0, correct: 0, picked: null, done: false })}
+            onClick={() => setQuiz(freshQuiz())}
             disabled={!listened}
             className="btn btn-primary w-full min-h-11 rounded-xl text-sm"
           >
@@ -338,13 +343,13 @@ function TrackPlayer({ track, baseRate, level = 'B1', onXp, onActivity }) {
           </button>
         ) : quiz.done ? (
           <div className="text-center space-y-2 fade-in">
-            <p className="text-2xl font-bold text-ink tabular-nums">{quiz.correct}/{track.questions.length}</p>
+            <p className="text-2xl font-bold text-ink tabular-nums">{quiz.correct}/{quiz.questions.length}</p>
             <p className="text-xs text-ink2">
-              {quiz.correct === track.questions.length ? 'Perfect comprehension.' : 'Replay the track and listen for the details you missed.'}
+              {quiz.correct === quiz.questions.length ? 'Perfect comprehension.' : 'Replay the track and listen for the details you missed.'}
               {' '}+{quiz.gained} XP
             </p>
             <button
-              onClick={() => setQuiz({ index: 0, correct: 0, picked: null, done: false })}
+              onClick={() => setQuiz(freshQuiz())}
               className="btn btn-secondary min-h-10 px-4 rounded-xl text-xs"
             >
               <RefreshCw size={12} /> Retake
@@ -352,10 +357,10 @@ function TrackPlayer({ track, baseRate, level = 'B1', onXp, onActivity }) {
           </div>
         ) : (
           <div className="space-y-2">
-            <p className="text-[11px] text-ink3 tabular-nums">Question {quiz.index + 1}/{track.questions.length}</p>
-            <p className="text-sm text-ink">{track.questions[quiz.index].q}</p>
-            {track.questions[quiz.index].options.map((opt, i) => {
-              const isAnswer = i === track.questions[quiz.index].answer;
+            <p className="text-[11px] text-ink3 tabular-nums">Question {quiz.index + 1}/{quiz.questions.length}</p>
+            <p className="text-sm text-ink">{quiz.questions[quiz.index].q}</p>
+            {quiz.questions[quiz.index].options.map((opt, i) => {
+              const isAnswer = i === quiz.questions[quiz.index].answer;
               let cls = 'border-line bg-surface text-ink2 hover:border-ink3';
               if (quiz.picked != null && isAnswer) cls = 'border-ink bg-surface2 text-ink font-semibold';
               else if (quiz.picked === i) cls = 'border-line text-ink3 line-through';
@@ -376,7 +381,7 @@ function TrackPlayer({ track, baseRate, level = 'B1', onXp, onActivity }) {
             })}
             {quiz.picked != null && (
               <button onClick={nextQuestion} className="btn btn-primary w-full min-h-11 rounded-xl text-sm">
-                {quiz.index + 1 < track.questions.length ? 'Next question' : 'See my score'}
+                {quiz.index + 1 < quiz.questions.length ? 'Next question' : 'See my score'}
               </button>
             )}
           </div>

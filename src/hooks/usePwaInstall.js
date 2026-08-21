@@ -10,7 +10,10 @@ const isStandalone = () =>
     (window.matchMedia?.('(display-mode: standalone)').matches || window.navigator.standalone === true)) || false;
 
 const isIOS = () =>
-  typeof navigator !== 'undefined' && /iphone|ipad|ipod/i.test(navigator.userAgent) && !window.MSStream;
+  typeof navigator !== 'undefined' &&
+  (/iphone|ipad|ipod/i.test(navigator.userAgent) && !window.MSStream ||
+    // iPadOS 13+ masquerades as desktop Safari — catch it via touch support.
+    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1));
 
 export default function usePwaInstall() {
   const [promptEvent, setPromptEvent] = useState(null);

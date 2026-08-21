@@ -161,7 +161,7 @@ export function TrendChart({ sessions }) {
       viewBox={`0 0 ${w} ${h}`}
       className="w-full"
       role="img"
-      aria-label={`Trend over ${points.length} sessions: ${points.join(', ')}`}
+      aria-label={`Trend over ${points.length} sessions: started ${points[0]}, now ${points[points.length - 1]} (${points[points.length - 1] - points[0] >= 0 ? '+' : ''}${points[points.length - 1] - points[0]})`}
     >
       {[25, 50, 75, 100].map((g) => (
         <g key={g}>

@@ -10,6 +10,7 @@ import {
 } from '../lib/culture';
 import { bumpChallengeMetric } from '../lib/storage';
 import { SpeakButton } from './ui';
+import { shuffleOptions } from './GrammarExercises';
 import { ChevronLeft, ChevronRight, Check, X, RefreshCw, Lightbulb, Trophy, Search } from './icons';
 
 const SEEN_KEY = 'fp.cultureSeen';
@@ -161,7 +162,7 @@ export default function Culture({ onXp }) {
                     <span className="block text-xs text-ink3">{s.blurb}</span>
                     <span className="block text-[11px] text-ink3 mt-0.5 tabular-nums">{s.count} notes</span>
                   </span>
-                  {seen.has(s.id) && <Check size={15} className="text-ink3 shrink-0" aria-label="Opened" />}
+                  {seen.has(s.id) && <Check size={15} className="text-ink3 shrink-0" role="img" aria-label="Opened" />}
                   <ChevronRight size={16} className="text-ink3 shrink-0" />
                 </button>
               ))}
@@ -222,7 +223,16 @@ function SectionView({ section, onBack }) {
 }
 
 function CultureQuiz({ onXp, onBack }) {
-  const quiz = useMemo(() => [...CULTURE_QUIZ].sort(() => Math.random() - 0.5).slice(0, 8), []);
+  // Fisher–Yates, not sort(random): the old comparator left some questions
+  // systematically over/under-represented in the 8-question run.
+  const quiz = useMemo(() => {
+    const pool = [...CULTURE_QUIZ];
+    for (let i = pool.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [pool[i], pool[j]] = [pool[j], pool[i]];
+    }
+    return pool.slice(0, 8).map(shuffleOptions);
+  }, []);
   const [idx, setIdx] = useState(0);
   const [picked, setPicked] = useState(null);
   const [score, setScore] = useState(0);

@@ -31,6 +31,7 @@ export default function useRecorder({ onComplete }) {
   const [error, setError] = useState(null);
 
   const mediaRef = useRef(null); // { recorder, stream, ctx, analyser, raf, ... }
+  const startingRef = useRef(false); // guards the getUserMedia permission window
   const analyserRef = useRef(null); // exposed for the waveform canvas
   const onCompleteRef = useRef(onComplete);
   onCompleteRef.current = onComplete;
@@ -54,7 +55,10 @@ export default function useRecorder({ onComplete }) {
   }, []);
 
   const start = useCallback(async () => {
-    if (mediaRef.current) return;
+    // Latch across the permission await: without it a double-tap fires two
+    // getUserMedia calls and two recorders before mediaRef is ever set.
+    if (mediaRef.current || startingRef.current) return;
+    startingRef.current = true;
     setError(null);
     let stream;
     try {
@@ -67,6 +71,7 @@ export default function useRecorder({ onComplete }) {
         },
       });
     } catch (e) {
+      startingRef.current = false;
       setError(
         e.name === 'NotAllowedError'
           ? 'Microphone access denied — allow the microphone in your browser.'
@@ -75,6 +80,7 @@ export default function useRecorder({ onComplete }) {
       return;
     }
 
+    try {
     const ctx = new (window.AudioContext || window.webkitAudioContext)();
     const source = ctx.createMediaStreamSource(stream);
     const gain = ctx.createGain();
@@ -170,6 +176,16 @@ export default function useRecorder({ onComplete }) {
     mediaRef.current.raf = requestAnimationFrame(tick);
 
     if (navigator.vibrate) navigator.vibrate(30); // haptic: recording started
+    } catch (err) {
+      // Graph construction failed after the mic opened — release it, or the
+      // hardware stays hot with nothing recording.
+      cleanup();
+      stream.getTracks().forEach((t) => t.stop());
+      setRecording(false);
+      setError(`Could not start recording: ${err?.message || err}`);
+    } finally {
+      startingRef.current = false;
+    }
   }, [cleanup, stop]);
 
   const cancel = useCallback(() => {

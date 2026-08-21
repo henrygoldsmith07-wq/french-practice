@@ -16,14 +16,14 @@ function suggestScenario(sessions) {
   return unseen || [...scenarios].sort((a, b) => (lastSeen[a.id] ?? -1) - (lastSeen[b.id] ?? -1))[0];
 }
 
-export default function HomeDashboard({ dailyGoal = 30, level, onStartLesson, onNavigate, onPickScenario, lastActivity, onResume }) {
+export default function HomeDashboard({ dailyGoal = 30, level, onStartLesson, onNavigate, onPickScenario, lastActivity, onResume, prefs }) {
   const settings = getSettings();
   const language = getLanguage(settings.language);
   const streak = getStreak();
   const todayXp = getTodayXp();
   const dueCount = dueEntries([...allEntries(), ...notebookAsEntries(getNotebook())], getSrs()).length;
   const suggested = suggestScenario(getSessions());
-  const todayRecs = (()=>{ try{ const srs=getSrs(); const habits=getHabits(); const grammar=getGrammarProgress(); const weak=weakEntries([...allEntries(), ...notebookAsEntries(getNotebook())], srs); const areas=weaknessAnalysis({ habits, grammarProgress: grammar, sessions: getSessions(), weakWordCount: weak.length, dueCount }); return dailyRecommendations({ prefs: { learningStyle: 'balanced', lessonLength: 'medium' }, weaknesses: areas, dueCount, suggestedScenario: suggested }).slice(0,2); }catch{ return []; }})();
+  const todayRecs = (()=>{ try{ const srs=getSrs(); const habits=getHabits(); const grammar=getGrammarProgress(); const weak=weakEntries([...allEntries(), ...notebookAsEntries(getNotebook())], srs); const areas=weaknessAnalysis({ habits, grammarProgress: grammar, sessions: getSessions(), weakWordCount: weak.length, dueCount }); return dailyRecommendations({ prefs: { learningStyle: 'balanced', lessonLength: 'medium', ...(prefs || {}) }, weaknesses: areas, dueCount, suggestedScenario: suggested }).slice(0,2); }catch{ return []; }})();
   const SuggestedIcon = SCENARIO_ICONS[suggested.id] || MessageCircle;
   const goal = Math.max(1, dailyGoal);
   const goalPct = Math.min(100, Math.round((todayXp / goal) * 100));
@@ -132,7 +132,7 @@ export default function HomeDashboard({ dailyGoal = 30, level, onStartLesson, on
               title="Deepen the craft"
               kicker="Learn · At leisure"
               body="Grammar, dictée, reading and writing — all grouped under Learn when you have time."
-              meta="25 topics · 4 skills"
+              meta="60 topics · 4 skills"
               cta="Explore Learn"
               onClick={() => onNavigate('grammar')}
             />

@@ -35,9 +35,16 @@ self.addEventListener('fetch', (event) => {
         }
         return response;
       })
-      .catch(() =>
-        caches.match(request).then((hit) => hit || caches.match('./index.html'))
-      )
+      .catch(() => {
+        // Offline: serve the cached asset, or — only for navigations — the
+        // app shell. Falling back to HTML for a missed JS/CSS request would
+        // serve a 200 that fails to parse, masking the real problem.
+        return caches.match(request).then(
+          (hit) =>
+            hit ||
+            (request.mode === 'navigate' ? caches.match('./index.html') : undefined)
+        );
+      })
   );
 });
 

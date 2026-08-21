@@ -16,7 +16,7 @@ import { allEntries } from '../lib/vocab';
 import { GRAMMAR_TOPICS } from '../lib/grammar';
 import { buildLearningPlan } from '../lib/learningAdaptation';
 import { Markdown, ScoreBadge, SpeakButton, RateSlider, Spinner } from './ui';
-import { speak } from '../lib/tts';
+import { speak, stopSpeaking } from '../lib/tts';
 import { ArrowRight, Book, Lightbulb, Mic, Square, scenarioIcon } from './icons';
 import { getGrammarTopic } from '../lib/grammar';
 import ScenarioPicker from './ScenarioPicker';
@@ -49,6 +49,13 @@ export default function ChatArena({ apiKey, mockMode, ttsRate, level, onTtsRate,
   // Assistance-fading evidence: how many hints the learner burned on the turn
   // in flight. Recorded with the turn's score once the evaluation lands.
   const hintsUsedRef = useRef(0);
+  // In-flight guard: bumped on scenario switch/unmount so a slow LLM response
+  // for the old conversation can never land in (or speak over) the new one.
+  const flightRef = useRef(0);
+  const hintSeqRef = useRef(0);
+
+  // Leaving the Arena must silence the partner mid-sentence.
+  useEffect(() => () => stopSpeaking(), []);
 
   // Honour Home's 5/10/15 min presets: countdown only, never auto-sends speech.
   useEffect(() => {
@@ -90,6 +97,9 @@ export default function ChatArena({ apiKey, mockMode, ttsRate, level, onTtsRate,
   const changeScenario = (id) => {
     const s = getScenarios().find((x) => x.id === id);
     if (!s) return;
+    flightRef.current += 1; // orphan any in-flight turn/hint from the old chat
+    hintSeqRef.current += 1;
+    stopSpeaking();
     setScenario(s);
     setHistory([]);
     setHint('');
@@ -110,6 +120,8 @@ export default function ChatArena({ apiKey, mockMode, ttsRate, level, onTtsRate,
   const send = async (text) => {
     const userText = text.trim();
     if (!userText || phase === 'thinking') return;
+    const flight = ++flightRef.current;
+    const stale = () => flightRef.current !== flight;
     // Redo path: re-evaluate the same turn with correction hidden
     if (redoIdx != null) {
       const idx = redoIdx;
@@ -128,6 +140,7 @@ export default function ChatArena({ apiKey, mockMode, ttsRate, level, onTtsRate,
           level,
           mock: mockMode,
         });
+        if (stale()) return;
         if (redoEval.grammar_topic) {
           recordGrammarError(redoEval.grammar_topic);
           recordWeaknessError(redoEval.grammar_topic, { scenarioId: scenario.id });
@@ -144,6 +157,7 @@ export default function ChatArena({ apiKey, mockMode, ttsRate, level, onTtsRate,
         onTurn(redoEval.scores);
         speak(redoEval.reply, { rate: ttsRate });
       } catch (e) {
+        if (stale()) return;
         setError(friendlyError(e));
         setDraft(userText);
         setPhase('editing');
@@ -190,6 +204,7 @@ export default function ChatArena({ apiKey, mockMode, ttsRate, level, onTtsRate,
         learner,
         mock: mockMode,
       });
+      if (stale()) return; // scenario switched mid-flight — discard, don't append
       if (evaluation.grammar_topic) recordWeaknessError(evaluation.grammar_topic, { scenarioId: scenario.id });
       if (evaluation.grammar_topic) recordGrammarError(evaluation.grammar_topic);
       // Assistance-fading evidence: did this score happen with scaffolding or
@@ -235,15 +250,17 @@ export default function ChatArena({ apiKey, mockMode, ttsRate, level, onTtsRate,
       onTurn(evaluation.scores);
       speak(evaluation.reply, { rate: learningPlan.speech.rate });
     } catch (e) {
+      if (stale()) return;
       setError(friendlyError(e));
       setDraft(userText); // don't lose their words
       setPhase('editing');
       return;
     }
-    setPhase('idle');
+    if (!stale()) setPhase('idle');
   };
 
   const askHint = async () => {
+    const seq = ++hintSeqRef.current;
     const depth = Math.min(3, hintLevel + 1);
     setHintLoading(true);
     setHintLevel(depth);
@@ -251,11 +268,13 @@ export default function ChatArena({ apiKey, mockMode, ttsRate, level, onTtsRate,
     try {
       const lastAiReply = history.length ? history[history.length - 1].reply : scenario.opener;
       const h = await getHint(apiKey, { scenario, lastAiReply, level: depth, cefr: level, mock: mockMode });
+      if (hintSeqRef.current !== seq) return; // a newer hint (or scenario switch) superseded this one
       setHint(h);
     } catch {
+      if (hintSeqRef.current !== seq) return;
       setHint(scenario.staticHints[depth - 1]); // offline fallback
     }
-    setHintLoading(false);
+    if (hintSeqRef.current === seq) setHintLoading(false);
   };
 
   const busy = phase === 'transcribing' || phase === 'thinking';

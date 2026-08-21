@@ -1,7 +1,7 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import useRecorder from '../hooks/useRecorder';
 import Waveform from './Waveform';
-import { randomPoolSentence, toWords, diffWords, displayHits } from '../lib/sentences';
+import { randomPoolSentence, toWords, diffWordsEq, displayHits } from '../lib/sentences';
 import { transcribe, accentFeedback, friendlyError } from '../lib/groq';
 import { speechMetrics } from '../lib/analytics';
 import { activeLanguage } from '../lib/i18n';
@@ -25,6 +25,9 @@ export default function Pronunciation({ mode, apiKey, mockMode, ttsRate, level, 
   const [result, setResult] = useState(null); // { heard, accuracy, gained, hits, feedback }
   const [error, setError] = useState(null);
 
+  // Navigating away mid-playback must not keep reading aloud over the next screen.
+  useEffect(() => () => stopSpeaking(), []);
+
   const words = useMemo(() => sentence.text.split(/\s+/), [sentence]);
 
   const [phonemeTick, setPhonemeTick] = useState(0);
@@ -41,19 +44,20 @@ export default function Pronunciation({ mode, apiKey, mockMode, ttsRate, level, 
       }
       try {
         const heard = await transcribe(apiKey, blob, { mock: mockMode });
-        // Accent-tolerant scoring: if only accents differ, count as hit
+        // Accent-tolerant scoring folded into the alignment itself: if only
+        // accents differ, the pair matches inside the LCS — so an inserted or
+        // dropped word earlier in the sentence can't shift tolerance onto
+        // the wrong word.
         const target = toWords(sentence.text);
         const heardWords = toWords(heard);
-        const rawHits = diffWords(target, heardWords);
-        // Bump hits where accent tolerance fires
-        const hits = rawHits.map((hit, i)=> hit ? true : (accentToleranceScore(target[i]||'', heardWords[i]||'')!=null));
+        const hits = diffWordsEq(target, heardWords, (t, h) => t === h || accentToleranceScore(t, h) != null);
         const matched = hits.filter(Boolean).length;
         const rawAcc = matched / Math.max(1, target.length);
         const accCal = calibratedConfidence(rawAcc);
         const accuracy = Math.round(accCal * 100);
         const gained = Math.max(1, Math.round(accuracy / 10));
         onXp(gained);
-        recordSkillScore(mode === 'shadowing' ? 'speaking' : 'pronunciation', accuracy);
+        recordSkillScore(shadow ? 'speaking' : 'pronunciation', accuracy);
         onActivity?.({
           type: 'pronunciation',
           mode: shadow ? 'shadowing' : 'pronunciation',
@@ -67,7 +71,7 @@ export default function Pronunciation({ mode, apiKey, mockMode, ttsRate, level, 
         recordPronunciationGap(`${mode}:sentence-clarity`, {
           label: 'Sentence clarity',
           score: accuracy,
-          source: mode === 'shadowing' ? 'shadowing' : 'read-aloud',
+          source: shadow ? 'shadowing' : 'read-aloud',
           context: { missedWords: target.filter((_, i) => !hits[i]).slice(0, 8), rawAccuracy: Math.round(rawAcc * 100) },
         });
         setPhonemeTick(t=>t+1);
@@ -226,9 +230,11 @@ export default function Pronunciation({ mode, apiKey, mockMode, ttsRate, level, 
   );
 }
 function MinimalPairStrip({ level }){
-  const [pair, setPair] = useState(()=> nextMinimalPair('u-ou'));
+  // Start from the learner's actual weakest contrast, not a hard-coded one —
+  // the label and the audio must agree on the very first render.
   const weak = weakestPhonemes(1)[0];
   const phoneme = weak?.id || 'u-ou';
+  const [pair, setPair] = useState(() => nextMinimalPair(phoneme));
   return (
     <div className="bg-surface border border-line rounded-2xl p-4 flex items-center gap-3">
       <div className="flex-1">

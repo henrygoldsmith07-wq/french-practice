@@ -45,7 +45,9 @@ export default function AccentDrill({ onXp }) {
 
   const check = () => {
     const target = WORDS[game.wordIdx][0];
-    const ok = game.input.trim().replace(/'/g, '’') === target;
+    // Accents stay strict, capitalisation doesn't — matching the lenient
+    // case handling of every other typed drill in the app.
+    const ok = game.input.trim().toLowerCase().replace(/'/g, '’') === target.toLowerCase();
     setGame({ ...game, checked: true, lastOk: ok, correct: game.correct + (ok ? 1 : 0) });
   };
 

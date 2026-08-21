@@ -28,7 +28,7 @@ function ChipRow({ label, items }) {
   );
 }
 
-export default function VocabCard({ entry, cardDue, saved, onRate, onToggleSave, apiKey, mockMode }) {
+export default function VocabCard({ entry, cardDue, saved, disabled, onRate, onToggleSave, apiKey, mockMode }) {
   const [flipped, setFlipped] = useState(false);
   const [challenge, setChallenge] = useState(null);
 
@@ -65,7 +65,7 @@ export default function VocabCard({ entry, cardDue, saved, onRate, onToggleSave,
           onClick={() => setFlipped((f) => !f)}
           aria-label={flipped ? 'Flip the card (front)' : 'Flip the card (back)'}
         >
-          <div className="flip-face bg-gradient-to-br from-surface2 to-surface border border-line rounded-3xl grid place-items-center p-6 shadow-xl">
+          <div className="flip-face bg-gradient-to-br from-surface2 to-surface border border-line rounded-3xl grid place-items-center p-6 shadow-xl" aria-hidden={flipped}>
             {cardDue && (
               <span className="absolute top-4 right-4 px-2 py-0.5 rounded-full bg-accent text-onaccent text-[10px] font-semibold uppercase tracking-wider">
                 Due
@@ -82,7 +82,7 @@ export default function VocabCard({ entry, cardDue, saved, onRate, onToggleSave,
               <p className="text-xs text-ink3 mt-3">Tap to reveal</p>
             </div>
           </div>
-          <div className="flip-face flip-face-back bg-gradient-to-br from-surface2 to-surface border border-line rounded-3xl p-5 flex flex-col justify-center gap-2.5 shadow-xl overflow-y-auto">
+          <div className="flip-face flip-face-back bg-gradient-to-br from-surface2 to-surface border border-line rounded-3xl p-5 flex flex-col justify-center gap-2.5 shadow-xl overflow-y-auto" aria-hidden={!flipped}>
             <p className="text-lg font-bold text-ink">{entry.en}</p>
             {entry.example && <p className="text-sm text-ink italic" lang="fr">« {entry.example} »</p>}
             {entry.exampleEn && <p className="text-xs text-ink2">{entry.exampleEn}</p>}
@@ -113,9 +113,9 @@ export default function VocabCard({ entry, cardDue, saved, onRate, onToggleSave,
 
       {/* SRS ratings (revealed side only) */}
       {flipped && (
-        <div className="grid grid-cols-4 gap-2 fade-in">
+        <div className="grid grid-cols-4 gap-2 fade-in" role="group" aria-label="How well did you recall it?" aria-disabled={disabled}>
           {RATINGS.map(([key, label, cls]) => (
-            <button key={key} onClick={() => onRate(key)} className={`min-h-11 rounded-xl border text-xs font-bold ${cls} active:scale-95 transition`}>
+            <button key={key} onClick={() => onRate(key)} disabled={disabled} className={`min-h-11 rounded-xl border text-xs font-bold ${cls} active:scale-95 transition disabled:opacity-50`}>
               {label}
             </button>
           ))}

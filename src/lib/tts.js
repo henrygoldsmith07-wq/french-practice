@@ -55,14 +55,22 @@ export function getReferenceAudio(text){ return REF_CACHE.get(text) || null; }
 export function clearReferenceCache(){ for(const url of REF_CACHE.values()) URL.revokeObjectURL(url); REF_CACHE.clear(); }
 
 export function speak(text, { rate = 1, onEnd } = {}) {
-  if (!ttsSupported() || !text) return;
+  if (!ttsSupported() || !text) {
+    // Resolve waiters (e.g. AudioCourse's `await say(...)`) even without a
+    // speech engine — an unfulfilled onEnd used to hang the sequence forever.
+    if (onEnd) setTimeout(onEnd, 0);
+    return;
+  }
   window.speechSynthesis.cancel();
   const utterance = new SpeechSynthesisUtterance(text);
   utterance.lang = active.speechLang;
   utterance.rate = Math.min(1.5, Math.max(0.5, rate));
   const voice = pickVoice();
   if (voice) utterance.voice = voice;
-  if (onEnd) utterance.onend = onEnd;
+  if (onEnd) {
+    utterance.onend = onEnd;
+    utterance.onerror = onEnd;
+  }
   window.speechSynthesis.speak(utterance);
 }
 
@@ -98,7 +106,10 @@ export function speakLines(lines, { rate = 1, accentId = null, onLine, onEnd } =
     if (voice) u.voice = voice;
     if (speakerIndex > 0 && voice === voiceA) u.pitch = Math.min(1.4, 0.8 + speakerIndex * 0.15);
     u.onstart = () => onLine?.(i);
-    if (i === lines.length - 1 && onEnd) u.onend = onEnd;
+    if (i === lines.length - 1 && onEnd) {
+      u.onend = onEnd;
+      u.onerror = onEnd;
+    }
     window.speechSynthesis.speak(u);
   });
 }

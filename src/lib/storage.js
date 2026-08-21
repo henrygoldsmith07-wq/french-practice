@@ -103,11 +103,25 @@ export function getSyncId() {
 export const getLastBackup = () => read(KEYS.lastBackup, null);
 export const markBackup = () => write(KEYS.lastBackup, new Date().toISOString());
 
+let storageFull = false;
+
+// True when the last write tripped the quota — surfaced in Settings/DevPanel
+// so "where did my progress go" has an answer.
+export const storageFullWarning = () => storageFull;
+
+// Event streams that can be pruned when the quota is hit: recent history is
+// kept, older entries are dropped rather than losing fresh progress.
+const PRUNEABLE_KEYS = [KEYS.reviewEvents, KEYS.studyEvents, KEYS.pulseHistory];
+
 function read(key, fallback) {
   try {
     const raw = localStorage.getItem(key);
-    return raw == null ? fallback : JSON.parse(raw);
+    if (raw == null) return fallback;
+    return JSON.parse(raw);
   } catch {
+    // Corrupt value: drop it once so the next write starts clean instead of
+    // silently returning the fallback forever.
+    try { localStorage.removeItem(key); } catch { /* unavailable */ }
     return fallback;
   }
 }
@@ -116,7 +130,29 @@ function write(key, value) {
   try {
     localStorage.setItem(key, JSON.stringify(value));
   } catch {
-    /* storage full or unavailable — degrade silently */
+    // Storage full or unavailable: try to make room by halving the growing
+    // event logs, then retry once. Never lose the current key's data without
+    // attempting this.
+    if (!storageFull) storageFull = true;
+    if (PRUNEABLE_KEYS.includes(key)) {
+      try {
+        const half = read(key, null);
+        if (Array.isArray(half) && half.length > 8) {
+          localStorage.setItem(key, JSON.stringify(half.slice(-Math.floor(half.length / 2))));
+          return;
+        }
+      } catch { /* give up quietly */ }
+    }
+    for (const k of PRUNEABLE_KEYS) {
+      if (k === key) continue;
+      try {
+        const arr = read(k, null);
+        if (Array.isArray(arr) && arr.length > 16) {
+          localStorage.setItem(k, JSON.stringify(arr.slice(-Math.floor(arr.length / 2))));
+          try { localStorage.setItem(key, JSON.stringify(value)); return; } catch { /* still full */ }
+        }
+      } catch { /* keep pruning */ }
+    }
   }
 }
 
@@ -357,11 +393,11 @@ function normaliseReviewEvent(event, index = 0) {
   };
 }
 
+const REVIEW_EVENT_CAP = 2000;
+
 export const getReviewEvents = () => {
   const raw = read(KEYS.reviewEvents, []);
-  const events = (Array.isArray(raw) ? raw : []).map(normaliseReviewEvent).filter(Boolean);
-  if (Array.isArray(raw)) write(KEYS.reviewEvents, events);
-  return events;
+  return (Array.isArray(raw) ? raw : []).map(normaliseReviewEvent).filter(Boolean);
 };
 
 export const getStudyEvents = () => {
@@ -394,7 +430,7 @@ export function recordStudyEvent(event = {}) {
     at,
   };
   events.push(stored);
-  write(KEYS.studyEvents, events);
+  write(KEYS.studyEvents, events.length > REVIEW_EVENT_CAP ? events.slice(-REVIEW_EVENT_CAP) : events);
   return stored;
 }
 
@@ -681,7 +717,7 @@ function speakingRecord(session, index) {
 
 function publishPulseHistory() {
   if (!readPulseOptIn()) return;
-  const records = getSessions().map(speakingRecord).filter(Boolean).concat(getReviewEvents());
+  const records = getSessions().map(speakingRecord).filter(Boolean).concat(getReviewEvents()).slice(-REVIEW_EVENT_CAP);
   write(KEYS.pulseHistory, {
     format: 'le-studio.source-history',
     schemaVersion: 2,
@@ -1276,7 +1312,9 @@ export function toggleHabit(id, day = dayStamp()) {
 
 // ---- daily streak ----
 
-const dayStamp = (d = new Date()) => d.toISOString().slice(0, 10);
+// Day key in the user's local time — streaks, XP days and challenges roll
+// over at local midnight, matching Word of the Day and the calendars.
+const dayStamp = (d = new Date()) => d.toLocaleDateString('en-CA');
 
 export const getStreak = () => {
   const s = read(KEYS.streak, { count: 0, lastDay: null });
@@ -1389,12 +1427,23 @@ export const getNotebook = () => read(KEYS.notebook, []);
 
 export const isInNotebook = (id) => getNotebook().some((e) => e.id === id);
 
+const normFr = (s) =>
+  String(s || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim();
+
 export function saveToNotebook({ id, fr, en, note = '' }) {
   const nb = getNotebook();
-  if (nb.some((e) => e.id === id)) return nb;
+  // Dedupe on id *and* on normalised French text — manual adds mint fresh
+  // ids each time, so text is the only reliable duplicate signal.
+  const frKey = normFr(fr);
+  if (nb.some((e) => e.id === id || (frKey && normFr(e.fr) === frKey))) return nb;
   nb.unshift({ id, fr, en, note, addedAt: new Date().toISOString() });
-  write(KEYS.notebook, nb.slice(0, 200));
-  return nb;
+  const capped = nb.slice(0, 200);
+  write(KEYS.notebook, capped);
+  return capped;
 }
 
 export function removeFromNotebook(id) {
@@ -1586,7 +1635,7 @@ function logReview({ cardId, rating, elapsedMs, skill, intervalDays, mode, itemL
     ...(Number.isFinite(Number(intervalDays)) ? { intervalDays: Math.max(0, Number(intervalDays)) } : {}),
   };
   events.push(event);
-  write(KEYS.reviewEvents, events);
+  write(KEYS.reviewEvents, events.length > REVIEW_EVENT_CAP ? events.slice(-REVIEW_EVENT_CAP) : events);
   recordStudyEvent({
     type: 'review',
     reviewId: event.id,

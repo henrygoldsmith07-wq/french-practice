@@ -17,5 +17,10 @@ export function syncLanguage(id) {
   setContentLanguage(lang.id);
   setSpeechLanguage(lang.id);
   setAiLanguage(lang.id);
+  // Screen readers must pronounce target-language content correctly: the UI
+  // chrome stays English, so elements carry their own lang attributes.
+  if (typeof document !== 'undefined') {
+    document.documentElement.lang = lang.id;
+  }
   return lang;
 }

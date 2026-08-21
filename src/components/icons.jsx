@@ -2,6 +2,9 @@
 // No dependency — keeps the bundle small and the look consistent.
 
 function Icon({ size = 16, children, className = '', filled = false, ...rest }) {
+  // Decorative by default; a caller passing role/aria-label opts the icon
+  // into the accessibility tree (spread after aria-hidden so it wins).
+  const decorative = !('aria-label' in rest || 'role' in rest);
   return (
     <svg
       width={size}
@@ -12,7 +15,7 @@ function Icon({ size = 16, children, className = '', filled = false, ...rest }) 
       strokeWidth="2"
       strokeLinecap="round"
       strokeLinejoin="round"
-      aria-hidden="true"
+      aria-hidden={decorative ? 'true' : undefined}
       className={`inline-block shrink-0 ${className}`}
       {...rest}
     >

@@ -28,13 +28,15 @@ export default function Grammar({ focusTopicId, onFocusConsumed, onXp, onActivit
   const [tick, setTick] = useState(0);
   const [level, setLevel] = useState('all');
   const [query, setQuery] = useState('');
-  const progress = getGrammarProgress();
+  // Re-read only when a quiz finishes bumps `tick` — reading localStorage on
+  // every render made the memo below useless and re-parsed JSON per keystroke.
+  const progress = useMemo(() => getGrammarProgress(), [tick]);
   void tick;
   const tip = useMemo(() => grammarTopicOfDay(), []);
   const byCefr = useMemo(() => grammarStatsByCefr(), []);
   const masteredCount = useMemo(
     () => GRAMMAR_TOPICS.filter((t) => (progress[t.id]?.best ?? 0) >= 80).length,
-    [progress, tick],
+    [progress],
   );
 
   // Only offer level chips that actually exist in the library, in CEFR order.

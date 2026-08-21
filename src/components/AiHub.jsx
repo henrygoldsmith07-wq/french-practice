@@ -239,7 +239,7 @@ function Characters({ apiKey, mockMode, level, onXp }) {
     return (
       <div className="h-full overflow-y-auto nice-scroll px-4 py-4">
         <div className="max-w-md mx-auto space-y-3">
-          <p className="text-xs text-ink2 text-center">Pick a partner — each has their own personality. They reply in ${langName()} with a translation.</p>
+          <p className="text-xs text-ink2 text-center">Pick a partner — each has their own personality. They reply in {langName()} with a translation.</p>
           <div className="space-y-2.5">
             {CHARACTERS.map((c) => (
               <button

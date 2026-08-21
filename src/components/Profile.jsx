@@ -155,8 +155,10 @@ function WeeklyLeague({ level }) {
     // Monday-anchored week, matching getWeekXp; progress is the fraction elapsed.
     const dow = (now.getDay() + 6) % 7; // 0 = Monday
     const weekProgress = (dow * 86400 + now.getHours() * 3600 + now.getMinutes() * 60) / (7 * 86400);
-    const monday = new Date(now.getTime() - dow * 86400000);
-    const weekKey = monday.toISOString().slice(0, 10);
+    const monday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - dow);
+    // Local Y/M/D key, matching isoWeekKey in storage.js — toISOString put
+    // Sunday-evening users in the following week's league.
+    const weekKey = monday.toLocaleDateString('en-CA');
     const tier = leagueTier(level);
     const settings = getSettings();
     const avatar = AVATARS.find((a) => a.id === getAvatar());

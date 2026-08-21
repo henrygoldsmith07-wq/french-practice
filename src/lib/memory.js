@@ -41,12 +41,23 @@ export function memoryBuckets(entries, srs, now = Date.now()) {
 }
 
 // Weak words: reviewed at least twice and still stumbling — high lapse
-// ratio or the last answer was a fail. Worst first.
+// ratio or the last answer was a fail. Worst first. A just-failed card
+// always qualifies: a lapse resets `reps` to zero, so the veteran gate
+// alone would hide the weakest signal of all until it was passed twice.
 export function weakEntries(entries, srs) {
   return entries
     .map((e) => ({ entry: e, s: srs[e.id] }))
-    .filter(({ s }) => s && s.reps >= 2 && ((s.lapses || 0) / s.reps >= 1 / 3 || s.lastRating === 'again'))
-    .sort((a, b) => (b.s.lapses || 0) / b.s.reps - (a.s.lapses || 0) / a.s.reps)
+    .filter(({ s }) => {
+      if (!s || !s.lastReviewed) return false;
+      if (s.lastRating === 'again') return true;
+      return (s.reps || 0) >= 2 && (s.lapses || 0) / s.reps >= 1 / 3;
+    })
+    .sort((a, b) => {
+      const failA = a.s.lastRating === 'again' ? 1 : 0;
+      const failB = b.s.lastRating === 'again' ? 1 : 0;
+      if (failA !== failB) return failB - failA;
+      return (b.s.lapses || 0) / (b.s.reps || 1) - (a.s.lapses || 0) / (a.s.reps || 1);
+    })
     .map(({ entry }) => entry);
 }
 
@@ -69,7 +80,7 @@ export function heatmapWeeks(log, weeks = 15, now = new Date()) {
   const stamps = [];
   for (let i = days - 1; i >= 0; i--) {
     const d = new Date(now.getTime() - i * DAY);
-    const day = d.toISOString().slice(0, 10);
+    const day = d.toLocaleDateString('en-CA');
     stamps.push({ day, count: log[day] || 0 });
   }
   const max = Math.max(1, ...stamps.map((s) => s.count));

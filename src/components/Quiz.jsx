@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Check, X, ArrowRight } from './icons';
+import { shuffleOptions } from './GrammarExercises';
 
 // Multiple-choice quiz runner over normalised exercises ({ q, options, answer,
 // why }). Shared by the AI exercise generator, the mistake-bank lesson and the
@@ -10,10 +11,13 @@ export default function Quiz({ exercises, onXp, footer }) {
   const [score, setScore] = useState(0);
   const done = idx >= exercises.length;
 
+  // Shuffle per question — generated exercises often park the answer first.
+  const ex = useMemo(() => (done ? null : shuffleOptions(exercises[idx])), [exercises, idx, done]);
+
   const pick = (i) => {
     if (picked !== null) return;
     setPicked(i);
-    if (i === exercises[idx].answer) {
+    if (i === ex.answer) {
       setScore((s) => s + 1);
       onXp(3);
     }
@@ -29,7 +33,6 @@ export default function Quiz({ exercises, onXp, footer }) {
     );
   }
 
-  const ex = exercises[idx];
   return (
     <div className="space-y-3">
       <p className="text-[10px] font-bold uppercase tracking-wider text-ink3 text-center">

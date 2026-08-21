@@ -476,7 +476,22 @@ function Sitting({ run, setRun, apiKey, mockMode, busy, setBusy, onAbort }) {
             onMouseLeave={() => recording && finishBurst()}
             onTouchStart={(e) => { e.preventDefault(); startRec(); }}
             onTouchEnd={(e) => { e.preventDefault(); finishBurst(); }}
+            onKeyDown={(e) => {
+              // Keyboard parity: hold Space/Enter to speak, release to stop —
+              // without this the speaking paper is impossible by keyboard.
+              if ((e.key === ' ' || e.key === 'Enter') && !e.repeat && !recording) {
+                e.preventDefault();
+                startRec();
+              }
+            }}
+            onKeyUp={(e) => {
+              if ((e.key === ' ' || e.key === 'Enter') && recording) {
+                e.preventDefault();
+                finishBurst();
+              }
+            }}
             disabled={busy}
+            aria-pressed={recording}
             className={`w-full rounded-[14px] px-5 py-4 text-sm font-bold transition select-none ${recording ? 'bg-red-500 text-white' : 'bg-ink text-bg hover:opacity-90'} disabled:opacity-50`}
           >
             {recording

@@ -92,7 +92,7 @@ function useTimer() {
 
   useEffect(() => {
     if (!running) return;
-    const id = setInterval(() => {
+    const tick = () => {
       const now = Date.now();
       if (mode === 'study') {
         setElapsed(Math.round((now - ref.current.startAt) / 1000));
@@ -115,8 +115,18 @@ function useTimer() {
       } else {
         setRemaining(left);
       }
-    }, 250);
-    return () => clearInterval(id);
+    };
+    const id = setInterval(tick, 250);
+    // Background tabs throttle intervals to ~1/min: run one tick the instant
+    // the tab is visible again so phase flips and chimes aren't minutes late.
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') tick();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      clearInterval(id);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
   }, [running, mode, phase, completed]);
 
   const start = () => {
@@ -211,7 +221,7 @@ function FocusTimer({ onExit }) {
 function Habits() {
   const [tracker, setTracker] = useState(getHabitTracker);
   const [name, setName] = useState('');
-  const today = new Date().toISOString().slice(0, 10);
+  const today = new Date().toLocaleDateString('en-CA');
 
   const add = () => {
     if (!name.trim()) return;

@@ -8,6 +8,7 @@ import { getNotebook, saveToNotebook } from '../lib/storage';
 import { speak, stopSpeaking } from '../lib/tts';
 import { SpeakButton } from './ui';
 import PhraseDrills from './PhraseDrills';
+import { shuffleOptions } from './GrammarExercises';
 import { X, ChevronLeft, ChevronRight, Check, Play, Book, Volume, FileText, Plus, Layers, MessageCircle, Target } from './icons';
 
 // Reference & tools (full-screen): verb conjugation tables, a minimal-pairs
@@ -196,6 +197,9 @@ function MinimalPairs() {
   const [score, setScore] = useState({ right: 0, total: 0 });
   const pair = MINIMAL_PAIRS[idx];
 
+  // Leaving the drill by any path must stop the word still ringing.
+  useEffect(() => () => stopSpeaking(), []);
+
   const playRandom = () => {
     const which = Math.random() < 0.5 ? 'a' : 'b';
     setTarget(which);
@@ -274,7 +278,8 @@ function Cloze() {
   const [picked, setPicked] = useState(null);
   const [score, setScore] = useState(0);
   const done = idx >= CLOZE_TESTS.length;
-  const q = CLOZE_TESTS[idx];
+  // Authored gap-fills keep the correct option at index 0 — shuffle per item.
+  const q = useMemo(() => shuffleOptions(CLOZE_TESTS[idx]), [idx]);
 
   const pick = (i) => {
     if (picked !== null) return;

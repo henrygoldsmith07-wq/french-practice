@@ -4,11 +4,28 @@ import { Check, X, RefreshCw } from './icons';
 // Interactive grammar exercises: MCQ drills with instant feedback + a why,
 // tap-to-order sentence building, and a scored quiz. All local.
 
+// Authored MCQs store the correct option first (answer: 0), so rendering them
+// in stored order makes "tap the first button" score 100%. Shuffle at render
+// and remap the answer index instead.
+export function shuffleOptions(item) {
+  if (!item?.options?.length) return item;
+  const order = item.options.map((_, i) => i);
+  for (let i = order.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [order[i], order[j]] = [order[j], order[i]];
+  }
+  return {
+    ...item,
+    options: order.map((i) => item.options[i]),
+    answer: order.indexOf(item.answer),
+  };
+}
+
 export function Drill({ items }) {
   const [index, setIndex] = useState(0);
   const [picked, setPicked] = useState(null);
 
-  const item = items[index];
+  const item = useMemo(() => shuffleOptions(items[index]), [items, index]);
   const answered = picked != null;
   const correct = picked === item.answer;
 
@@ -160,7 +177,7 @@ export function Quiz({ items, onFinish }) {
   const [correctCount, setCorrectCount] = useState(0);
   const [done, setDone] = useState(false);
 
-  const item = items[index];
+  const item = useMemo(() => shuffleOptions(items[index]), [items, index]);
   const answered = picked != null;
 
   const next = () => {

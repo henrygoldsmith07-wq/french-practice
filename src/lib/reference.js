@@ -168,15 +168,16 @@ export const getFrequencyWords = () => FREQUENCY_WORDS_BY_LANG[contentLang()] ||
 // Back-compat alias: the French list (kept so older imports don't break).
 export { FREQUENCY_WORDS } from './frequency.js';
 
-// Parse a pasted custom word list — accepts "fr, en", "fr - en", "fr : en"
-// or tab-separated, one per line. Returns [{ fr, en }].
+// Parse a pasted custom word list — accepts "fr, en", "fr : en", "fr — en",
+// "fr => en", "fr | en" or tab-separated, one per line. A bare hyphen is NOT
+// a separator: it would shred hyphenated French («peut-être», «grand-mère»).
 export function parseWordList(text) {
   return String(text)
     .split(/\r?\n/)
     .map((line) => line.trim())
     .filter(Boolean)
     .map((line) => {
-      const m = line.split(/\s*(?:\t|,|-|:|—|=>|\|)\s*/);
+      const m = line.split(/\s*(?:\t|,|:|—|–|=>|→|\|| - )\s*/);
       const fr = (m[0] || '').trim();
       const en = (m.slice(1).join(' ') || '').trim();
       return fr && en ? { fr, en } : null;

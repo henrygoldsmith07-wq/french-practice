@@ -53,7 +53,8 @@ export default function Waveform({ analyserRef, peakDb, elapsed }) {
         ctx.globalAlpha = alpha;
         ctx.fillStyle = ink;
         ctx.beginPath();
-        ctx.roundRect(x, mid - h, barW, h * 2, barW / 2);
+        if (typeof ctx.roundRect === 'function') ctx.roundRect(x, mid - h, barW, h * 2, barW / 2);
+        else ctx.rect(x, mid - h, barW, h * 2); // older Safari: no roundRect
         ctx.fill();
       }
       ctx.globalAlpha = 1;

@@ -25,7 +25,9 @@ const GENERATORS = [
   () => { const y = 1950 + Math.floor(Math.random() * 76); return { say: String(y), answer: String(y), label: 'Year' }; },
 ];
 
-const normalise = (s) => s.replace(/[^\d.:]/g, '').replace(',', '.');
+// Convert the French decimal comma to a dot FIRST — stripping non-digits
+// before that turned «12,50» into «1250» and failed a correct answer.
+const normalise = (s) => s.replace(/,/g, '.').replace(/[^\d.:]/g, '');
 
 export default function NumberDash({ ttsRate, onXp, onActivity }) {
   const [round, setRound] = useState(null); // { i, item, input, checked, correct, score }

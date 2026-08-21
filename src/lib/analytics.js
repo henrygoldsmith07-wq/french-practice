@@ -5,7 +5,7 @@
 
 import { retentionNow } from './memory.js';
 
-const dayStamp = (d) => new Date(d).toISOString().slice(0, 10);
+const dayStamp = (d) => new Date(d).toLocaleDateString('en-CA');
 const avg = (arr) => (arr.length ? Math.round(arr.reduce((a, b) => a + b, 0) / arr.length) : null);
 
 export const SKILLS = [

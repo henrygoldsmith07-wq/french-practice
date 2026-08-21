@@ -8,7 +8,9 @@ export const POMODORO = {
   cyclesBeforeLongBreak: 4,
 };
 
-const dayStamp = (d) => new Date(d).toISOString().slice(0, 10);
+// Local-time day keys, matching how storage.js stamps the XP log — UTC
+// slicing put evening sessions in tomorrow's cell for anyone west of GMT.
+const dayStamp = (d) => new Date(d).toLocaleDateString('en-CA');
 
 // Consecutive-days streak for a single habit, counting back from today (or
 // yesterday, so a not-yet-done-today habit doesn't read as broken).
@@ -32,7 +34,7 @@ export function goalCalendar(xpLog, goal, now = new Date()) {
   const daysInMonth = new Date(year, month + 1, 0).getDate();
   const lead = (new Date(year, month, 1).getDay() + 6) % 7;
   const cellFor = (d) => {
-    const stamp = new Date(Date.UTC(year, month, d)).toISOString().slice(0, 10);
+    const stamp = dayStamp(new Date(year, month, d));
     const xp = xpLog[stamp] || 0;
     return { day: d, xp, met: xp >= goal };
   };

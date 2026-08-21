@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { randomPoolSentence as randomSentence, toWords, diffWords } from '../lib/sentences';
 import { recordSkillScore, recordListeningGap, getSrs } from '../lib/storage';
 import { speak, stopSpeaking } from '../lib/tts';
@@ -25,6 +25,9 @@ export default function Dictation({ ttsRate, level: cefr = 'B1', onXp, onActivit
   const [input, setInput] = useState('');
   const [played, setPlayed] = useState(false);
   const [result, setResult] = useState(null); // { hits, targetTokens, accuracy, gained }
+
+  // Leaving mid-playback must not keep speaking over the next screen.
+  useEffect(() => () => stopSpeaking(), []);
 
   const targetWords = useMemo(() => sentence.text.split(/\s+/), [sentence]);
 

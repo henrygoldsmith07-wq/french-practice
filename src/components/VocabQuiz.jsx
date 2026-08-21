@@ -20,6 +20,18 @@ const strip = (s) =>
     .replace(/[.,!¿?¡;:"«»]/g, '')
     .trim();
 
+// Entries like «heureux / heureuse» or «surpris(e)» carry alternatives and
+// optional endings; a learner typing any valid form must not be marked wrong.
+// Expands to every accepted variant: split on «/», drop parenthetical endings.
+const acceptedAnswers = (fr) => {
+  const variants = String(fr).split('/').flatMap((v) => {
+    const base = strip(v.replace(/\(([^)]*)\)/g, ''));
+    const withOpt = v.includes('(') ? [base, strip(v)] : [base];
+    return withOpt;
+  });
+  return new Set(variants.filter(Boolean));
+};
+
 // Pick 3 wrong English meanings from the wider library for a choice question.
 function distractors(entry, pool) {
   const seen = new Set([entry.en]);
@@ -117,7 +129,7 @@ export default function VocabQuiz({ deck, library, title, onRate, onXp, onActivi
 
   const submitTyped = () => {
     if (result || !answer.trim()) return;
-    grade(strip(answer) === strip(entry.fr));
+    grade(acceptedAnswers(entry.fr).has(strip(answer)));
   };
 
   const next = () => {
@@ -229,7 +241,7 @@ export default function VocabQuiz({ deck, library, title, onRate, onXp, onActivi
         {/* feedback + advance */}
         {result && (
           <div className="space-y-3">
-            <div className={`rounded-xl px-4 py-3 text-sm ${result === 'right' ? 'bg-successsoft text-ink' : 'bg-surface2 text-ink'}`}>
+            <div role="status" aria-live="polite" className={`rounded-xl px-4 py-3 text-sm ${result === 'right' ? 'bg-successsoft text-ink' : 'bg-surface2 text-ink'}`}>
               <p className="font-semibold inline-flex items-center gap-1.5">
                 {result === 'right' ? <><Check size={15} className="text-success" /> Correct</> : <><X size={15} /> The answer is</>}
               </p>

@@ -6,7 +6,7 @@ const KEY = 'fp.quota';
 const DEFAULT_LIMIT = Number(import.meta.env.VITE_GROQ_DAILY_LIMIT || 80);
 
 function dayStamp(d = new Date()) {
-  return d.toISOString().slice(0, 10);
+  return d.toLocaleDateString('en-CA');
 }
 
 function read() {

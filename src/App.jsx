@@ -283,6 +283,15 @@ export default function App() {
 
   const effectiveLevel = adaptiveLevel(settings.level, getSessions(), prefs.adaptiveDifficulty).level;
 
+  // One shared scan for "cards due" — rebuilding the whole library per render
+  // (and per telemetry tick) was the single hottest redundant computation.
+  const dueCount = useMemo(
+    () => dueEntries([...allEntries(), ...notebookAsEntries(getNotebook())], getSrs()).length,
+    // recompute when anything that can change the SRS state changes
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [tab, xp, streakTick, path],
+  );
+
   const toggleTheme = () =>
     updateSettings({ ...settings, theme: isDark ? 'light' : 'dark' });
 
@@ -508,6 +517,7 @@ export default function App() {
             <HomeDashboard
               dailyGoal={settings.dailyGoal}
               level={settings.level}
+              prefs={prefs}
               onStartLesson={startLesson}
               onNavigate={setTab}
               lastActivity={getLastActivity()}
@@ -579,7 +589,7 @@ export default function App() {
               weeklyGoal={settings.weeklyGoal}
               onHeaderChange={({ coins: c, avatarId: a }) => { setCoins(c); setAvatarId(a); }}
               path={path}
-              dueCount={dueEntries([...allEntries(), ...notebookAsEntries(getNotebook())], getSrs()).length}
+              dueCount={dueCount}
               onStartLesson={startLesson}
               onOpenPathSetup={() => setPathSetupOpen(true)}
               prefs={prefs}
@@ -623,7 +633,7 @@ export default function App() {
               <h2 className="flex-1 text-lg font-bold text-ink">Learning path</h2>
               <button type="button" onClick={() => setLearningPathOpen(false)} aria-label="Close learning path" className="grid h-9 w-9 place-items-center rounded-full text-ink2 hover:bg-surface2 hover:text-ink"><X size={18} /></button>
             </div>
-            <LearningPath path={path} dueCount={dueEntries([...allEntries(), ...notebookAsEntries(getNotebook())], getSrs()).length} onStartLesson={startLesson} onOpenSetup={() => { setLearningPathOpen(false); setPathSetupOpen(true); }} />
+            <LearningPath path={path} dueCount={dueCount} onStartLesson={startLesson} onOpenSetup={() => { setLearningPathOpen(false); setPathSetupOpen(true); }} />
           </div>
         </div>
       )}

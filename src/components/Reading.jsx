@@ -4,6 +4,7 @@ import { allEntries } from '../lib/vocab';
 import { translateWord, friendlyError } from '../lib/groq';
 import { getCachedWord, cacheWord, saveToNotebook, isInNotebook, recordSkillScore } from '../lib/storage';
 import { SpeakButton, Spinner } from './ui';
+import { shuffleOptions } from './GrammarExercises';
 import { BookOpen, ChevronLeft, ChevronRight, Check, X, RefreshCw, Bookmark, BookmarkFilled } from './icons';
 
 // Reading hub: graded readers, a branching interactive story, articles,
@@ -192,16 +193,19 @@ function TextReader({ text, apiKey, mockMode, onXp, onActivity, onBack }) {
   const [quiz, setQuiz] = useState(null);
   const { lookup, onWord, close } = useWordLookup(text, apiKey, mockMode);
 
+  // Authored questions keep the correct option at index 0 — shuffle per run.
+  const freshQuiz = () => ({ index: 0, correct: 0, picked: null, done: false, gained: 0, questions: (text.questions || []).map(shuffleOptions) });
+
   const answer = (i) => {
     if (quiz.picked != null) return;
-    setQuiz({ ...quiz, picked: i, correct: quiz.correct + (i === text.questions[quiz.index].answer ? 1 : 0) });
+    setQuiz({ ...quiz, picked: i, correct: quiz.correct + (i === quiz.questions[quiz.index].answer ? 1 : 0) });
   };
   const nextQuestion = () => {
-    if (quiz.index + 1 < text.questions.length) setQuiz({ ...quiz, index: quiz.index + 1, picked: null });
+    if (quiz.index + 1 < quiz.questions.length) setQuiz({ ...quiz, index: quiz.index + 1, picked: null });
     else {
       const gained = Math.max(1, quiz.correct * 5);
       onXp(gained);
-      recordSkillScore('reading', Math.round((quiz.correct / text.questions.length) * 100));
+      recordSkillScore('reading', Math.round((quiz.correct / quiz.questions.length) * 100));
       onActivity?.({ type: 'reading', textId: text.id });
       setQuiz({ ...quiz, done: true, gained });
     }
@@ -230,19 +234,19 @@ function TextReader({ text, apiKey, mockMode, onXp, onActivity, onBack }) {
           <h3 className="text-[11px] font-bold uppercase tracking-wider text-ink2">Comprehension check</h3>
           {!quiz ? (
             <button
-              onClick={() => setQuiz({ index: 0, correct: 0, picked: null, done: false })}
+              onClick={() => setQuiz(freshQuiz())}
               className="btn btn-primary w-full min-h-11 rounded-xl text-sm"
             >
               Start the quiz
             </button>
           ) : quiz.done ? (
             <div className="text-center space-y-2 fade-in">
-              <p className="text-2xl font-bold text-ink tabular-nums">{quiz.correct}/{text.questions.length}</p>
+              <p className="text-2xl font-bold text-ink tabular-nums">{quiz.correct}/{quiz.questions.length}</p>
               <p className="text-xs text-ink2">
-                {quiz.correct === text.questions.length ? 'Perfect comprehension.' : 'Reread and try again.'} +{quiz.gained} XP
+                {quiz.correct === quiz.questions.length ? 'Perfect comprehension.' : 'Reread and try again.'} +{quiz.gained} XP
               </p>
               <button
-                onClick={() => setQuiz({ index: 0, correct: 0, picked: null, done: false })}
+                onClick={() => setQuiz(freshQuiz())}
                 className="btn btn-secondary min-h-10 px-4 rounded-xl text-xs"
               >
                 <RefreshCw size={12} /> Retake
@@ -250,10 +254,10 @@ function TextReader({ text, apiKey, mockMode, onXp, onActivity, onBack }) {
             </div>
           ) : (
             <div className="space-y-2">
-              <p className="text-[11px] text-ink3 tabular-nums">Question {quiz.index + 1}/{text.questions.length}</p>
-              <p className="text-sm text-ink">{text.questions[quiz.index].q}</p>
-              {text.questions[quiz.index].options.map((opt, i) => {
-                const isAnswer = i === text.questions[quiz.index].answer;
+              <p className="text-[11px] text-ink3 tabular-nums">Question {quiz.index + 1}/{quiz.questions.length}</p>
+              <p className="text-sm text-ink">{quiz.questions[quiz.index].q}</p>
+              {quiz.questions[quiz.index].options.map((opt, i) => {
+                const isAnswer = i === quiz.questions[quiz.index].answer;
                 let cls = 'border-line bg-surface text-ink2 hover:border-ink3';
                 if (quiz.picked != null && isAnswer) cls = 'border-ink bg-surface2 text-ink font-semibold';
                 else if (quiz.picked === i) cls = 'border-line text-ink3 line-through';
@@ -270,7 +274,7 @@ function TextReader({ text, apiKey, mockMode, onXp, onActivity, onBack }) {
               })}
               {quiz.picked != null && (
                 <button onClick={nextQuestion} className="btn btn-primary w-full min-h-11 rounded-xl text-sm">
-                  {quiz.index + 1 < text.questions.length ? 'Next question' : 'See my score'}
+                  {quiz.index + 1 < quiz.questions.length ? 'Next question' : 'See my score'}
                 </button>
               )}
             </div>

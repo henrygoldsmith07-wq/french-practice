@@ -39,8 +39,12 @@ export default function Vocabulary({ apiKey, mockMode, onActivity, onXp }) {
   // New cards are introduced by frequency, so the "due" set is gated to the
   // current frontier tier (computed once, globally, over the whole library).
   const frontier = useMemo(() => frontierTier(allEntries(), srs), [srs]);
-  const dueTotal = [...allEntries(), ...notebookAsEntries(notebook)]
-    .filter((e) => isEntryDue(e, srs, frontier)).length;
+  // Memoised so typing in the search box doesn't rescan ~3k cards per keystroke.
+  const dueTotal = useMemo(
+    () => [...allEntries(), ...notebookAsEntries(notebook)]
+      .filter((e) => isEntryDue(e, srs, frontier)).length,
+    [srs, frontier, notebook],
+  );
 
   // Per-pack due counts (drive the badge and the "Due first" sort).
   const dueByPack = useMemo(() => {
@@ -301,6 +305,10 @@ function Deck({ packId, onBack, srs, onRated, onSavedChange, apiKey, mockMode, o
     : packId === 'notebook' ? 'My flashcards'
     : getPack(packId).title;
 
+  // Built once per deck — rebuilding the multi-thousand-entry library on every
+  // render (each keystroke while the quiz is open) is pure waste.
+  const library = useMemo(() => [...allEntries(), ...notebookAsEntries(getNotebook())], [packId]);
+
   if (!deck.length) {
     return (
       <div className="h-full grid place-items-center px-4">
@@ -322,7 +330,7 @@ function Deck({ packId, onBack, srs, onRated, onSavedChange, apiKey, mockMode, o
     return (
       <VocabQuiz
         deck={deck}
-        library={[...allEntries(), ...notebookAsEntries(getNotebook())]}
+        library={library}
         title={title}
         onRate={onRated}
         onXp={onXp}
@@ -342,7 +350,12 @@ function Deck({ packId, onBack, srs, onRated, onSavedChange, apiKey, mockMode, o
   const productiveReady = isProductiveUnlocked(srs, entry.id);
   const retention = cardSrs ? fsrsRetention(cardSrs) : null;
 
+  // Guard against a double-tap firing two ratings for one card (two SRS
+  // updates, doubled XP and one skipped card) during the advance delay.
+  const [advancing, setAdvancing] = useState(false);
   const rate = (rating) => {
+    if (advancing) return;
+    setAdvancing(true);
     rateCard(entry.id, rating, {
       mode: cardMode,
       skill: 'vocabulary',
@@ -352,7 +365,10 @@ function Deck({ packId, onBack, srs, onRated, onSavedChange, apiKey, mockMode, o
     });
     onRated();
     onActivity?.({ type: 'cards', rating, itemId: entry.id, itemLabel: entry.fr, mode: cardMode });
-    setTimeout(() => setIndex((i) => (i + 1) % deck.length), 250);
+    setTimeout(() => {
+      setIndex((i) => (i + 1) % deck.length);
+      setAdvancing(false);
+    }, 250);
   };
 
   const toggleSave = () => {
@@ -425,6 +441,7 @@ function Deck({ packId, onBack, srs, onRated, onSavedChange, apiKey, mockMode, o
           entry={cardMode==='productive' ? { ...entry, fr: entry.en, en: entry.fr } : entry}
           cardDue={isCardDue(cardSrs)}
           saved={saved}
+          disabled={advancing}
           onRate={rate}
           onToggleSave={toggleSave}
           apiKey={apiKey}

@@ -150,7 +150,7 @@ export default function LearnHub({
           ))}
         </div>
         <div className="flex flex-wrap justify-center gap-2 pt-2">
-          <span className="inline-block bg-surface border border-line rounded-full px-3.5 py-1.5 text-xs font-semibold text-ink2">25 grammar topics</span>
+          <span className="inline-block bg-surface border border-line rounded-full px-3.5 py-1.5 text-xs font-semibold text-ink2">A1 → C1 grammar library</span>
           <span className="inline-block bg-surface border border-line rounded-full px-3.5 py-1.5 text-xs font-semibold text-ink2">4 skills · PWA offline</span>
           <span className="inline-block bg-surface border border-line rounded-full px-3.5 py-1.5 text-xs font-semibold text-ink2">Search with ⌘K</span>
         </div>

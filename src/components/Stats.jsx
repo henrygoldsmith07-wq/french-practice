@@ -118,12 +118,12 @@ export default function Stats({ weeklyGoal, onCoinsChange }) {
           <div className="flex-1 min-w-0">
             <p className="text-sm font-semibold text-ink">Vacation mode</p>
             <p className="text-xs text-ink3">
-              {getVacationUntil() && getVacationUntil() >= new Date().toISOString().slice(0, 10)
+              {getVacationUntil() && getVacationUntil() >= new Date().toLocaleDateString('en-CA')
                 ? `On — streak protected until ${getVacationUntil()}`
                 : 'Pause streak loss while you are away (up to 14 days)'}
             </p>
           </div>
-          {getVacationUntil() && getVacationUntil() >= new Date().toISOString().slice(0, 10) ? (
+          {getVacationUntil() && getVacationUntil() >= new Date().toLocaleDateString('en-CA') ? (
             <button onClick={() => { setVacationDays(0); setTick((t) => t + 1); }} className="btn btn-secondary min-h-9 px-3 rounded-lg text-xs">
               End now
             </button>
@@ -173,7 +173,7 @@ function Calendar({ xpLog }) {
   const daysInMonth = new Date(year, month + 1, 0).getDate();
   const lead = (first.getDay() + 6) % 7; // Monday-first
   const today = now.getDate();
-  const stampOf = (d) => new Date(Date.UTC(year, month, d)).toISOString().slice(0, 10);
+  const stampOf = (d) => new Date(year, month, d).toLocaleDateString('en-CA');
   const max = Math.max(1, ...Array.from({ length: daysInMonth }, (_, i) => xpLog[stampOf(i + 1)] || 0));
 
   return (

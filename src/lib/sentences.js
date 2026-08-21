@@ -37,13 +37,16 @@ export const toWords = (text) =>
     .filter(Boolean);
 
 // Word-level LCS alignment: which target words were heard/recognized.
-export function diffWords(target, attempt) {
+// `eq` lets callers fold near-matches (e.g. accent-tolerant pairs) into the
+// alignment itself, so tolerance can never be credited against the wrong
+// word when the recognizer inserts or drops one.
+export function diffWordsEq(target, attempt, eq = (a, b) => a === b) {
   const m = target.length;
   const n = attempt.length;
   const dp = Array.from({ length: m + 1 }, () => new Array(n + 1).fill(0));
   for (let i = m - 1; i >= 0; i--) {
     for (let j = n - 1; j >= 0; j--) {
-      dp[i][j] = target[i] === attempt[j]
+      dp[i][j] = eq(target[i], attempt[j])
         ? dp[i + 1][j + 1] + 1
         : Math.max(dp[i + 1][j], dp[i][j + 1]);
     }
@@ -51,11 +54,15 @@ export function diffWords(target, attempt) {
   const hit = new Array(m).fill(false);
   let i = 0, j = 0;
   while (i < m && j < n) {
-    if (target[i] === attempt[j]) { hit[i] = true; i++; j++; }
+    if (eq(target[i], attempt[j])) { hit[i] = true; i++; j++; }
     else if (dp[i + 1][j] >= dp[i][j + 1]) i++;
     else j++;
   }
   return hit;
+}
+
+export function diffWords(target, attempt) {
+  return diffWordsEq(target, attempt);
 }
 
 // Map normalized hit flags back onto display tokens (punctuation-only tokens

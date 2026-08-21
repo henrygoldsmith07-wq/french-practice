@@ -66,7 +66,7 @@ export default function TranslateDrill({ onXp }) {
     return (
       <div className="bg-surface border border-line rounded-2xl p-6 text-center space-y-3">
         <p className="text-sm text-ink2">
-          Eight sentences, alternating directions: English → ${langName()}, then ${langName()} → English.
+          Eight sentences, alternating directions: English → {langName()}, then {langName()} → English.
           Close paraphrases count — accents and punctuation are forgiven.
         </p>
         <button onClick={start} className="btn btn-primary min-h-11 px-6 rounded-xl text-sm"><Play size={14} /> Start</button>

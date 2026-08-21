@@ -31,13 +31,48 @@ export function ScoreBadge({ value, size = 'md' }) {
 }
 
 // ---- modal shell (dialog semantics + escape/backdrop close) ----
+// Focus is moved into the panel on open, Tab cycles within it, and focus is
+// restored to the trigger on close — aria-modal without this strands
+// keyboard/screen-reader users behind an "inert" background.
 
 export function Modal({ open, onClose, children, wide = false }) {
+  const panelRef = useRef(null);
+  const restoreRef = useRef(null);
+
   useEffect(() => {
-    if (!open) return;
-    const onKey = (e) => e.key === 'Escape' && onClose();
+    if (!open) return undefined;
+    restoreRef.current = document.activeElement;
+    const raf = requestAnimationFrame(() => {
+      const panel = panelRef.current;
+      if (!panel) return;
+      const first = panel.querySelector(
+        'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+      );
+      (first || panel).focus();
+    });
+    const onKey = (e) => {
+      if (e.key === 'Escape') { onClose(); return; }
+      const panel = panelRef.current;
+      if (e.key !== 'Tab' || !panel) return;
+      const focusables = panel.querySelectorAll(
+        'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+      );
+      if (!focusables.length) return;
+      const first = focusables[0];
+      const last = focusables[focusables.length - 1];
+      if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+      else if (!panel.contains(document.activeElement)) { e.preventDefault(); first.focus(); }
+    };
     window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    return () => {
+      cancelAnimationFrame(raf);
+      window.removeEventListener('keydown', onKey);
+      // Hand focus back to whatever opened the dialog.
+      if (document.activeElement && document.activeElement !== document.body) {
+        try { restoreRef.current?.focus?.(); } catch { /* element gone */ }
+      }
+    };
   }, [open, onClose]);
 
   if (!open) return null;
@@ -48,10 +83,12 @@ export function Modal({ open, onClose, children, wide = false }) {
       role="presentation"
     >
       <div
+        ref={panelRef}
         role="dialog"
         aria-modal="true"
+        tabIndex={-1}
         onClick={(e) => e.stopPropagation()}
-        className={`sheet-enter w-full ${wide ? 'sm:max-w-3xl' : 'sm:max-w-md'} max-h-[92dvh] overflow-y-auto nice-scroll bg-surface border border-line rounded-t-3xl sm:rounded-3xl shadow-2xl shadow-black/50`}
+        className={`sheet-enter w-full ${wide ? 'sm:max-w-3xl' : 'sm:max-w-md'} max-h-[92dvh] overflow-y-auto nice-scroll bg-surface border border-line rounded-t-3xl sm:rounded-3xl shadow-2xl shadow-black/50 focus:outline-none`}
       >
         {children}
       </div>

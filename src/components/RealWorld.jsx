@@ -10,6 +10,7 @@ import {
 } from '../lib/realworld';
 import { getStarredLines, isStarredLine, toggleStarredLine } from '../lib/storage';
 import { SpeakButton } from './ui';
+import { shuffleOptions } from './GrammarExercises';
 import {
   X, ChevronLeft, ChevronRight, Check, MessageCircle, FileText, Trophy, Search, Lightbulb, Bookmark, BookmarkFilled,
 } from './icons';
@@ -203,7 +204,7 @@ function Hub({ onOpen, onExam, query, setQuery, tip, totalPhrases, opened, seen 
                     <span className="block text-sm font-semibold text-ink flex items-center gap-2">
                       {s.title}
                       {seen.has(s.id) && (
-                        <Check size={12} className="text-ink3 shrink-0" aria-label="Opened" />
+                        <Check size={12} className="text-ink3 shrink-0" role="img" aria-label="Opened" />
                       )}
                     </span>
                     <span className="block text-xs text-ink3">
@@ -213,7 +214,7 @@ function Hub({ onOpen, onExam, query, setQuery, tip, totalPhrases, opened, seen 
                       {s.phrases.length} phrases
                     </span>
                   </span>
-                  {s.scenarioId && <MessageCircle size={14} className="text-ink3 shrink-0" aria-label="Has a live roleplay" />}
+                  {s.scenarioId && <MessageCircle size={14} className="text-ink3 shrink-0" role="img" aria-label="Has a live roleplay" />}
                   <ChevronRight size={16} className="text-ink3 shrink-0" />
                 </button>
               ))}
@@ -304,7 +305,8 @@ function Situation({ situation, onBack, onRoleplay }) {
 }
 
 function Exam({ onXp, onBack }) {
-  const questions = EXAM.questions;
+  // Shuffle per run — the authored bank parks every correct answer first.
+  const questions = useMemo(() => EXAM.questions.map(shuffleOptions), []);
   const [idx, setIdx] = useState(0);
   const [picked, setPicked] = useState(null);
   const [score, setScore] = useState(0);
@@ -317,11 +319,14 @@ function Exam({ onXp, onBack }) {
     return { pct, ...examBand(pct) };
   }, [done, score, questions.length]);
 
-  // Award XP once, when the exam completes (scaled by score).
-  if (done && !awarded) {
-    setAwarded(true);
-    onXp(Math.max(5, score * 3));
-  }
+  // Award XP once, when the exam completes (scaled by score). Side effects
+  // belong in an effect: awarding during render double-fires under StrictMode.
+  useEffect(() => {
+    if (done && !awarded) {
+      setAwarded(true);
+      onXp(Math.max(5, score * 3));
+    }
+  }, [done, awarded, score, onXp]);
 
   const pick = (i) => {
     if (picked !== null) return;
