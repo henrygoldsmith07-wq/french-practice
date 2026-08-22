@@ -41,15 +41,25 @@ export default function DailyChallenge({ apiKey, mockMode, onActivity }) {
     if (!recorder.recording) return;
     setRemaining(CHALLENGE_SECONDS);
     const startedAt = performance.now();
-    deadlineRef.current = setInterval(() => {
+    const check = () => {
       const left = CHALLENGE_SECONDS - (performance.now() - startedAt) / 1000;
       setRemaining(Math.max(0, Math.ceil(left)));
       if (left <= 0) {
         clearInterval(deadlineRef.current);
         recorder.stop();
       }
-    }, 200);
-    return () => clearInterval(deadlineRef.current);
+    };
+    deadlineRef.current = setInterval(check, 200);
+    // Hidden tabs throttle intervals to ~1/min — without this, Quick Fire
+    // keeps recording long past 45 s and the WPM score takes the hit.
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') check();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      clearInterval(deadlineRef.current);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
   }, [recorder.recording]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const newTopic = () => {

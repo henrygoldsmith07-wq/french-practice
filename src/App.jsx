@@ -22,8 +22,6 @@ const Focus = lazy(() => import('./components/Focus'));
 const Onboarding = lazy(() => import('./components/Onboarding'));
 const GlobalSearch = lazy(() => import('./components/GlobalSearch'));
 import { getPath, applyActivity } from './lib/path';
-import { getGrammarTopic } from './lib/grammar';
-import { getTrack } from './lib/listening';
 import { getScenarios } from './lib/data';
 import usePwaInstall from './hooks/usePwaInstall';
 import {
@@ -35,13 +33,15 @@ import {
   setApiKey as persistApiKey, setAvatar as persistAvatar, ownAvatar, setHabitList,
   setOnboarded, setLastActivity, getLastActivity, recordSpeakingGap, recordLearningActivity,
 } from './lib/storage';
-import { allEntries } from './lib/vocab';
-import { notebookAsEntries, dueEntries } from './lib/memory';
+// Heavy content libraries (vocab packs, grammar topics, listening tracks,
+// groq) are NOT statically imported here — they would drag ~600 kB of content
+// into the first bundle for a handful of label lookups. They load lazily
+// below and inside their own screens' chunks.
+import { notebookAsEntries, dueEntries, NEW_CARD_CAP } from './lib/memory';
 import { adaptiveLevel } from './lib/personalise';
 import { AVATARS, activeEvent, levelFromXp } from './lib/game';
 import { syncLanguage } from './lib/i18n';
 import { getLanguage } from './lib/languages';
-import { setTelemetrySink } from './lib/groq';
 import { relayEnabled } from './lib/relay';
 import { Flame, Bolt, Sun, Moon, Gear, Key, ArrowRight, Home, MessageCircle, Layers, BookOpen, BarChart, Search, Target, Coins as CoinsIcon, X, Download } from './components/icons';
 import LearnHub from './components/LearnHub';
@@ -113,8 +113,25 @@ export default function App() {
   const [listeningMode, setListeningMode] = useState(null);
 
   useEffect(() => {
-    setTelemetrySink((entry) => setTelemetry((t) => [...t.slice(-49), entry]));
-    return () => setTelemetrySink(null);
+    let cancelled = false;
+    let mod = null;
+    import('./lib/groq').then((m) => {
+      mod = m;
+      if (!cancelled) m.setTelemetrySink((entry) => setTelemetry((t) => [...t.slice(-49), entry]));
+    });
+    return () => {
+      cancelled = true;
+      mod?.setTelemetrySink(null);
+    };
+  }, []);
+
+  // The vocabulary library (~3k entries across all languages) loads in its
+  // own chunk — due counts and the badge fill in a beat after first paint.
+  const [libraryReady, setLibraryReady] = useState(false);
+  useEffect(() => {
+    let on = true;
+    import('./lib/vocab').then(() => { if (on) setLibraryReady(true); });
+    return () => { on = false; };
   }, []);
 
   useEffect(() => {
@@ -173,29 +190,33 @@ export default function App() {
   }, [anyOverlayOpen]);
 
   useEffect(() => {
-    if (!settings.smartReminders || !shouldRemindToday()) return;
+    if (!libraryReady || !settings.smartReminders || !shouldRemindToday()) return;
     if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
-    const srs = getSrs();
-    const due = dueEntries([...allEntries(), ...notebookAsEntries(getNotebook())], srs).length;
-    const streak = getStreak().count;
-    const streakAtRisk = streak >= 3 && getTodayXp() === 0 && new Date().getHours() >= 17;
-    if (due === 0 && !streakAtRisk) return;
-    markRemindedToday();
-    const body = streakAtRisk
-      ? `Your ${streak}-day streak is at risk — two minutes today keeps it alive.`
-      : `${due} card${due > 1 ? 's are' : ' is'} due for review — a few minutes now beats relearning later.`;
-    notify('Le Studio', body);
-  }, [settings.smartReminders]);
+    import('./lib/vocab').then(({ allEntries }) => {
+      const srs = getSrs();
+      const due = dueEntries([...allEntries(), ...notebookAsEntries(getNotebook())], srs, Date.now(), { newCardCap: NEW_CARD_CAP }).length;
+      const streak = getStreak().count;
+      const streakAtRisk = streak >= 3 && getTodayXp() === 0 && new Date().getHours() >= 17;
+      if (due === 0 && !streakAtRisk) return;
+      markRemindedToday();
+      const body = streakAtRisk
+        ? `Your ${streak}-day streak is at risk — two minutes today keeps it alive.`
+        : `${due} card${due > 1 ? 's are' : ' is'} due for review — a few minutes now beats relearning later.`;
+      notify('Le Studio', body);
+    });
+  }, [libraryReady, settings.smartReminders]);
 
   useEffect(() => {
-    if (!('setAppBadge' in navigator)) return;
-    const srs = getSrs();
-    const due = dueEntries([...allEntries(), ...notebookAsEntries(getNotebook())], srs).length;
-    try {
-      if (due > 0) navigator.setAppBadge(due);
-      else navigator.clearAppBadge?.();
-    } catch { /* badging unsupported */ }
-  }, [tab, xp, streakTick]);
+    if (!libraryReady || !('setAppBadge' in navigator)) return;
+    import('./lib/vocab').then(({ allEntries }) => {
+      const srs = getSrs();
+      const due = dueEntries([...allEntries(), ...notebookAsEntries(getNotebook())], srs, Date.now(), { newCardCap: NEW_CARD_CAP }).length;
+      try {
+        if (due > 0) navigator.setAppBadge(due);
+        else navigator.clearAppBadge?.();
+      } catch { /* badging unsupported */ }
+    });
+  }, [libraryReady, tab, xp, streakTick]);
 
   useEffect(() => {
     const STEP = 20;
@@ -285,12 +306,18 @@ export default function App() {
 
   // One shared scan for "cards due" — rebuilding the whole library per render
   // (and per telemetry tick) was the single hottest redundant computation.
-  const dueCount = useMemo(
-    () => dueEntries([...allEntries(), ...notebookAsEntries(getNotebook())], getSrs()).length,
-    // recompute when anything that can change the SRS state changes
+  const [dueCount, setDueCount] = useState(0);
+  useEffect(() => {
+    if (!libraryReady) return undefined;
+    let stale = false;
+    import('./lib/vocab').then(({ allEntries }) => {
+      if (!stale) {
+        setDueCount(dueEntries([...allEntries(), ...notebookAsEntries(getNotebook())], getSrs(), Date.now(), { newCardCap: NEW_CARD_CAP }).length);
+      }
+    });
+    return () => { stale = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [tab, xp, streakTick, path],
-  );
+  }, [libraryReady, tab, xp, streakTick, path]);
 
   const toggleTheme = () =>
     updateSettings({ ...settings, theme: isDark ? 'light' : 'dark' });
@@ -344,13 +371,23 @@ export default function App() {
       dictation: 'Dictée practice',
       quickfire: 'Quick Fire improv',
       session: evt.scenarioId ? `Conversation: ${getScenarios().find((x) => x.id === evt.scenarioId)?.title || ''}` : null,
-      grammar: evt.topicId ? `Grammar: ${getGrammarTopic(evt.topicId)?.title || ''}` : null,
-      listening: evt.trackId ? `Listening: ${getTrack(evt.trackId)?.title || ''}` : null,
       pronunciation: 'Pronunciation practice',
       speaking: 'Exam speaking',
       writing: 'Writing practice',
       reading: 'Reading practice',
     };
+    // Grammar/listening titles live in heavy content chunks — resolve the
+    // label lazily rather than importing those libraries for one lookup.
+    if (evt.type === 'grammar' && evt.topicId) {
+      import('./lib/grammar').then(({ getGrammarTopic }) => {
+        setLastActivity('grammar', evt.topicId, `Grammar: ${getGrammarTopic(evt.topicId)?.title || ''}`);
+      }).catch(() => {});
+    }
+    if (evt.type === 'listening' && evt.trackId) {
+      import('./lib/listening').then(({ getTrack }) => {
+        setLastActivity('listening', evt.trackId, `Listening: ${getTrack(evt.trackId)?.title || ''}`);
+      }).catch(() => {});
+    }
     if (labels[evt.type]) setLastActivity(evt.type, evt.scenarioId || evt.topicId || evt.trackId || evt.textId, labels[evt.type]);
     if (['cards', 'session', 'dictation', 'quickfire', 'grammar'].includes(evt.type)) {
       bumpChallengeMetric(evt.type);

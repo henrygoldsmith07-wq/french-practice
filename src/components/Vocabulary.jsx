@@ -8,7 +8,7 @@ import {
 import VocabCard from './VocabCard';
 import VocabQuiz from './VocabQuiz';
 import Memory from './Memory';
-import { weakEntries, notebookAsEntries, reviewOrder, dueEntries, frontierTier, isEntryDue } from '../lib/memory';
+import { weakEntries, notebookAsEntries, reviewOrder, dueEntries, frontierTier, isEntryDue, NEW_CARD_CAP } from '../lib/memory';
 import { fsrsRetention, isProductiveUnlocked } from '../lib/fsrs';
 import { activeVocabTarget, controlledNewVocab } from '../lib/adaptivePractice';
 import { SpeakButton } from './ui';
@@ -41,8 +41,7 @@ export default function Vocabulary({ apiKey, mockMode, onActivity, onXp }) {
   const frontier = useMemo(() => frontierTier(allEntries(), srs), [srs]);
   // Memoised so typing in the search box doesn't rescan ~3k cards per keystroke.
   const dueTotal = useMemo(
-    () => [...allEntries(), ...notebookAsEntries(notebook)]
-      .filter((e) => isEntryDue(e, srs, frontier)).length,
+    () => dueEntries([...allEntries(), ...notebookAsEntries(notebook)], srs, Date.now(), { newCardCap: NEW_CARD_CAP }).length,
     [srs, frontier, notebook],
   );
 
@@ -287,7 +286,7 @@ function Deck({ packId, onBack, srs, onRated, onSavedChange, apiKey, mockMode, o
     if (packId === 'review') {
       // Due set is frequency-gated (most common first), then ordered so the
       // words closest to being forgotten come up first within that.
-      return reviewOrder(dueEntries(library(), initial), initial);
+      return reviewOrder(dueEntries(library(), initial, Date.now(), { newCardCap: NEW_CARD_CAP }), initial);
     }
     if (packId === 'weak') return weakEntries(library(), initial);
     if (packId === 'notebook') return notebookAsEntries(getNotebook());

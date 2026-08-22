@@ -1,7 +1,7 @@
+import { useEffect, useMemo, useState } from 'react';
 import { getStreak, getTodayXp, getSrs, getNotebook, getSettings, getSessions, getHabits, getGrammarProgress } from '../lib/storage';
 import { dueEntries, notebookAsEntries, weakEntries } from '../lib/memory';
 import { getScenarios } from '../lib/data';
-import { allEntries } from '../lib/vocab';
 import { getLanguage } from '../lib/languages';
 import { ArrowRight, Layers, MessageCircle, Play, Target, Mic, BookOpen, StudioMark } from './icons';
 import { weaknessAnalysis, dailyRecommendations } from '../lib/personalise';
@@ -21,9 +21,31 @@ export default function HomeDashboard({ dailyGoal = 30, level, onStartLesson, on
   const language = getLanguage(settings.language);
   const streak = getStreak();
   const todayXp = getTodayXp();
-  const dueCount = dueEntries([...allEntries(), ...notebookAsEntries(getNotebook())], getSrs()).length;
+  // The vocab library loads in its own chunk — stats fill in right after
+  // first paint instead of forcing ~3k entries into the eager bundle.
+  const [library, setLibrary] = useState(null);
+  useEffect(() => {
+    let on = true;
+    import('../lib/vocab').then(({ allEntries }) => { if (on) setLibrary(allEntries()); });
+    return () => { on = false; };
+  }, []);
+  const fullLibrary = useMemo(
+    () => (library ? [...library, ...notebookAsEntries(getNotebook())] : null),
+    [library],
+  );
+  const dueCount = fullLibrary ? dueEntries(fullLibrary, getSrs()).length : 0;
   const suggested = suggestScenario(getSessions());
-  const todayRecs = (()=>{ try{ const srs=getSrs(); const habits=getHabits(); const grammar=getGrammarProgress(); const weak=weakEntries([...allEntries(), ...notebookAsEntries(getNotebook())], srs); const areas=weaknessAnalysis({ habits, grammarProgress: grammar, sessions: getSessions(), weakWordCount: weak.length, dueCount }); return dailyRecommendations({ prefs: { learningStyle: 'balanced', lessonLength: 'medium', ...(prefs || {}) }, weaknesses: areas, dueCount, suggestedScenario: suggested }).slice(0,2); }catch{ return []; }})();
+  const todayRecs = useMemo(() => {
+    if (!fullLibrary) return [];
+    try {
+      const srs = getSrs();
+      const habits = getHabits();
+      const grammar = getGrammarProgress();
+      const weak = weakEntries(fullLibrary, srs);
+      const areas = weaknessAnalysis({ habits, grammarProgress: grammar, sessions: getSessions(), weakWordCount: weak.length, dueCount });
+      return dailyRecommendations({ prefs: { learningStyle: 'balanced', lessonLength: 'medium', ...(prefs || {}) }, weaknesses: areas, dueCount, suggestedScenario: suggested }).slice(0, 2);
+    } catch { return []; }
+  }, [fullLibrary, dueCount, suggested, prefs]);
   const SuggestedIcon = SCENARIO_ICONS[suggested.id] || MessageCircle;
   const goal = Math.max(1, dailyGoal);
   const goalPct = Math.min(100, Math.round((todayXp / goal) * 100));

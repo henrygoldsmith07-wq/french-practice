@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Modal } from './ui';
 import { GOALS, createPath, getPath, retakePlacement } from '../lib/path';
 import { startPlacement, selectItem, answerItem, placementResultFrom } from '../lib/placement';
@@ -25,6 +25,22 @@ export default function PathSetup({ open, onClose, onCreated }) {
   const [picked, setPicked] = useState(null); // currently selected option, pre-confirm
   const [result, setResult] = useState(null);
   const [level, setLevel] = useState(null);
+  // Shuffled display order per item id — most bank items park the answer at
+  // index 0, so "always tap the first option" would pin a false C2. The
+  // engine still scores against canonical indices via this map.
+  const orderRef = useRef(new Map());
+  const orderFor = (item) => {
+    if (!orderRef.current.has(item.id)) {
+      const ord = item.options.map((_, i) => i);
+      for (let i = ord.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [ord[i], ord[j]] = [ord[j], ord[i]];
+      }
+      orderRef.current.set(item.id, ord);
+    }
+    return orderRef.current.get(item.id);
+  };
+  const shown = question && question.options ? orderFor(question) : [];
 
   const reset = () => {
     setStep('goal');
@@ -58,7 +74,7 @@ export default function PathSetup({ open, onClose, onCreated }) {
 
   const answer = () => {
     if (!question || picked == null) return;
-    const next = answerItem(testState, question, picked);
+    const next = answerItem(testState, question, shown[picked]);
     setTestState(next);
     setPicked(null);
     if (next.done) {
@@ -131,9 +147,9 @@ export default function PathSetup({ open, onClose, onCreated }) {
             </div>
             <p className="text-[15px] text-ink leading-relaxed" lang="fr">{question.q}</p>
             <div className="space-y-2" role="radiogroup" aria-label="Answer options">
-              {question.options.map((opt, i) => (
+              {shown.map((originalIdx, i) => (
                 <button
-                  key={i}
+                  key={originalIdx}
                   role="radio"
                   aria-checked={picked === i}
                   onClick={() => setPicked(i)}
@@ -144,7 +160,7 @@ export default function PathSetup({ open, onClose, onCreated }) {
                       : 'border-line bg-surface text-ink2 hover:border-ink3'
                   }`}
                 >
-                  {opt}
+                  {question.options[originalIdx]}
                 </button>
               ))}
             </div>

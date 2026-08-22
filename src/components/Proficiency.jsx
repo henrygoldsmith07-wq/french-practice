@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { getSrs, getGrammarProgress, getSessions, getMetrics, getSettings } from '../lib/storage';
 import { LEVELS, coverageReport, profileFor, promotionGate } from '../lib/cefr';
 import { DIMENSIONS, nextFocus, proficiency } from '../lib/proficiency';
@@ -170,7 +170,22 @@ const Row = ({ label, value }) => (
 
 function PlacementTest({ seedLevel, onDone, onCancel }) {
   const [state, setState] = useState(() => startPlacement({ seedLevel }));
+  // Shuffled display order per item id — the bank parks most answers at
+  // index 0; the engine still scores canonical indices via this map.
+  const orderRef = useRef(new Map());
+  const orderFor = (it) => {
+    if (!orderRef.current.has(it.id)) {
+      const ord = it.options.map((_, i) => i);
+      for (let i = ord.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [ord[i], ord[j]] = [ord[j], ord[i]];
+      }
+      orderRef.current.set(it.id, ord);
+    }
+    return orderRef.current.get(it.id);
+  };
   const item = state.done ? null : selectItem(state);
+  const shown = item ? orderFor(item) : [];
   const result = state.done ? placementResultFrom(state) : null;
 
   if (result) {
@@ -220,13 +235,13 @@ function PlacementTest({ seedLevel, onDone, onCancel }) {
         <section className="bg-surface border border-line rounded-2xl p-4 space-y-3">
           <p className="text-base font-semibold">{item.q}</p>
           <div className="space-y-2">
-            {item.options.map((o, i) => (
+            {shown.map((originalIdx, i) => (
               <button
-                key={i}
-                onClick={() => setState(answerItem(state, item, i))}
+                key={originalIdx}
+                onClick={() => setState(answerItem(state, item, originalIdx))}
                 className="w-full text-left border border-line rounded-xl px-3 py-2.5 text-sm hover:border-ink transition"
               >
-                {o}
+                {item.options[originalIdx]}
                 <ChevronRight className="w-4 h-4 inline float-right opacity-40" />
               </button>
             ))}

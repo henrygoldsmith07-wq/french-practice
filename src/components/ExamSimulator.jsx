@@ -540,6 +540,19 @@ function NonSpeakingTask({ run, section, setRun, onAbort }) {
   const mode = run.paper.examMode;
   const material = section.material || {};
   const questions = material.questions || [];
+  // Shuffled option order per question — authored tasks lean on answer index
+  // 0. Answers are stored as ORIGINAL indices so scoring stays canonical.
+  // This component remounts per task (keyed by materialId), so the order is
+  // stable within a sitting and reshuffles for the next one.
+  const [orderMap] = useState(() => questions.map((q) => {
+    const ord = (q.options || []).map((_, i) => i);
+    for (let i = ord.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [ord[i], ord[j]] = [ord[j], ord[i]];
+    }
+    return ord;
+  }));
+  const displayQuestions = questions.map((q, i) => ({ ...q, options: orderMap[i].map((oi) => q.options[oi]) }));
 
   useEffect(() => {
     const id = setInterval(() => tick((n) => n + 1), 500);
@@ -601,7 +614,7 @@ function NonSpeakingTask({ run, section, setRun, onAbort }) {
             <textarea value={written} onChange={(e) => setWritten(e.target.value)} rows={12} className="w-full bg-bg border border-line rounded-xl px-3 py-2 text-sm" aria-label="Written exam response" />
           </div>
         ) : (
-          <QuestionChoices questions={questions} answers={answers} onAnswer={(index, value) => setAnswers((current) => ({ ...current, [index]: value }))} />
+          <QuestionChoices questions={displayQuestions} answers={answers} onAnswer={(index, value) => setAnswers((current) => ({ ...current, [index]: orderMap[index][value] }))} />
         )}
 
         {left === 0 && <p className="text-sm font-semibold text-amber-600">Time is up. Submit what you have; in the real exam the paper would move on.</p>}

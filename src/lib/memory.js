@@ -148,11 +148,31 @@ export function isEntryDue(e, srs, frontier, now = Date.now()) {
   return f <= frontier;
 }
 
+// How many never-seen cards may join the review queue per session. A day-one
+// learner's frontier tier would otherwise dump 100+ unseen words into day
+// one; scheduled reviews are never capped.
+export const NEW_CARD_CAP = 10;
+
 // Entries due right now, with new cards gated by frequency. Pass the full
 // library so the frontier is computed globally, not per pack.
-export function dueEntries(entries, srs, now = Date.now()) {
+//
+// `newCardCap` bounds how many never-seen cards join the queue (most common
+// first; custom notebook cards always survive). Scheduled reviews are never
+// capped.
+export function dueEntries(entries, srs, now = Date.now(), { newCardCap = Infinity } = {}) {
   const frontier = frontierTier(entries, srs);
-  return entries.filter((e) => isEntryDue(e, srs, frontier, now));
+  const scheduled = [];
+  const fresh = [];
+  for (const e of entries) {
+    if (!isEntryDue(e, srs, frontier, now)) continue;
+    if (srs[e.id]) scheduled.push(e);
+    else fresh.push(e);
+  }
+  if (fresh.length > newCardCap) {
+    fresh.sort((a, b) => freqOf(a) - freqOf(b));
+    fresh.length = newCardCap;
+  }
+  return [...scheduled, ...fresh];
 }
 
 // When is reviewing most worthwhile? Count cards already due plus cards

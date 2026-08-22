@@ -1,16 +1,23 @@
 // Error taxonomy — 12 coarse categories for per-structure tracking.
 // Each category maps to one or more grammar topic ids and a remediation cue.
+// Topics must cover every id the model may emit (see groq.js
+// FR_GRAMMAR_TOPIC_LINE: present, articles, negation, passe-compose,
+// futur-conditionnel, subjonctif, pronoms, comparatif, relatifs,
+// prepositions-lieu, accord-participe, pronominaux) plus library-only ids
+// recorded outside conversations (grammar quizzes, drills).
 
 export const ERROR_CATEGORIES = [
-  { id: 'agreement', label: 'Agreement (gender/number/participle)', topics: ['articles','accord-participe','present'], cue: 'Check the ending — gender and number must match.' },
+  { id: 'agreement', label: 'Agreement (gender/number/participle)', topics: ['accord-participe'], cue: 'Check the ending — gender and number must match.' },
   { id: 'tense', label: 'Tense / aspect', topics: ['passe-compose','futur-conditionnel','present'], cue: 'Is the event finished or background? Pick composé vs imparfait.' },
   { id: 'mood', label: 'Mood (subjunctive)', topics: ['subjonctif'], cue: 'After «il faut que / vouloir que / bien que» → subjunctive.' },
-  { id: 'pronouns', label: 'Pronouns (y/en, le/lui, double)', topics: ['pronoms','double-pronoms','y-en'], cue: 'Replace the phrase — y (= à …), en (= de …).' },
+  { id: 'pronouns', label: 'Pronouns (y/en, le/lui, reflexive, relative)', topics: ['pronoms','pronominaux','relatifs','double-pronoms','y-en'], cue: 'Replace the phrase — y (= à …), en (= de …).' },
   { id: 'preposition', label: 'Prepositions', topics: ['prepositions-lieu','depuis-pendant'], cue: 'à vs de vs en — the verb decides the preposition.' },
   { id: 'negation', label: 'Negation', topics: ['negation'], cue: 'ne … pas wraps the conjugated verb.' },
   { id: 'word-order', label: 'Word order / interrogation', topics: ['interrogation','comparatif'], cue: 'Pronouns go before the verb; inversion in questions.' },
   { id: 'liaison', label: 'Liaison / elision', topics: ['liaison'], cue: 'Sound the liaison where required (les‿amis, c’est‿un).' },
   { id: 'register', label: 'Register / naturalness', topics: ['registres'], cue: 'Formal vs familiar — pick the right register.' },
+  // Articles must come before any category listing them — categoryForTopic
+  // returns the FIRST match, and article mistakes used to read as Agreement.
   { id: 'articles', label: 'Articles / determiners', topics: ['articles'], cue: 'A noun rarely stands naked — add le/la/un/du.' },
   { id: 'vocab', label: 'Vocabulary choice', topics: [], cue: 'A more natural word exists — check the collocation.' },
   { id: 'spelling', label: 'Spelling / accents', topics: [], cue: 'é vs è vs ê — the accent changes the sound.' },
