@@ -6,6 +6,7 @@ import { getLanguage } from '../lib/languages';
 import { ArrowRight, Layers, MessageCircle, Play, Target, Mic, BookOpen, StudioMark } from './icons';
 import { weaknessAnalysis, dailyRecommendations } from '../lib/personalise';
 import { SCENARIO_ICONS } from './icons';
+import Mascot from './Mascot';
 
 function suggestScenario(sessions) {
   const scenarios = getScenarios();
@@ -50,6 +51,8 @@ export default function HomeDashboard({ dailyGoal = 30, level, onStartLesson, on
   const goal = Math.max(1, dailyGoal);
   const goalPct = Math.min(100, Math.round((todayXp / goal) * 100));
   const goalDone = todayXp >= goal;
+  const hour = new Date().getHours();
+  const greeting = hour < 12 ? 'Bonjour !' : hour < 18 ? 'Bon après-midi !' : 'Bonsoir !';
 
   const startConversation = (minutes = 5) => {
     try { sessionStorage.setItem('fp.sessionMins', String(minutes)); } catch { /* restricted */ }
@@ -62,6 +65,8 @@ export default function HomeDashboard({ dailyGoal = 30, level, onStartLesson, on
       <div className="max-w-[1020px] mx-auto px-[22px] py-6 space-y-10">
         {/* Hero — mirrors le-studio-site .hero: centered, calm, no clutter */}
         <section className="text-center pt-4 pb-2" aria-labelledby="today-hero-title">
+          <Mascot mood="sing" size={56} className="mx-auto text-ink opacity-90" aria-hidden="true" />
+          <p className="mt-1 text-xs font-semibold text-ink2 tracking-wide" lang="fr">{greeting}</p>
           <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-surface border border-line text-[11px] font-semibold text-ink2">
             <span className="w-2 h-2 rounded-full bg-success animate-pulse" aria-hidden />
             Le Studio · {language.name} · Today

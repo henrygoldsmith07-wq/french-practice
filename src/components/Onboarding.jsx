@@ -3,6 +3,7 @@ import { LANGUAGE_LIST, getLanguage } from '../lib/languages';
 import { syncLanguage } from '../lib/i18n';
 import { SpeakButton } from './ui';
 import { ArrowRight, Check, ChevronLeft, Sparkles } from './icons';
+import Mascot from './Mascot';
 
 const GOALS = [
   { id: 'travel', emoji: '🧳', label: 'Travel', topics: ['travel', 'food', 'shopping'] },
@@ -172,6 +173,7 @@ export default function Onboarding({ open, onComplete, onSkip, onStartConversati
 
       <div className="flex-1 overflow-x-hidden overflow-y-auto nice-scroll px-4 py-5">
         <div key={step} className={`mx-auto max-w-md ${dir === 'fwd' ? 'step-fwd' : 'step-back'}`}>
+          {step === 0 && <Mascot mood="sing" size={64} className="mx-auto mb-2 text-ink" aria-hidden="true" />}
           <h2 className="text-center text-xl font-bold text-ink">{current.title}</h2>
           <p className="mb-5 mt-1 text-center text-xs text-ink2">{current.subtitle}</p>
           {current.body}

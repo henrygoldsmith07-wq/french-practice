@@ -8,6 +8,7 @@ import {
 import VocabCard from './VocabCard';
 import VocabQuiz from './VocabQuiz';
 import Memory from './Memory';
+import Mascot from './Mascot';
 import { weakEntries, notebookAsEntries, reviewOrder, dueEntries, frontierTier, isEntryDue, NEW_CARD_CAP } from '../lib/memory';
 import { fsrsRetention, isProductiveUnlocked } from '../lib/fsrs';
 import { activeVocabTarget, controlledNewVocab } from '../lib/adaptivePractice';
@@ -312,6 +313,7 @@ function Deck({ packId, onBack, srs, onRated, onSavedChange, apiKey, mockMode, o
     return (
       <div className="h-full grid place-items-center px-4">
         <div className="text-center space-y-3">
+          <Mascot mood="rest" size={64} className="mx-auto text-ink opacity-80" aria-hidden="true" />
           <p className="text-sm text-ink2">
             {packId === 'notebook'
               ? 'No custom cards yet — add words in your notebook and they become flashcards.'

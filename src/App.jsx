@@ -44,6 +44,7 @@ import { syncLanguage } from './lib/i18n';
 import { getLanguage } from './lib/languages';
 import { relayEnabled } from './lib/relay';
 import { Flame, Bolt, Sun, Moon, Gear, Key, ArrowRight, Home, MessageCircle, Layers, BookOpen, BarChart, Search, Target, Coins as CoinsIcon, X, Download } from './components/icons';
+import Mascot from './components/Mascot';
 import LearnHub from './components/LearnHub';
 import ProgressHub from './components/ProgressHub';
 
@@ -715,7 +716,7 @@ function Celebration({ data, onDone }) {
       </div>
       <div className="celebrate-pop relative mx-6 w-full max-w-xs bg-surface border border-line rounded-3xl elev-pop px-6 py-7 text-center">
         <div className="w-16 h-16 mx-auto grid place-items-center rounded-2xl bg-surface2 border border-line">
-          {level ? <span className="text-2xl font-black text-ink tabular-nums">{data.level}</span> : <Target size={26} className="text-ink" />}
+          {level ? <span className="text-2xl font-black text-ink tabular-nums">{data.level}</span> : <Mascot mood="cheer" size={40} className="text-ink" />}
         </div>
         <p className="mt-4 text-lg font-bold text-ink" lang="fr">{level ? `Niveau ${data.level} !` : 'Objectif atteint !'}</p>
         <p className="mt-1 text-sm text-ink2">{level ? (data.newTitle ? `You’re now ${data.title}. Keep the momentum.` : 'Another level down — keep the momentum.') : 'Daily goal reached — anything more today is pure bonus.'}</p>

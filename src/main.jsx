@@ -1,6 +1,7 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
+import Mascot from './components/Mascot';
 import './index.css';
 import { getSettings } from './lib/storage';
 import { syncLanguage } from './lib/i18n';
@@ -19,8 +20,8 @@ class ErrorBoundary extends React.Component {
   render() {
     if (!this.state.error) return this.props.children;
     return (
-      <div style={{ minHeight: '100dvh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 12, fontFamily: 'Inter, system-ui, sans-serif', padding: 24, textAlign: 'center' }}>
-        <p style={{ fontSize: 40 }}>😵‍💫</p>
+      <div style={{ minHeight: '100dvh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 12, fontFamily: 'Inter, system-ui, sans-serif', padding: 24, textAlign: 'center', color: 'var(--ink, #111)' }}>
+        <Mascot mood="oops" size={72} />
         <h1 style={{ fontSize: 20, fontWeight: 700 }}>Oups — something broke</h1>
         <p style={{ fontSize: 13, opacity: 0.65, maxWidth: 380 }}>
           Your progress is safe on this device. Reloading fixes almost everything.
