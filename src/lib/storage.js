@@ -19,6 +19,10 @@ import {
   corpusMetrics as _corpusMetrics,
 } from './writingSpeakingCorpus.js';
 import {
+  makeComprehensionEntry as _makeCompEntry,
+  comprehensionAgreement as _compAgreement,
+} from './listeningReadingValidation.js';
+import {
   makeAssistanceEvent as _makeAsst,
   assistanceMetrics as _asstMetrics,
 } from './assistanceValidation.js';
@@ -80,6 +84,7 @@ const KEYS = {
   placementValidations: 'fp.placementValidations.v1', // [{ knownLevel, placedLevel, theta, se, itemsAsked, at, rater, source }]
   progressionValidations: 'fp.progressionValidations.v1', // [{ from, to, unseen:{}, transfer }]
   writingSpeakingCorpus: 'fp.writingSpeakingCorpus.v1', // human-marked writing/speaking pairs
+  comprehensionValidations: 'fp.comprehensionValidations.v1', // human-validated listening/reading scores
   assistanceLog: 'fp.assistanceLog.v1', // with/without support events
   contentCalibration: 'fp.contentCalibration.v1', // cached audit results
   lastPlacement: 'fp.lastPlacement.v1', // most recent adaptive placement result, for teacher pairing
@@ -1872,6 +1877,66 @@ export function updateCorpusSecondMark(id, { humanScore2, humanCorrections2, rat
 }
 
 export const getCorpusMetrics = () => _corpusMetrics(getWritingSpeakingCorpus());
+
+// ---- listening/reading comprehension validation (human marks) ----
+
+export const getComprehensionValidations = () => {
+  const v = read(KEYS.comprehensionValidations, []);
+  return Array.isArray(v) ? v : [];
+};
+
+export function recordComprehensionValidation(entry) {
+  const made = _makeCompEntry(entry);
+  if (!made) return null;
+  const list = getComprehensionValidations();
+  list.push(made);
+  write(KEYS.comprehensionValidations, list.slice(-1000));
+  return made;
+}
+
+// Pair a human mark with an entry whose system score was recorded earlier.
+export function updateComprehensionHumanMark(id, { humanScore, rater }) {
+  const list = getComprehensionValidations();
+  const idx = list.findIndex((e) => e.id === id);
+  if (idx < 0) return null;
+  const entry = list[idx];
+  const score = Number.isFinite(Number(humanScore)) ? Math.max(0, Math.min(100, Math.round(Number(humanScore)))) : null;
+  if (score == null) return null;
+  list[idx] = {
+    ...entry,
+    humanScore: score,
+    rater: rater != null ? String(rater).slice(0, 80) : entry.rater,
+    hasHuman: true,
+    paired: entry.aiScore != null,
+    doubleMarked: entry.humanScore2 != null,
+  };
+  write(KEYS.comprehensionValidations, list);
+  return list[idx];
+}
+
+// Independent second marker — must differ from the first rater.
+export function updateComprehensionSecondMark(id, { humanScore2, rater2 }) {
+  const list = getComprehensionValidations();
+  const idx = list.findIndex((e) => e.id === id);
+  if (idx < 0) return null;
+  const entry = list[idx];
+  if (entry.rater && rater2 && String(rater2).trim() === String(entry.rater).trim()) return null;
+  const score = Number.isFinite(Number(humanScore2)) ? Math.max(0, Math.min(100, Math.round(Number(humanScore2)))) : null;
+  if (score == null) return null;
+  list[idx] = {
+    ...entry,
+    humanScore2: score,
+    rater2: rater2 != null ? String(rater2).slice(0, 80) : entry.rater2,
+    doubleMarked: entry.humanScore != null,
+  };
+  write(KEYS.comprehensionValidations, list);
+  return list[idx];
+}
+
+export const getComprehensionValidationMetrics = (skill) => {
+  const m = _compAgreement(getComprehensionValidations(), skill ? { skill } : undefined);
+  return m;
+};
 
 // ---- pronunciation intelligibility benchmark (human-labelled samples) ----
 //

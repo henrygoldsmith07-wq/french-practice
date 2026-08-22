@@ -6,6 +6,7 @@ import {
   getLearnerErrors, getLearnerErrorSummary,
   getPlacementValidationMetrics, getProgressionValidationMetrics,
   getCorpusMetrics, getAssistanceMetrics, getIntelligibilityBenchmark,
+  getComprehensionValidationMetrics,
 } from '../lib/storage';
 import { allEntries } from '../lib/vocab';
 import { getGrammarErrors } from '../lib/storage';
@@ -480,6 +481,8 @@ function LearnerValidation(){
     ['Placement accuracy', getPlacementValidationMetrics()],
     ['Progression transfer', getProgressionValidationMetrics()],
     ['AI vs human marking', getCorpusMetrics()],
+    ['Listening vs humans', getComprehensionValidationMetrics('listening')],
+    ['Reading vs humans', getComprehensionValidationMetrics('reading')],
     ['Pronunciation vs humans', benchmarkStatus(mergeBenchmarkItems(getIntelligibilityBenchmark()))],
     ['Assistance fading', getAssistanceMetrics()],
   ];

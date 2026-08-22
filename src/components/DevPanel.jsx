@@ -3,6 +3,8 @@ import { pingLatency } from '../lib/groq';
 import {
   recordPlacementValidation, getPlacementValidationMetrics, getLastPlacement,
   getWritingSpeakingCorpus, updateCorpusHumanMark, updateCorpusSecondMark,
+  getComprehensionValidations, recordComprehensionValidation, updateComprehensionHumanMark, updateComprehensionSecondMark,
+  getComprehensionValidationMetrics,
   getIntelligibilityBenchmark, recordBenchmarkSample,
 } from '../lib/storage';
 import { benchmarkStatus, mergeBenchmarkItems } from '../lib/intelligibility';
@@ -85,6 +87,8 @@ export default function DevPanel({ telemetry, apiKey, mockMode, onMockMode, onCl
         </div>
 
         <PlacementValidationCard />
+
+        <ComprehensionValidationCard />
 
         <CorpusMarkingCard />
 
@@ -251,6 +255,87 @@ function PlacementValidationCard() {
         </button>
         {saved && <span className="text-[11px] text-ink2">{saved}</span>}
         <span className="ml-auto text-[11px] text-ink3">{metrics.message}</span>
+      </div>
+    </section>
+  );
+}
+
+// Teacher entry for listening/reading validation: pair the score the app
+// produced on a track/text with an independent human judgement (teacher
+// assessment or a real exam component). A second rater can re-mark any
+// entry for the double-marking reliability check. Nothing is generated.
+function ComprehensionValidationCard() {
+  const store = getComprehensionValidations();
+  const metrics = {
+    listening: getComprehensionValidationMetrics('listening'),
+    reading: getComprehensionValidationMetrics('reading'),
+  };
+  const [form, setForm] = useState({ skill: 'listening', itemId: '', aiScore: '', humanScore: '', rater: '', source: 'teacher' });
+  const [saved, setSaved] = useState(null);
+  const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
+
+  const save = () => {
+    const made = recordComprehensionValidation({
+      skill: form.skill,
+      itemId: form.itemId,
+      aiScore: Number(form.aiScore),
+      humanScore: Number(form.humanScore),
+      rater: form.rater || undefined,
+      source: form.source,
+    });
+    setSaved(made ? 'Saved.' : 'Could not save — check the fields.');
+    if (made) setForm((f) => ({ ...f, itemId: '', aiScore: '', humanScore: '' }));
+  };
+
+  const inputCls = 'w-full bg-surface2 border border-line rounded-lg px-2 py-1.5 text-xs text-ink focus:outline-none focus:border-ink';
+  return (
+    <section className="bg-surface border border-line rounded-2xl p-4 space-y-3">
+      <h3 className="text-xs font-bold uppercase tracking-wider text-ink2">Comprehension validation — teacher entry</h3>
+      <p className="text-[11px] text-ink3">
+        Pair what the app scored on a listening track or reading text with an independent human mark
+        (your assessment or a real exam component). Measures MAE / within-5 agreement per skill;
+        double-marking comes later by re-marking an entry as a different rater. Currently:{' '}
+        <span className="font-semibold text-ink2">listening {metrics.listening.label || metrics.listening.status}</span>
+        {' · '}
+        <span className="font-semibold text-ink2">reading {metrics.reading.label || metrics.reading.status}</span>
+      </p>
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+        <label className="space-y-1"><span className="text-[10px] font-bold uppercase tracking-wider text-ink3">Skill</span>
+          <select value={form.skill} onChange={set('skill')} className={inputCls}>
+            <option value="listening">Listening</option>
+            <option value="reading">Reading</option>
+          </select>
+        </label>
+        <label className="col-span-2 space-y-1"><span className="text-[10px] font-bold uppercase tracking-wider text-ink3">Item (track or text)</span>
+          <input value={form.itemId} onChange={set('itemId')} className={inputCls} placeholder="e.g. track:cafe-noon, reader:la-porte-bleue" />
+        </label>
+        <label className="space-y-1"><span className="text-[10px] font-bold uppercase tracking-wider text-ink3">App score</span>
+          <input type="number" min="0" max="100" value={form.aiScore} onChange={set('aiScore')} className={inputCls} placeholder="0–100" />
+        </label>
+        <label className="space-y-1"><span className="text-[10px] font-bold uppercase tracking-wider text-ink3">Human mark</span>
+          <input type="number" min="0" max="100" value={form.humanScore} onChange={set('humanScore')} className={inputCls} placeholder="0–100" />
+        </label>
+        <label className="space-y-1"><span className="text-[10px] font-bold uppercase tracking-wider text-ink3">Rater</span>
+          <input value={form.rater} onChange={set('rater')} className={inputCls} placeholder="who assessed" />
+        </label>
+        <label className="space-y-1"><span className="text-[10px] font-bold uppercase tracking-wider text-ink3">Source</span>
+          <select value={form.source} onChange={set('source')} className={inputCls}>
+            <option value="teacher">Teacher</option>
+            <option value="exam">Exam</option>
+            <option value="self">Self-checked</option>
+          </select>
+        </label>
+      </div>
+      <div className="flex items-center gap-3">
+        <button
+          onClick={save}
+          disabled={!form.itemId.trim() || form.aiScore === '' || form.humanScore === ''}
+          className="btn btn-primary min-h-9 px-4 rounded-lg text-xs disabled:opacity-40"
+        >
+          Record pair
+        </button>
+        {saved && <span className="text-[11px] text-ink2">{saved}</span>}
+        <span className="ml-auto text-[11px] text-ink3">{store.length ? `${store.length} entr${store.length === 1 ? 'y' : 'ies'} stored` : 'Store starts empty'}</span>
       </div>
     </section>
   );
