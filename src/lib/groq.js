@@ -103,7 +103,12 @@ async function timedFetch(label, url, options, { rawBody } = {}) {
       }
       throw new Error(`${label} failed (${res.status}): ${text.slice(0, 200)}`);
     }
-    const data = await res.json();
+    let data;
+    try {
+      data = await res.json();
+    } catch {
+      throw new Error(`${label} returned a non-JSON response (${res.status})`);
+    }
     report({
       label,
       latency,
@@ -144,8 +149,9 @@ export async function pingLatency(apiKey) {
   const t0 = performance.now();
   const res = await fetch(`${BASE}/models`, {
     headers: { Authorization: `Bearer ${apiKey}` },
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
   });
-  await res.text();
+  await res.text().catch(() => '');
   return Math.round(performance.now() - t0);
 }
 

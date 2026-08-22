@@ -6,17 +6,27 @@ import { READING_TEXTS } from '../lib/reading';
 import { LISTENING_TRACKS } from '../lib/listening';
 import { saveToNotebook, getNotebook } from '../lib/storage';
 import { SpeakButton } from './ui';
+import Mascot from './Mascot';
 import { Search, X, MessageCircle, Book, BookOpen, Volume, Check } from './icons';
 
 // Global search: one box over the whole studio — words, scenarios, grammar
 // topics, readings and listening tracks — with deep links into each.
 
 const norm = (s) => String(s).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
 
 export default function GlobalSearch({ open, onClose, onGo }) {
   const [q, setQ] = useState('');
   const [savedIds, setSavedIds] = useState([]);
   const inputRef = useRef(null);
+  // "Jump straight to" picks are drawn once per open — Math.random() in the
+  // render body re-rolled them on every keystroke and broke render purity.
+  const [jump] = useState(() => ({
+    scenario: pick(getScenarios()),
+    grammar: pick(GRAMMAR_TOPICS),
+    reading: READING_TEXTS[0],
+    listening: pick(LISTENING_TRACKS),
+  }));
 
   useEffect(() => {
     if (open) {
@@ -85,6 +95,9 @@ export default function GlobalSearch({ open, onClose, onGo }) {
       </div>
 
       <div className="flex-1 overflow-y-auto nice-scroll px-4 py-4">
+        <p role="status" aria-live="polite" className="sr-only">
+          {results ? `${total} result${total === 1 ? '' : 's'}` : ''}
+        </p>
         <div className="max-w-md mx-auto space-y-4">
           {!results && (
             <div className="space-y-4 py-2">
@@ -95,14 +108,14 @@ export default function GlobalSearch({ open, onClose, onGo }) {
                 <h3 className="text-[11px] font-bold uppercase tracking-wider text-ink2 mb-2">Jump straight to</h3>
                 <div className="grid grid-cols-2 gap-2">
                   {[
-                    ['🎙️', 'A conversation', { type: 'scenario', id: getScenarios()[Math.floor(Math.random() * getScenarios().length)].id }],
-                    ['📚', 'A grammar topic', { type: 'grammar', id: GRAMMAR_TOPICS[Math.floor(Math.random() * GRAMMAR_TOPICS.length)].id }],
-                    ['📖', 'Something to read', { type: 'reading', id: READING_TEXTS[0].id }],
-                    ['🎧', 'Something to hear', { type: 'listening', id: LISTENING_TRACKS[Math.floor(Math.random() * LISTENING_TRACKS.length)].id }],
-                  ].map(([em, label, go]) => (
-                    <button key={label} onClick={() => onGo(go)}
-                      className="flex items-center gap-2.5 bg-surface border border-line rounded-xl px-3.5 py-3 text-left hover:border-ink3 transition-colors">
-                      <span className="text-xl" aria-hidden="true">{em}</span>
+                    ['A conversation', jump.scenario && { type: 'scenario', id: jump.scenario.id }, MessageCircle],
+                    ['A grammar topic', jump.grammar && { type: 'grammar', id: jump.grammar.id }, Book],
+                    ['Something to read', jump.reading && { type: 'reading', id: jump.reading.id }, BookOpen],
+                    ['Something to hear', jump.listening && { type: 'listening', id: jump.listening.id }, Volume],
+                  ].map(([label, go, Icon]) => (
+                    <button key={label} onClick={() => go && onGo(go)} disabled={!go}
+                      className="flex items-center gap-2.5 bg-surface border border-line rounded-xl px-3.5 py-3 text-left hover:border-ink3 transition-colors disabled:opacity-50">
+                      <span className="w-8 h-8 shrink-0 grid place-items-center rounded-lg bg-surface2 text-ink"><Icon size={15} /></span>
                       <span className="text-xs font-semibold text-ink">{label}</span>
                     </button>
                   ))}
@@ -115,7 +128,7 @@ export default function GlobalSearch({ open, onClose, onGo }) {
           )}
           {results && total === 0 && (
             <div className="text-center py-10 space-y-2">
-              <p className="text-3xl" aria-hidden="true">🔍</p>
+              <Mascot mood="rest" size={56} className="mx-auto text-ink opacity-80" aria-hidden="true" />
               <p className="text-sm text-ink2">Nothing for «{q.trim()}»</p>
               <p className="text-xs text-ink3">Try a shorter word, or search in English.</p>
             </div>

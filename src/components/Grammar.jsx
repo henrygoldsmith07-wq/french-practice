@@ -130,12 +130,11 @@ export default function Grammar({ focusTopicId, onFocusConsumed, onXp, onActivit
             className="flex-1 min-w-0 bg-transparent text-sm text-ink placeholder:text-ink3 focus:outline-none py-2.5"
           />
         </div>
-        <div className="flex gap-1.5 overflow-x-auto snap-rail -mx-1 px-1 pb-0.5" role="tablist" aria-label="Filter by CEFR level">
+        <div className="flex gap-1.5 overflow-x-auto snap-rail -mx-1 px-1 pb-0.5" role="group" aria-label="Filter by CEFR level">
           {['all', ...levels].map((lvl) => (
             <button
               key={lvl}
-              role="tab"
-              aria-selected={level === lvl}
+              aria-pressed={level === lvl}
               onClick={() => setLevel(lvl)}
               className={`shrink-0 px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors ${
                 level === lvl ? 'bg-accent text-onaccent border-accent' : 'bg-surface text-ink2 border-line hover:border-ink3'
@@ -229,12 +228,11 @@ function TopicLesson({ topic, best, onBack, onQuizFinish }) {
         </div>
 
         {/* lesson stepper */}
-        <div className="flex rounded-xl border border-line overflow-hidden" role="tablist" aria-label="Lesson steps">
+        <div className="flex rounded-xl border border-line overflow-hidden" role="group" aria-label="Lesson steps">
           {STEPS.map(([id, label]) => (
             <button
               key={id}
-              role="tab"
-              aria-selected={step === id}
+              aria-pressed={step === id}
               onClick={() => setStep(id)}
               className={`flex-1 py-2.5 text-xs font-semibold transition-colors ${
                 step === id ? 'bg-accent text-onaccent' : 'bg-surface text-ink2 hover:text-ink'

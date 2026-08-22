@@ -181,12 +181,11 @@ export default function Vocabulary({ apiKey, mockMode, onActivity, onXp }) {
             />
           </div>
           <div className="flex items-center justify-between gap-2">
-            <div className="flex gap-1.5 overflow-x-auto snap-rail -mx-1 px-1" role="tablist" aria-label="Sort packs">
+            <div className="flex gap-1.5 overflow-x-auto snap-rail -mx-1 px-1" role="group" aria-label="Sort packs">
               {SORTS.map(([id, label]) => (
                 <button
                   key={id}
-                  role="tab"
-                  aria-selected={sort === id}
+                  aria-pressed={sort === id}
                   onClick={() => setSort(id)}
                   className={`shrink-0 px-2.5 py-1.5 rounded-full text-[11px] font-semibold border transition-colors ${
                     sort === id ? 'bg-accent text-onaccent border-accent' : 'bg-surface text-ink2 border-line hover:border-ink3'
@@ -403,26 +402,24 @@ function Deck({ packId, onBack, srs, onRated, onSavedChange, apiKey, mockMode, o
         </div>
 
         {/* study-mode toggle: passive flip cards vs. active-recall quiz */}
-        <div className="flex gap-1 p-1 bg-surface2 rounded-full" role="tablist" aria-label="Study mode">
+        <div className="flex gap-1 p-1 bg-surface2 rounded-full" role="group" aria-label="Study mode">
           <button
-            role="tab"
-            aria-selected="true"
+            aria-pressed="true"
             className="flex-1 py-1.5 rounded-full text-xs font-semibold bg-surface text-ink shadow-sm"
           >
             Flashcards
           </button>
           <button
-            role="tab"
-            aria-selected="false"
+            aria-pressed="false"
             onClick={() => setStudy('quiz')}
             className="flex-1 py-1.5 rounded-full text-xs font-semibold text-ink2 hover:text-ink inline-flex items-center justify-center gap-1"
           >
             <Target size={12} /> Quiz
           </button>
         </div>
-        <div className="flex gap-1 p-1 bg-surface border border-line rounded-full" role="tablist" aria-label="Card direction">
+        <div className="flex gap-1 p-1 bg-surface border border-line rounded-full" role="group" aria-label="Card direction">
           {['receptive','productive'].map(m=> (
-            <button key={m} role="tab" aria-selected={cardMode===m} disabled={m==='productive' && !productiveReady}
+            <button key={m} aria-pressed={cardMode===m} disabled={m==='productive' && !productiveReady}
               onClick={()=> setCardMode(m)}
               title={m==='productive' && !productiveReady ? 'Unlocks after 2 successful receptive reviews' : undefined}
               className={`flex-1 py-1 rounded-full text-[11px] font-semibold ${cardMode===m ? 'bg-ink text-bg' : 'text-ink3'} ${m==='productive' && !productiveReady ? 'opacity-40' : ''}`}>

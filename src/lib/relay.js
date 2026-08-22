@@ -75,7 +75,11 @@ export async function withRelay({ label, path = label, body, direct }) {
     syncFromHeaders(res.headers);
   } catch { /* ignore */ }
 
-  return JSON.parse(text);
+  try {
+    return JSON.parse(text);
+  } catch {
+    throw new Error(`Relay ${label} returned a non-JSON response (${res.status}).`);
+  }
 }
 
 export async function pingRelay() {

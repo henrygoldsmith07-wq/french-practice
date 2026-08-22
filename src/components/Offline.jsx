@@ -51,20 +51,31 @@ export default function Offline({ open, onClose, pwa }) {
     window.addEventListener('online', on);
     window.addEventListener('offline', off);
 
-    // Ask the service worker how many assets it has cached.
+    // Ask the service worker how many assets it has cached. The controller is
+    // null on first load / pre-activation — instead of latching "Caching…"
+    // forever, retry once the worker takes control.
     const sw = navigator.serviceWorker;
     let handler;
-    if (sw && sw.controller) {
+    const ask = (worker) => { try { worker?.postMessage('cache-count'); } catch { /* detached */ } };
+    let controllerChange;
+    if (sw) {
       handler = (e) => { if (e.data?.type === 'cache-count') setCacheCount(e.data.count); };
       sw.addEventListener('message', handler);
-      sw.controller.postMessage('cache-count');
-    } else {
-      setCacheCount(0);
+      ask(sw.controller);
+      controllerChange = () => {
+        handler && sw.removeEventListener('message', handler);
+        sw.addEventListener('message', handler);
+        ask(sw.controller);
+      };
+      sw.addEventListener('controllerchange', controllerChange);
     }
     return () => {
       window.removeEventListener('online', on);
       window.removeEventListener('offline', off);
-      if (handler && sw) sw.removeEventListener('message', handler);
+      if (sw && handler) {
+        sw.removeEventListener('message', handler);
+        if (controllerChange) sw.removeEventListener('controllerchange', controllerChange);
+      }
     };
   }, [open]);
 

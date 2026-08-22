@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Modal, Spinner } from './ui';
 import { X as XIcon } from './icons';
 import { validateKey } from '../lib/groq';
@@ -9,6 +9,42 @@ import { getRelayConfig, pingRelay, relayEnabled } from '../lib/relay';
 
 // In relay mode the browser never accepts or stores a Groq key. The host's
 // authenticated identity is sent to the relay, which holds the provider key.
+
+// Accessible radio group: roving tabindex + arrow-key movement, so keyboard
+// users don't tab through every option of five separate groups.
+function RadioGroup({ label, options, value, onChange, groupClassName = '', btnClass, children }) {
+  const refs = useRef([]);
+  const onKeyDown = (e) => {
+    const idx = Math.max(0, options.findIndex((o) => o.value === value));
+    let nextIdx = null;
+    if (e.key === 'ArrowRight' || e.key === 'ArrowDown') nextIdx = (idx + 1) % options.length;
+    if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') nextIdx = (idx - 1 + options.length) % options.length;
+    if (nextIdx == null) return;
+    e.preventDefault();
+    onChange(options[nextIdx].value);
+    requestAnimationFrame(() => refs.current[nextIdx]?.focus());
+  };
+  return (
+    <div role="radiogroup" aria-label={label} className={groupClassName} onKeyDown={onKeyDown}>
+      {options.map((o, i) => {
+        const on = o.value === value;
+        return (
+          <button
+            key={o.value}
+            ref={(el) => { refs.current[i] = el; }}
+            role="radio"
+            aria-checked={on}
+            tabIndex={on ? 0 : -1}
+            onClick={() => onChange(o.value)}
+            className={btnClass(on)}
+          >
+            {children ? children(o, on) : o.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
 
 export default function SettingsModal({ open, onClose, apiKey, onKeyChange, settings, onSettingsChange, onReplayOnboarding }) {
   const [draft, setDraft] = useState('');
@@ -145,25 +181,21 @@ export default function SettingsModal({ open, onClose, apiKey, onKeyChange, sett
         <section className="space-y-3 pt-2 border-t border-line">
           <div>
             <span className="block text-sm text-ink mb-2">Language to learn</span>
-            <div className="grid grid-cols-3 gap-2" role="radiogroup" aria-label="Target language">
-              {LANGUAGE_LIST.map((l) => {
-                const on = (settings.language || 'fr') === l.id;
-                return (
-                  <button
-                    key={l.id}
-                    role="radio"
-                    aria-checked={on}
-                    onClick={() => onSettingsChange({ ...settings, language: l.id })}
-                    className={`flex flex-col items-center gap-1 rounded-xl border px-2 py-3 transition-colors ${
-                      on ? 'bg-surface2 border-ink' : 'bg-surface border-line hover:border-ink3'
-                    }`}
-                  >
-                    <span className="text-2xl" aria-hidden="true">{l.flag}</span>
-                    <span className={`text-xs font-semibold ${on ? 'text-ink' : 'text-ink2'}`}>{l.nativeName}</span>
-                  </button>
-                );
-              })}
-            </div>
+            <RadioGroup
+              label="Target language"
+              groupClassName="grid grid-cols-3 gap-2"
+              options={LANGUAGE_LIST.map((l) => ({ value: l.id }))}
+              value={settings.language || 'fr'}
+              onChange={(id) => onSettingsChange({ ...settings, language: id })}
+              btnClass={(on) => `flex flex-col items-center gap-1 rounded-xl border px-2 py-3 transition-colors ${on ? 'bg-surface2 border-ink' : 'bg-surface border-line hover:border-ink3'}`}
+            >
+              {(l, on) => (
+                <>
+                  <span className="text-2xl" aria-hidden="true">{l.flag}</span>
+                  <span className={`text-xs font-semibold ${on ? 'text-ink' : 'text-ink2'}`}>{l.nativeName}</span>
+                </>
+              )}
+            </RadioGroup>
             <p className="text-[11px] text-ink3 mt-1.5">Switches the whole studio — conversations, flashcards, speech and the AI tutor.</p>
           </div>
           <div className="flex items-center justify-between gap-4 min-h-11">
@@ -171,91 +203,62 @@ export default function SettingsModal({ open, onClose, apiKey, onKeyChange, sett
               <span className="block text-sm text-ink">My level (CEFR)</span>
               <span className="block text-[11px] text-ink3">Calibrates the AI's complexity and scoring</span>
             </span>
-            <div className="flex rounded-xl border border-line overflow-hidden" role="radiogroup" aria-label="CEFR level">
-              {['A1', 'A2', 'B1', 'B2', 'C1', 'C2'].map((lvl) => (
-                <button
-                  key={lvl}
-                  role="radio"
-                  aria-checked={settings.level === lvl}
-                  onClick={() => onSettingsChange({ ...settings, level: lvl })}
-                  className={`px-2 py-2 text-xs font-semibold transition-colors ${
-                    settings.level === lvl ? 'bg-accent text-onaccent' : 'bg-surface text-ink2 hover:text-ink'
-                  }`}
-                >
-                  {lvl}
-                </button>
-              ))}
-            </div>
+            <RadioGroup
+              label="CEFR level"
+              groupClassName="flex rounded-xl border border-line overflow-hidden"
+              options={['A1', 'A2', 'B1', 'B2', 'C1', 'C2'].map((lvl) => ({ value: lvl }))}
+              value={settings.level}
+              onChange={(level) => onSettingsChange({ ...settings, level })}
+              btnClass={(on) => `px-2 py-2 text-xs font-semibold transition-colors ${on ? 'bg-accent text-onaccent' : 'bg-surface text-ink2 hover:text-ink'}`}
+            />
           </div>
           <div className="flex items-center justify-between gap-4 min-h-11">
             <span>
               <span className="block text-sm text-ink">Daily goal</span>
               <span className="block text-[11px] text-ink3">XP target that fills the ring on Home</span>
             </span>
-            <div className="flex rounded-xl border border-line overflow-hidden" role="radiogroup" aria-label="Daily XP goal">
-              {[15, 30, 50].map((goal) => (
-                <button
-                  key={goal}
-                  role="radio"
-                  aria-checked={settings.dailyGoal === goal}
-                  onClick={() => onSettingsChange({ ...settings, dailyGoal: goal })}
-                  className={`px-3 py-2 text-xs font-semibold transition-colors ${
-                    settings.dailyGoal === goal ? 'bg-accent text-onaccent' : 'bg-surface text-ink2 hover:text-ink'
-                  }`}
-                >
-                  {goal}
-                </button>
-              ))}
-            </div>
+            <RadioGroup
+              label="Daily XP goal"
+              groupClassName="flex rounded-xl border border-line overflow-hidden"
+              options={[15, 30, 50].map((goal) => ({ value: goal, label: goal }))}
+              value={settings.dailyGoal}
+              onChange={(dailyGoal) => onSettingsChange({ ...settings, dailyGoal })}
+              btnClass={(on) => `px-3 py-2 text-xs font-semibold transition-colors ${on ? 'bg-accent text-onaccent' : 'bg-surface text-ink2 hover:text-ink'}`}
+            />
           </div>
           <div className="flex items-center justify-between gap-4 min-h-11">
             <span>
               <span className="block text-sm text-ink">Weekly goal</span>
               <span className="block text-[11px] text-ink3">XP target for the Monday–Sunday bar</span>
             </span>
-            <div className="flex rounded-xl border border-line overflow-hidden" role="radiogroup" aria-label="Weekly XP goal">
-              {[100, 150, 250].map((goal) => (
-                <button
-                  key={goal}
-                  role="radio"
-                  aria-checked={settings.weeklyGoal === goal}
-                  onClick={() => onSettingsChange({ ...settings, weeklyGoal: goal })}
-                  className={`px-3 py-2 text-xs font-semibold transition-colors ${
-                    settings.weeklyGoal === goal ? 'bg-accent text-onaccent' : 'bg-surface text-ink2 hover:text-ink'
-                  }`}
-                >
-                  {goal}
-                </button>
-              ))}
-            </div>
+            <RadioGroup
+              label="Weekly XP goal"
+              groupClassName="flex rounded-xl border border-line overflow-hidden"
+              options={[100, 150, 250].map((goal) => ({ value: goal, label: goal }))}
+              value={settings.weeklyGoal}
+              onChange={(weeklyGoal) => onSettingsChange({ ...settings, weeklyGoal })}
+              btnClass={(on) => `px-3 py-2 text-xs font-semibold transition-colors ${on ? 'bg-accent text-onaccent' : 'bg-surface text-ink2 hover:text-ink'}`}
+            />
           </div>
           <div className="space-y-2">
             <div>
               <span className="block text-sm text-ink">Correction frequency</span>
               <span className="block text-[11px] text-ink3">Choose how much feedback interrupts your conversation</span>
             </div>
-            <div className="grid grid-cols-2 sm:grid-cols-5 gap-1.5" role="radiogroup" aria-label="Correction frequency">
-              {[
-                ['adaptive', 'Adaptive'],
-                ['every-turn', 'Every error'],
-                ['important', 'Important'],
-                ['end', 'At the end'],
-                ['off', 'Off'],
-              ].map(([value, label]) => {
-                const on = (settings.correctionFrequency || 'adaptive') === value;
-                return (
-                  <button
-                    key={value}
-                    role="radio"
-                    aria-checked={on}
-                    onClick={() => onSettingsChange({ ...settings, correctionFrequency: value })}
-                    className={`rounded-lg border px-2 py-2 text-[11px] font-semibold transition-colors ${on ? 'bg-accent text-onaccent border-accent' : 'bg-surface border-line text-ink2 hover:border-ink3'}`}
-                  >
-                    {label}
-                  </button>
-                );
-              })}
-            </div>
+            <RadioGroup
+              label="Correction frequency"
+              groupClassName="grid grid-cols-2 sm:grid-cols-5 gap-1.5"
+              options={[
+                { value: 'adaptive', label: 'Adaptive' },
+                { value: 'every-turn', label: 'Every error' },
+                { value: 'important', label: 'Important' },
+                { value: 'end', label: 'At the end' },
+                { value: 'off', label: 'Off' },
+              ]}
+              value={settings.correctionFrequency || 'adaptive'}
+              onChange={(correctionFrequency) => onSettingsChange({ ...settings, correctionFrequency })}
+              btnClass={(on) => `rounded-lg border px-2 py-2 text-[11px] font-semibold transition-colors ${on ? 'bg-accent text-onaccent border-accent' : 'bg-surface border-line text-ink2 hover:border-ink3'}`}
+            />
           </div>
           <ToggleRow
             label="Daily reminders"

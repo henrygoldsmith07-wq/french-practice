@@ -101,12 +101,11 @@ function Phrasebook() {
   return (
     <div className="h-full overflow-y-auto nice-scroll px-4 py-5">
       <div className="max-w-md mx-auto space-y-4">
-        <div className="flex gap-1.5 overflow-x-auto snap-rail -mx-1 px-1" role="tablist" aria-label="Phrasebook situations">
+        <div className="flex gap-1.5 overflow-x-auto snap-rail -mx-1 px-1" role="group" aria-label="Phrasebook situations">
           {groups.map((g) => (
             <button
               key={g.id}
-              role="tab"
-              aria-selected={active === g.id}
+              aria-pressed={active === g.id}
               onClick={() => setActive(g.id)}
               className={`shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors ${
                 active === g.id ? 'bg-accent text-onaccent border-accent' : 'bg-surface text-ink2 border-line hover:border-ink3'

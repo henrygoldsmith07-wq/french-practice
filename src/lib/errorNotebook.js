@@ -31,7 +31,10 @@ export function markCorrectedByLearner(id, typed){
   const list = readRaw();
   const e = list.find(x=> x.id===id);
   if(!e) return false;
-  const ok = e.corrected.trim().toLowerCase() === String(typed).trim().toLowerCase();
+  // Accent-insensitive, like every other typed check in the app — the drill
+  // targets the correction, not the accent keys.
+  const norm = (s) => String(s).trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+  const ok = norm(e.corrected) === norm(typed);
   if(ok) e.correctedByLearner = true;
   writeRaw(list);
   return ok;
