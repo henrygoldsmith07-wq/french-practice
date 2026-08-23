@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import {
   getMetrics, getSessions, getGrammarProgress, getSrs, getNotebook,
   getTimeLog, getXpLog, getReviewLog, getXp, getSettings,
@@ -6,7 +6,7 @@ import {
   getLearnerErrors, getLearnerErrorSummary,
   getPlacementValidationMetrics, getProgressionValidationMetrics,
   getCorpusMetrics, getAssistanceMetrics, getIntelligibilityBenchmark,
-  getComprehensionValidationMetrics,
+  getComprehensionValidationMetrics, getStudyProgress, buildValidationBundle, ingestValidationBundle,
 } from '../lib/storage';
 import { allEntries } from '../lib/vocab';
 import { getGrammarErrors } from '../lib/storage';
@@ -162,6 +162,7 @@ export default function Analytics({ open, onClose }) {
             </div>
           </section>
 
+          <EvidenceStudy />
           <LearnerValidation />
           <ErrorNotebookStats />
           <LearnerErrorModel entries={d.learnerErrors} summary={d.learnerErrorSummary} />
@@ -467,6 +468,78 @@ function Heatmap({ log }) {
         </div>
       ))}
     </div>
+  );
+}
+
+// The flagship evidence study: how far each external-validation stream is
+// from its publishable target. Rows only move through genuine human marks —
+// teacher entry in Dev Panel, or importing a genuinely collected bundle.
+function downloadFile(name, text, type = 'text/plain') {
+  const url = URL.createObjectURL(new Blob([text], { type }));
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = name;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function EvidenceStudy() {
+  const progress = useMemo(() => {
+    try { return getStudyProgress(); } catch { return null; }
+  }, []);
+  const [importNote, setImportNote] = useState(null);
+  const fileRef = useRef(null);
+  if (!progress) return null;
+
+  const doExport = () => {
+    const stamp = new Date().toISOString().slice(0, 10);
+    downloadFile(`le-studio-validation-bundle-${stamp}.json`, JSON.stringify(buildValidationBundle(), null, 2), 'application/json');
+  };
+
+  const onFile = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    try {
+      const report = ingestValidationBundle(await file.text());
+      const added = Object.entries(report.added).filter(([, n]) => n > 0).map(([k, n]) => `${k} +${n}`).join(', ') || 'nothing new';
+      setImportNote(
+        report.ok
+          ? `Imported: ${added}${report.skipped ? ` · ${report.skipped} duplicates skipped` : ''}`
+          : `Import stopped: ${report.errors[0]}${report.errors.length > 1 ? ` (+${report.errors.length - 1} more)` : ''}`
+      );
+    } catch (err) {
+      setImportNote(`Import failed: ${err.message}`);
+    }
+  };
+
+  return (
+    <section className="bg-surface border border-line rounded-2xl p-5 space-y-3">
+      <div className="flex items-baseline justify-between gap-3">
+        <h3 className="text-[11px] font-bold uppercase tracking-wider text-ink2">Evidence study</h3>
+        <span className="text-[11px] text-ink3 tabular-nums">{progress.totalN}/{progress.totalTarget} entries · {progress.streamsMet}/{progress.rows.length} streams at target</span>
+      </div>
+      <p className="text-xs text-ink2">
+        These numbers only move when real humans contribute marks — teacher entry in Settings → Developer panel, or an imported bundle. Nothing is generated.
+      </p>
+      <div className="space-y-2">
+        {progress.rows.map((r) => (
+          <div key={r.key} className="flex items-center gap-2.5">
+            <span className="w-52 shrink-0 truncate text-[11px] text-ink" title={r.label}>{r.label}</span>
+            <div className="flex-1 h-2 rounded-full bg-surface2 overflow-hidden" role="progressbar" aria-valuenow={r.n} aria-valuemin={0} aria-valuemax={r.target} aria-label={`${r.label}: ${r.n} of ${r.target}`}>
+              <div className={`h-full rounded-full ${r.met ? 'bg-success' : 'bg-ink'}`} style={{ width: `${r.pct}%` }} />
+            </div>
+            <span className="w-16 shrink-0 text-right text-[11px] text-ink3 tabular-nums">{r.n}/{r.target}</span>
+          </div>
+        ))}
+      </div>
+      <div className="flex items-center gap-2 pt-1 border-t border-line">
+        <button onClick={doExport} className="btn btn-secondary min-h-9 px-3 rounded-lg text-xs">Export bundle</button>
+        <button onClick={() => fileRef.current?.click()} className="btn btn-secondary min-h-9 px-3 rounded-lg text-xs">Import bundle</button>
+        <input ref={fileRef} type="file" accept="application/json,.json" onChange={onFile} className="hidden" aria-hidden="true" tabIndex={-1} />
+        {importNote && <span className="text-[11px] text-ink3 truncate" role="status">{importNote}</span>}
+      </div>
+    </section>
   );
 }
 

@@ -534,7 +534,7 @@ export default function App() {
           <span className="w-10 h-10 grid place-items-center rounded-xl bg-surface border border-line text-ink" aria-hidden="true"><Key size={18} /></span>
           <span className="flex-1">
             <span className="block text-sm font-semibold text-ink">Welcome to the Studio!</span>
-            <span className="block text-xs text-ink2 mt-0.5">Add your free Groq API key to start speaking {getLanguage(settings.language).name} — tap here.</span>
+            <span className="block text-xs text-ink2 mt-0.5">Add your free AI key (build.nvidia.com) to start speaking {getLanguage(settings.language).name} — tap here.</span>
           </span>
           <span className="text-ink2" aria-hidden="true"><ArrowRight size={16} /></span>
         </button>

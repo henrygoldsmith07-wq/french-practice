@@ -82,7 +82,7 @@ export default function SettingsModal({ open, onClose, apiKey, onKeyChange, sett
       setState('bad');
       setMessage(
         /401|403/.test(e.message)
-          ? 'This key was rejected by Groq — double-check it.'
+          ? 'This key was rejected by the AI provider — double-check it.'
           : `Could not verify the key: ${e.message}`
       );
     }
@@ -121,7 +121,7 @@ export default function SettingsModal({ open, onClose, apiKey, onKeyChange, sett
           {relayEnabled ? (
             <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
               <p className="font-semibold">Provider key stays on the relay</p>
-              <p className="mt-1 text-xs">Your host supplies the authenticated session. The browser does not accept or store a Groq key.</p>
+              <p className="mt-1 text-xs">Your host supplies the authenticated session. The browser does not accept or store a provider key.</p>
               <button
                 onClick={save}
                 disabled={state === 'checking'}
@@ -152,7 +152,7 @@ export default function SettingsModal({ open, onClose, apiKey, onKeyChange, sett
                   value={draft}
                   onChange={(e) => setDraft(e.target.value)}
                   onKeyDown={(e) => e.key === 'Enter' && save()}
-                  placeholder="gsk_..."
+                  placeholder="nvapi-..."
                   className="flex-1 bg-surface2 border border-line rounded-xl px-4 py-3 text-sm text-ink font-mono placeholder:text-ink3 focus:outline-none focus:border-ink"
                 />
                 <button
@@ -167,7 +167,7 @@ export default function SettingsModal({ open, onClose, apiKey, onKeyChange, sett
                 Demo mode works without a key. Add one only when you want live AI responses.
               </p>
               <p className="text-[11px] text-ink3">
-                Create a free key at console.groq.com — it is checked against the
+                Create a free key at build.nvidia.com — it is checked against the
                 <code className="mx-1 text-ink2">/models</code> endpoint before being saved.
               </p>
             </>

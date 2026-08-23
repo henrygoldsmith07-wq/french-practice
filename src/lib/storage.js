@@ -22,6 +22,7 @@ import {
   makeComprehensionEntry as _makeCompEntry,
   comprehensionAgreement as _compAgreement,
 } from './listeningReadingValidation.js';
+import { studyProgress as _studyProgress } from './validationStudy.js';
 import {
   makeAssistanceEvent as _makeAsst,
   assistanceMetrics as _asstMetrics,
@@ -163,7 +164,19 @@ function write(key, value) {
   }
 }
 
-export const getApiKey = () => read(KEYS.apiKey, '');
+// Key resolution: a key saved in Settings wins; otherwise a build-time env
+// key (VITE_AI_API_KEY in .env.local) pre-configures the studio so the app
+// is AI-ready out of the box. The env key is never written to localStorage
+// and never included in exports.
+export const getApiKey = () => {
+  const stored = read(KEYS.apiKey, '');
+  if (stored) return stored;
+  try {
+    return import.meta.env?.VITE_AI_API_KEY || import.meta.env?.VITE_OPENROUTER_API_KEY || '';
+  } catch {
+    return '';
+  }
+};
 export const setApiKey = (k) => write(KEYS.apiKey, k);
 export const clearApiKey = () => localStorage.removeItem(KEYS.apiKey);
 
@@ -1939,6 +1952,93 @@ export const getComprehensionValidationMetrics = (skill) => {
   const m = _compAgreement(getComprehensionValidations(), skill ? { skill } : undefined);
   return m;
 };
+
+// ---- validation study: bundle export/import + progress toward targets ----
+//
+// The evidence base only grows through genuine human contribution. Bundles
+// let a teacher or researcher collect marks elsewhere and import them once;
+// progress rows show honestly how far each stream is from its study target.
+// There is deliberately no way to synthesise entries here.
+
+const VALIDATION_STORES = {
+  // Getters are lazy arrows: several of these consts are declared later in
+  // the file, and eager references would hit the temporal dead zone.
+  placementValidations: { get: () => getPlacementValidations(), record: (...a) => recordPlacementValidation(...a) },
+  progressionValidations: { get: () => getProgressionValidations(), record: (...a) => recordProgressionValidation(...a) },
+  writingSpeakingCorpus: { get: () => getWritingSpeakingCorpus(), record: (...a) => recordCorpusEntry(...a) },
+  comprehensionValidations: { get: () => getComprehensionValidations(), record: (...a) => recordComprehensionValidation(...a) },
+  intelligibilityBenchmark: { get: () => getIntelligibilityBenchmark(), record: (...a) => recordBenchmarkSample(...a) },
+  examinerScripts: { get: () => getExaminerScripts(), record: (...a) => recordExaminerMark(...a) },
+  realExamResults: { get: () => getRealExamResults(), record: (...a) => recordRealExamResult(...a) },
+};
+
+export function buildValidationBundle() {
+  const stores = {};
+  for (const [key, spec] of Object.entries(VALIDATION_STORES)) stores[key] = spec.get();
+  return {
+    format: 'le-studio.validation-study',
+    version: 1,
+    exportedAt: new Date().toISOString(),
+    stores,
+  };
+}
+
+export function ingestValidationBundle(json, { dryRun = false } = {}) {
+  const report = { ok: false, dryRun: Boolean(dryRun), added: {}, skipped: 0, attempted: 0, errors: [] };
+  let bundle;
+  try {
+    bundle = typeof json === 'string' ? JSON.parse(json) : json;
+  } catch (e) {
+    report.errors.push(`Not valid JSON: ${e.message}`);
+    return report;
+  }
+  if (bundle?.format !== 'le-studio.validation-study' || !bundle.stores || typeof bundle.stores !== 'object') {
+    report.errors.push('Not a Le Studio validation bundle (missing format/stores).');
+    return report;
+  }
+  for (const [key, spec] of Object.entries(VALIDATION_STORES)) {
+    const incoming = bundle.stores[key];
+    if (!Array.isArray(incoming)) continue;
+    const existing = new Set(spec.get().map((e) => e?.id).filter(Boolean));
+    let added = 0;
+    for (const entry of incoming) {
+      report.attempted += 1;
+      if (!entry || typeof entry !== 'object') {
+        report.errors.push(`${key}: entry is not an object`);
+        continue;
+      }
+      if (entry.id && existing.has(entry.id)) {
+        report.skipped += 1;
+        continue;
+      }
+      if (dryRun) {
+        added += 1;
+        continue;
+      }
+      const made = spec.record(entry);
+      if (made) {
+        added += 1;
+        if (made.id) existing.add(made.id);
+      } else {
+        report.errors.push(`${key}: entry rejected by schema${entry?.id ? ` (${entry.id})` : ''}`);
+      }
+    }
+    report.added[key] = added;
+  }
+  report.ok = report.errors.length === 0;
+  return report;
+}
+
+export const getStudyProgress = () =>
+  _studyProgress({
+    placements: getPlacementValidations(),
+    progression: getProgressionValidations(),
+    corpus: getWritingSpeakingCorpus(),
+    comprehension: getComprehensionValidations(),
+    benchmarks: getIntelligibilityBenchmark(),
+    examinerScripts: getExaminerScripts(),
+    realExamResults: getRealExamResults(),
+  });
 
 // ---- pronunciation intelligibility benchmark (human-labelled samples) ----
 //

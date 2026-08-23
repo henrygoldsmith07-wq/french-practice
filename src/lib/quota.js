@@ -3,7 +3,9 @@
 // the server is the source of truth; this is the honest local preview.
 
 const KEY = 'fp.quota';
-const DEFAULT_LIMIT = Number(import.meta.env.VITE_GROQ_DAILY_LIMIT || 80);
+// VITE_AI_DAILY_LIMIT is the current name; VITE_GROQ_DAILY_LIMIT kept for
+// older deployments that already set it.
+const DEFAULT_LIMIT = Number(import.meta.env.VITE_AI_DAILY_LIMIT || import.meta.env.VITE_GROQ_DAILY_LIMIT || 80);
 
 function dayStamp(d = new Date()) {
   return d.toLocaleDateString('en-CA');

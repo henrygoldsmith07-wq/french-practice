@@ -1,5 +1,7 @@
-// Groq API client — pure fetch, no SDK. Every call reports latency + token
-// usage to an optional telemetry sink so the Dev Panel can display metrics.
+// NVIDIA NIM API client — pure fetch, no SDK. Every call reports latency +
+// token usage to an optional telemetry sink so the Dev Panel can display
+// metrics. The key lives in the browser (or a build env var) and is never
+// committed.
 
 import {
   mockTurn, mockReport, mockHint, mockSentenceCheck, mockAccentFeedback,
@@ -17,11 +19,20 @@ import {
 } from './aiValidate.js';
 
 
-const BASE = 'https://api.groq.com/openai/v1';
-const CHAT_MODEL = 'llama-3.1-8b-instant';
-const WHISPER_MODEL = 'whisper-large-v3-turbo';
+const BASE = 'https://integrate.api.nvidia.com/v1';
+// Live-verified roster (probed against the account key): Super-49B v1.5 for
+// chat with JSON mode, Nano-12B VL for vision (249ms cold), and the omni
+// model for audio transcription (capacity-limited at peak times — timedFetch
+// retries 503s, and typed input remains the graceful fallback).
+const CHAT_MODEL = 'nvidia/llama-3.3-nemotron-super-49b-v1.5';
+const CHAT_FALLBACK_MODEL = 'nvidia/nemotron-nano-12b-v2-vl';
+// Speech-to-text runs through audio-input chat models (NIM has no dedicated
+// transcription endpoint here).
+const AUDIO_STT_MODEL = 'nvidia/nemotron-3-nano-omni-30b-a3b-reasoning';
+const AUDIO_STT_FALLBACK_MODEL = null;
 // Multimodal model for Snap & learn — accepts an image alongside the prompt.
-const VISION_MODEL = 'meta-llama/llama-4-scout-17b-16e-instruct';
+const VISION_MODEL = 'nvidia/nemotron-nano-12b-v2-vl';
+const VISION_FALLBACK_MODEL = 'google/gemma-4-31b-it';
 
 // Quota guard — mirrors the server relay's daily cap on the client. When a
 // relay is configured the server is authoritative; this keeps the UX honest
@@ -63,9 +74,9 @@ export function friendlyError(err) {
   const status = (msg.match(/\((\d{3})\)/) || [])[1];
   if (/timed out/i.test(msg)) return 'That took too long to come back. Check your connection and try again.';
   if (/failed to fetch|networkerror|network error|load failed/i.test(msg)) return 'Couldn’t reach the tutor — you may be offline. Check your connection and try again.';
-  if (status === '401' || status === '403' || /api key|unauthor/i.test(msg)) return 'Your Groq API key was rejected. Open Settings to check or re-enter it.';
-  if (status === '429' || /rate limit/i.test(msg)) return 'Groq is busy right now. Wait a few seconds, then try again.';
-  if (status && status[0] === '5') return 'Groq had a hiccup on their end. Give it a moment and try again.';
+  if (status === '401' || status === '403' || /api key|unauthor/i.test(msg)) return 'Your AI key was rejected. Open Settings to check or re-enter it.';
+  if (status === '429' || /rate limit/i.test(msg)) return 'The free AI models are busy right now. Wait a few seconds, then try again.';
+  if (status && status[0] === '5') return 'The AI service had a hiccup on their end. Give it a moment and try again.';
   if (/non-json|no usable|generation failed|tangled/i.test(msg)) return 'The tutor got its words tangled for a second. Try that again.';
   return 'Something went wrong reaching the tutor. Try again in a moment.';
 }
@@ -161,7 +172,7 @@ async function relayHealth() {
   return { latency: Math.round(performance.now() - t0) };
 }
 
-// ---- transcription (Whisper) ----
+// ---- transcription (audio-input chat models) ----
 
 async function toBase64(blob) {
   const bytes = new Uint8Array(await blob.arrayBuffer());
@@ -173,49 +184,116 @@ async function toBase64(blob) {
   return btoa(binary);
 }
 
-export async function transcribe(apiKey, blob, { mock } = {}) {
+// Encode Float32 mono samples as a 16-bit PCM WAV ArrayBuffer.
+function encodeWav(samples, sampleRate) {
+  const buffer = new ArrayBuffer(44 + samples.length * 2);
+  const view = new DataView(buffer);
+  const writeStr = (offset, str) => { for (let i = 0; i < str.length; i++) view.setUint8(offset + i, str.charCodeAt(i)); };
+  writeStr(0, 'RIFF');
+  view.setUint32(4, 36 + samples.length * 2, true);
+  writeStr(8, 'WAVE');
+  writeStr(12, 'fmt ');
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true); // PCM
+  view.setUint16(22, 1, true); // mono
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * 2, true);
+  view.setUint16(32, 2, true);
+  view.setUint16(34, 16, true);
+  writeStr(36, 'data');
+  view.setUint32(40, samples.length * 2, true);
+  let offset = 44;
+  for (let i = 0; i < samples.length; i++, offset += 2) {
+    const s = Math.max(-1, Math.min(1, samples[i]));
+    view.setInt16(offset, s < 0 ? s * 0x8000 : s * 0x7fff, true);
+  }
+  return buffer;
+}
+
+// Browsers record webm/opus (or mp4/aac); audio-input chat models want WAV.
+// Decode whatever we recorded, downmix to mono, resample to 16 kHz, and
+// encode WAV. Returns { data, format } — falls back to the raw container's
+// base64 when decoding is unsupported, and the model can say no.
+async function audioForTranscription(blob) {
+  try {
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    const decodeCtx = new Ctx();
+    const decoded = await decodeCtx.decodeAudioData(await blob.arrayBuffer());
+    decodeCtx.close().catch(() => {});
+    const OfflineCtx = window.OfflineAudioContext || window.webkitOfflineAudioContext;
+    const rate = 16000;
+    const offline = new OfflineCtx(1, Math.max(1, Math.ceil(decoded.duration * rate)), rate);
+    const source = offline.createBufferSource();
+    // Downmix to mono by averaging channels.
+    const mono = offline.createBuffer(1, decoded.length, decoded.sampleRate);
+    const ch0 = decoded.getChannelData(0);
+    const out = mono.getChannelData(0);
+    if (decoded.numberOfChannels > 1) {
+      const ch1 = decoded.getChannelData(1);
+      for (let i = 0; i < decoded.length; i++) out[i] = (ch0[i] + ch1[i]) / 2;
+    } else {
+      out.set(ch0);
+    }
+    source.buffer = mono;
+    source.connect(offline.destination);
+    source.start();
+    const rendered = await offline.startRendering();
+    const wav = encodeWav(rendered.getChannelData(0), rate);
+    return { data: btoa(String.fromCharCode(...new Uint8Array(wav))), format: 'wav' };
+  } catch {
+    const format = blob.type.includes('mp4') ? 'mp4' : blob.type.includes('ogg') ? 'ogg' : 'webm';
+    return { data: await toBase64(blob), format };
+  }
+}
+
+export async function transcribe(apiKey, blob, { mock = false } = {}) {
   if (mock) return mockTurn().transcript;
   assertQuota('whisper');
-  if (relayEnabled) {
-    const mimeType = String(blob.type || 'audio/webm').split(';')[0].toLowerCase();
-    const { data } = await relayFetch('whisper', '/audio/transcriptions', {
-      model: WHISPER_MODEL,
-      audio_base64: await toBase64(blob),
-      mime_type: mimeType,
-      language: LANG.whisper,
-      response_format: 'json',
-    });
-    return (data.text || '').trim();
+  const audio = await audioForTranscription(blob);
+  const buildBody = (model) => ({
+    model,
+    messages: [{
+      role: 'user',
+      content: [
+        { type: 'text', text: 'Transcribe the spoken audio exactly, in the language actually spoken, preserving natural punctuation. Output only the transcription.' },
+        { type: 'input_audio', input_audio: audio },
+      ],
+    }],
+    temperature: 0,
+    max_tokens: 1024,
+  });
+  let data;
+  try {
+    data = await sendChat(apiKey, buildBody(AUDIO_STT_MODEL), { label: 'whisper' });
+  } catch (e) {
+    // One retry on the fallback audio model when one exists.
+    if (!AUDIO_STT_FALLBACK_MODEL) throw e;
+    data = await sendChat(apiKey, buildBody(AUDIO_STT_FALLBACK_MODEL), { label: 'whisper-fallback' });
   }
-  const ext = blob.type.includes('mp4') ? 'mp4' : blob.type.includes('ogg') ? 'ogg' : 'webm';
-  const form = new FormData();
-  form.append('file', blob, `recording.${ext}`);
-  form.append('model', WHISPER_MODEL);
-  form.append('language', LANG.whisper);
-  form.append('response_format', 'json');
-  const { data } = await timedFetch('whisper', `${BASE}/audio/transcriptions`, {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${apiKey}` },
-    body: form,
-  }, { rawBody: `multipart: recording.${ext} (${Math.round(blob.size / 1024)} KB)` });
-  return (data.text || '').trim();
+  const text = data?.choices?.[0]?.message?.content || '';
+  return stripThinking(text);
 }
 
 // ---- strict-JSON chat helpers ----
 
 function extractJson(content) {
   // Models occasionally wrap JSON in fences or prose; salvage the object.
-  const direct = content.trim();
+  const direct = stripThinking(content).trim();
   try { return JSON.parse(direct); } catch { /* fall through */ }
   const match = direct.match(/\{[\s\S]*\}/);
   if (match) return JSON.parse(match[0]);
   throw new Error('Model returned non-JSON content');
 }
 
-// Provider fallback: if the primary chat model is decommissioned, unknown to
-// this key, or saturated after its own retries, one retry runs on a second
-// model. Keeps the studio talking when Groq reshapes their model catalogue.
-const CHAT_FALLBACK_MODEL = 'llama-3.3-70b-versatile';
+// Nemotron reasoning models may emit a <think>…</think> trace before the
+// answer; learners should never see it and JSON parsing must skip it.
+function stripThinking(content) {
+  return String(content || '').replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
+}
+
+// Fallback dispatch: if the primary chat model is saturated or decommissioned
+// (CHAT_FALLBACK_MODEL at the top of this file), one retry runs on the second
+// model so the studio keeps talking when a free model melts down.
 
 async function sendChat(apiKey, body, { label }) {
   const { data } = relayEnabled
@@ -260,8 +338,8 @@ async function chatJson(apiKey, messages, { temperature = 0.7, label = 'chat' } 
 // JSON chat with an attached image (multimodal). Used by Snap & learn.
 async function chatVisionJson(apiKey, { system, prompt, imageDataUrl, temperature = 0.3, label = 'vision' }) {
   assertQuota(label);
-  const body = {
-    model: VISION_MODEL,
+  const buildBody = (model) => ({
+    model,
     messages: [
       { role: 'system', content: system },
       {
@@ -275,14 +353,13 @@ async function chatVisionJson(apiKey, { system, prompt, imageDataUrl, temperatur
     temperature,
     response_format: { type: 'json_object' },
     max_tokens: 1024,
-  };
-  const { data } = relayEnabled
-    ? await relayFetch(label, '/chat/completions', body)
-    : await timedFetch(label, `${BASE}/chat/completions`, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    }, { rawBody: body });
+  });
+  let data;
+  try {
+    data = await sendChat(apiKey, buildBody(VISION_MODEL), { label });
+  } catch (e) {
+    data = await sendChat(apiKey, buildBody(VISION_FALLBACK_MODEL), { label: `${label}-fallback` });
+  }
   return extractJson(data.choices[0].message.content);
 }
 
@@ -291,7 +368,7 @@ async function chatPlain(apiKey, messages, { temperature = 0.6, label = 'chat-pl
   assertQuota(label);
   const body = { model: CHAT_MODEL, messages, temperature, max_tokens: maxTokens };
   const { data } = await chatCompletion(apiKey, body, { label });
-  return data.choices[0].message.content.trim();
+  return stripThinking(data.choices[0].message.content);
 }
 
 /// ---- AI tutor: ask anything about French ----

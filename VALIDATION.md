@@ -45,6 +45,27 @@
 - `src/lib/exams/simulator.js` `benchmarkExaminer` / `validateAgainstResults`
 - `src/lib/fsrsValidation.js` scoring + `fitParameters` with held-out split
 
+## Study targets (flagship evidence project)
+
+Publishable metrics need these n per stream. Progress lives in
+Analytics → **Evidence study** (rows move only through genuine human marks —
+teacher entry in the Developer panel, or importing a genuinely collected
+bundle via **Export/Import bundle**). Nothing is generated, ever.
+
+| Stream | Target n |
+|---|---|
+| Placement vs known teacher/exam level | 100 |
+| Held-out transfer checks (progression) | 100 |
+| Speaking recordings (AI-marked) | 300 |
+| Speaking with 2+ independent human marks | 100 |
+| Writing responses (AI-marked) | 300 |
+| Writing with 2 independent human markers | 100 |
+| Listening app+human pairs | 200 |
+| Reading app+human pairs | 200 |
+| Pronunciation benchmark samples | 200 |
+| Examiner benchmark marks | 100 |
+| Real predicted-vs-returned exam grades | 100 |
+
 ## Current counts (fresh install)
 
 ```
