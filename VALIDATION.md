@@ -60,3 +60,16 @@ assistanceLog: 0 → Not tracked
 ```
 
 Add real data and the same code paths will report `Provisional` then `Validated` without any code change.
+
+## Bulk population workflow
+
+For moving **real** rater/learner data in at scale. Three offline commands operate on a standalone research dataset (`validation-dataset.json`) — app stores are never written by these tools, and every row is validated through the same schema factories the app uses (`makePlacementValidationEntry`, `makeCorpusEntry`, `makeComprehensionEntry`, `makeBenchmarkSample`, …). Rejected rows are reported and counted, never coerced; nothing is generated to fill a gap.
+
+1. **Import** — `npm run validation:import -- --dataset validation-dataset.json --track placement --file learners.csv [--format csv|jsonl] [--append]`
+   Tracks: `placement`, `progression`, `corpus`, `comprehension`, `pronunciation`, `examiner`, `real-exam`, `assistance`. CSV headers map to factory fields (e.g. `knownLevel,placedLevel,theta,se,itemsAsked,rater,source,at`; progression takes dotted `unseen.reading…` columns; pronunciation takes a `raters` column). Without `--append` the track is replaced by the batch; with it, rows merge in (exact duplicates refused, conflicting variants keep the incumbent and are counted). Writes are atomic.
+2. **Packet marking** — `npm run validation:packet -- --make --track speaking --n 30 --raters 3 --out packets/speaking-batch1.json` samples corpus items awaiting marks into an anonymised packet (item content only: itemId/prompt/transcript/response/audioRef — no learner identifiers ever leave the dataset). Raters return `{batchId, track, marks:[{itemId, score, corrections?}]}` and it is folded back with attribution: `npm run validation:packet -- --merge packets/speaking-batch1.raterA.json --rater raterA --into validation-dataset.json`.
+3. **Report** — `npm run validation:status [--dataset validation-dataset.json] [--json]` reuses the app's own calculators (`placementValidationMetrics`, `corpusScoreAgreement` + `corpusInterRaterMetrics`, `comprehensionAgreement`, `runBenchmark`, `benchmarkExaminer`, `validateAgainstResults`, `assistanceMetrics`, FSRS log-loss/Brier/ECE over review events) and prints per-track `n / floor / target / status / headline`. Empty tracks print `no-data` with `—`; numbers appear only when real rows exist (full headline wording at floor met).
+
+**Rater independence**: a second mark (`rater2`) whose rater matches the first rater for the same item is refused at import/merge time — agreement measured against itself is not evidence. This mirrors the Dev Panel rule on `updateCorpusSecondMark`.
+
+**Honesty**: these tools add plumbing, not data. The zero-state guarantees above (empty stores ship empty, `no-data` until real entries exist) are enforced by `tests/validation-population.test.js`.
