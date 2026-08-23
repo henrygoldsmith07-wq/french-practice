@@ -70,7 +70,7 @@ export default function ChatArena({ apiKey, mockMode, ttsRate, level, onTtsRate,
   }, [secondsLeft, onEndSession]);
 
   const recorder = useRecorder({
-    onComplete: async (blob, durationMs) => {
+    onComplete: async (blob, durationMs, acoustic = {}) => {
       if (navigator.vibrate) navigator.vibrate([20, 40, 20]); // haptic: stopped
       setPhase('transcribing');
       setError(null);
@@ -79,7 +79,12 @@ export default function ChatArena({ apiKey, mockMode, ttsRate, level, onTtsRate,
         setDraft(text);
         // Coach on delivery from the raw spoken transcript, before any edits.
         const m = speechMetrics(text, durationMs, activeLanguage().id);
-        setSpoken(m.fillers > 0 || m.pace === 'fast' ? m : null);
+        const delivery = { ...m, pauseCount: acoustic.pauseCount || 0, longestPauseMs: acoustic.longestPauseMs || 0 };
+        setSpoken(
+          delivery.fillers > 0 || delivery.pace === 'fast' || delivery.pauseCount >= 2 || delivery.longestPauseMs > 1800
+            ? delivery
+            : null
+        );
         setPhase('editing'); // review/edit before it goes to the LLM
       } catch (e) {
         setError(friendlyError(e));
@@ -436,7 +441,9 @@ export default function ChatArena({ apiKey, mockMode, ttsRate, level, onTtsRate,
               <p className="text-[11px] text-review bg-reviewsoft rounded-lg px-2.5 py-1.5" role="status">
                 {spoken.fillers > 0
                   ? <>Coach: you hesitated on «{spoken.fillerWords.join('», «')}» — try to land the phrase in one breath.</>
-                  : <>Coach: that came out fast ({spoken.wpm} wpm) — a slightly slower pace reads clearer.</>}
+                  : spoken.longestPauseMs > 1800
+                    ? <>Coach: a {(spoken.longestPauseMs / 1000).toFixed(1)}s pause mid-answer — bridge with «et puis…» while you think.</>
+                    : <>Coach: that came out fast ({spoken.wpm} wpm) — a slightly slower pace reads clearer.</>}
               </p>
             )}
             <textarea

@@ -10,6 +10,7 @@ import { speak, stopSpeaking, adaptiveTtsRate } from '../lib/tts';
 import { SpeakButton, Spinner } from './ui';
 import { accentToleranceScore, calibratedConfidence, PHONEMES, getPhonemeProfile, nextMinimalPair, recordPhonemeAttempt, weakestPhonemes } from '../lib/phonemeProfile';
 import { noiseGate } from '../lib/adaptivePractice';
+import { evaluateFluency, PAUSE_MIN_MS } from '../lib/speakingEvaluation';
 import { Mic, Square, Play, RefreshCw } from './icons';
 
 // Pronunciation ("read aloud") and Shadowing ("listen & repeat") drills.
@@ -32,7 +33,7 @@ export default function Pronunciation({ mode, apiKey, mockMode, ttsRate, level, 
 
   const [phonemeTick, setPhonemeTick] = useState(0);
   const recorder = useRecorder({
-    onComplete: async (blob, durationMs) => {
+    onComplete: async (blob, durationMs, acoustic = {}) => {
       setPhase('scoring');
       setError(null);
       // Noise gate
@@ -66,13 +67,22 @@ export default function Pronunciation({ mode, apiKey, mockMode, ttsRate, level, 
           label: shadow ? 'Shadowing clarity' : 'Read-aloud clarity',
         });
         const metrics = speechMetrics(heard, durationMs, activeLanguage().id);
+        // Fluency: acoustic pausing + delivery + vocabulary variety, all local.
+        const fluency = evaluateFluency({
+          heard,
+          durationMs,
+          wpm: metrics.wpm,
+          fillers: metrics.fillers,
+          words: metrics.words,
+          stats: acoustic,
+        });
         // Phoneme bookkeeping (light): treat underlined = miss
         for(let i=0;i<target.length;i++) recordPhonemeAttempt('overall', { correct: hits[i], confidence: accCal, trackGap: false });
         recordPronunciationGap(`${mode}:sentence-clarity`, {
           label: 'Sentence clarity',
           score: accuracy,
           source: shadow ? 'shadowing' : 'read-aloud',
-          context: { missedWords: target.filter((_, i) => !hits[i]).slice(0, 8), rawAccuracy: Math.round(rawAcc * 100) },
+          context: { missedWords: target.filter((_, i) => !hits[i]).slice(0, 8), rawAccuracy: Math.round(rawAcc * 100), fluency: fluency.score, pauses: fluency.pausing.pauseCount },
         });
         setPhonemeTick(t=>t+1);
         void phonemeTick; void PHONEMES; void getPhonemeProfile;
@@ -82,7 +92,7 @@ export default function Pronunciation({ mode, apiKey, mockMode, ttsRate, level, 
         } catch {
           feedback = ''; // scoring still stands without coach commentary
         }
-        setResult({ heard, accuracy, gained, hits: displayHits(sentence.text, hits), feedback, metrics, rawAcc: Math.round(rawAcc*100), calibrated: accuracy });
+        setResult({ heard, accuracy, gained, hits: displayHits(sentence.text, hits), feedback, metrics, fluency, rawAcc: Math.round(rawAcc*100), calibrated: accuracy });
       } catch (e) {
         setError(friendlyError(e));
       }
@@ -177,7 +187,7 @@ export default function Pronunciation({ mode, apiKey, mockMode, ttsRate, level, 
             <p className="text-[11px] text-ink3 mt-1">Underlined words above weren't recognized — they're your likely trouble spots.</p>
           </div>
 
-          {/* delivery: how fast, and how many audible hesitations */}
+          {/* delivery: pace, hesitations, pausing, vocabulary variety */}
           {result.metrics && (
             <div className="grid grid-cols-2 gap-2">
               <div className="bg-surface2 rounded-xl px-3.5 py-2.5">
@@ -196,7 +206,35 @@ export default function Pronunciation({ mode, apiKey, mockMode, ttsRate, level, 
                   {result.metrics.fillers === 0 ? 'none heard — fluent' : 'filler word' + (result.metrics.fillers > 1 ? 's' : '')}
                 </p>
               </div>
+              {result.fluency && (
+                <>
+                  <div className="bg-surface2 rounded-xl px-3.5 py-2.5">
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-ink3">Pauses</p>
+                    <p className="text-lg font-bold text-ink tabular-nums leading-tight">{result.fluency.pausing.pauseCount}</p>
+                    <p className="text-[11px] text-ink3">
+                      {result.fluency.pausing.longestPauseMs > 0
+                        ? `longest ${(result.fluency.pausing.longestPauseMs / 1000).toFixed(1)}s`
+                        : 'no stalls detected'}
+                    </p>
+                  </div>
+                  <div className="bg-surface2 rounded-xl px-3.5 py-2.5">
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-ink3">Fluency</p>
+                    <p className="text-lg font-bold text-ink tabular-nums leading-tight">
+                      {result.fluency.score != null ? `${result.fluency.score}` : '—'}
+                      {result.fluency.richness && <span className="text-[11px] font-normal text-ink3"> /100</span>}
+                    </p>
+                    <p className="text-[11px] text-ink3">
+                      {result.fluency.richness ? `${result.fluency.richness.level} vocabulary` : 'short sample'}
+                    </p>
+                  </div>
+                </>
+              )}
             </div>
+          )}
+          {result.fluency && result.fluency.pausing.longestPauseMs > PAUSE_MIN_MS * 5 && (
+            <p className="text-[11px] text-review bg-reviewsoft rounded-lg px-2.5 py-1.5" role="status">
+              Coach: you stalled {(result.fluency.pausing.longestPauseMs / 1000).toFixed(1)}s mid-answer — link phrases with «et puis…» or «alors…» to keep the flow.
+            </p>
           )}
           {result.feedback && (
             <div className="bg-surface2 border border-line rounded-xl px-3.5 py-2.5">

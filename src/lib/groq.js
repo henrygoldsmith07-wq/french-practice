@@ -212,6 +212,38 @@ function extractJson(content) {
   throw new Error('Model returned non-JSON content');
 }
 
+// Provider fallback: if the primary chat model is decommissioned, unknown to
+// this key, or saturated after its own retries, one retry runs on a second
+// model. Keeps the studio talking when Groq reshapes their model catalogue.
+const CHAT_FALLBACK_MODEL = 'llama-3.3-70b-versatile';
+
+async function sendChat(apiKey, body, { label }) {
+  const { data } = relayEnabled
+    ? await relayFetch(label, '/chat/completions', body)
+    : await timedFetch(label, `${BASE}/chat/completions`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }, { rawBody: body });
+  return data;
+}
+
+async function chatCompletion(apiKey, body, { label } = {}) {
+  try {
+    return await sendChat(apiKey, body, { label });
+  } catch (e) {
+    const msg = String(e?.message || '');
+    const worthFallback =
+      body.model !== CHAT_FALLBACK_MODEL &&
+      (/model.*(not found|decommission|does not exist|invalid)/i.test(msg) ||
+        /\((429|5\d\d)\)/.test(msg));
+    if (!worthFallback) throw e;
+    const fallbackBody = { ...body, model: CHAT_FALLBACK_MODEL };
+    const data = await sendChat(apiKey, fallbackBody, { label: `${label}-fallback` });
+    return { data, fallbackUsed: true };
+  }
+}
+
 async function chatJson(apiKey, messages, { temperature = 0.7, label = 'chat' } = {}) {
   assertQuota(label);
   const body = {
@@ -221,16 +253,7 @@ async function chatJson(apiKey, messages, { temperature = 0.7, label = 'chat' } 
     response_format: { type: 'json_object' },
     max_tokens: 1024,
   };
-  const { data } = relayEnabled
-    ? await relayFetch(label, '/chat/completions', body)
-    : await timedFetch(label, `${BASE}/chat/completions`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(body),
-    }, { rawBody: body });
+  const { data } = await chatCompletion(apiKey, body, { label });
   return extractJson(data.choices[0].message.content);
 }
 
@@ -267,13 +290,7 @@ async function chatVisionJson(apiKey, { system, prompt, imageDataUrl, temperatur
 async function chatPlain(apiKey, messages, { temperature = 0.6, label = 'chat-plain', maxTokens = 700 } = {}) {
   assertQuota(label);
   const body = { model: CHAT_MODEL, messages, temperature, max_tokens: maxTokens };
-  const { data } = relayEnabled
-    ? await relayFetch(label, '/chat/completions', body)
-    : await timedFetch(label, `${BASE}/chat/completions`, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    }, { rawBody: body });
+  const { data } = await chatCompletion(apiKey, body, { label });
   return data.choices[0].message.content.trim();
 }
 

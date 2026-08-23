@@ -12,6 +12,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 const SILENCE_MS = 3500; // VAD: auto-stop after 3.5 s of silence
 const SILENCE_RMS = 0.012; // empirical noise floor for "silence"
 const SPEECH_RMS = 0.03; // must cross this once before VAD arms itself
+const VOICED_RMS = 0.018; // above this a frame counts as voiced (fluency maths)
+const PAUSE_MIN_MS = 350; // gaps shorter than this are word boundaries
 
 function pickMimeType() {
   if (typeof MediaRecorder === 'undefined') return '';
@@ -115,6 +117,12 @@ export default function useRecorder({ onComplete }) {
 
     const chunks = [];
     const startedAt = performance.now();
+    // Acoustic fluency stats, accumulated by the tick loop and handed to the
+    // caller with the blob: how much of the attempt was actually voiced, and
+    // the pauses between phrases (≥ PAUSE_MIN_MS of quiet after speech).
+    const stats = { voicedMs: 0, totalPauseMs: 0, pauseCount: 0, longestPauseMs: 0 };
+    let lastTickAt = null;
+    let silenceRunMs = 0;
     recorder.ondataavailable = (e) => {
       if (e.data.size > 0) chunks.push(e.data);
     };
@@ -126,7 +134,7 @@ export default function useRecorder({ onComplete }) {
       setPeakDb(-Infinity);
       setElapsed(0);
       if (blob.size > 1200 && durationMs > 400) {
-        onCompleteRef.current?.(blob, durationMs);
+        onCompleteRef.current?.(blob, Math.round(durationMs), stats);
       }
     };
 
@@ -148,6 +156,30 @@ export default function useRecorder({ onComplete }) {
       }
       const rms = Math.sqrt(sumSq / timeData.length);
       setPeakDb(peak > 0 ? Math.max(-60, 20 * Math.log10(peak)) : -60);
+
+      // --- fluency accumulation (frame-difference timing, no drift) ---
+      const now = performance.now();
+      if (lastTickAt != null) {
+        const dt = Math.min(200, now - lastTickAt); // clamp tab-throttle spikes
+        const voiced = rms >= VOICED_RMS;
+        if (voiced && speechArmed) {
+          stats.voicedMs += dt;
+          if (silenceRunMs >= PAUSE_MIN_MS) {
+            stats.pauseCount += 1;
+            stats.totalPauseMs += silenceRunMs;
+            stats.longestPauseMs = Math.max(stats.longestPauseMs, silenceRunMs);
+          }
+          silenceRunMs = 0;
+        } else if (voiced || !speechArmed) {
+          // pre-speech noise doesn't count as a pause
+          silenceRunMs = voiced ? silenceRunMs : 0;
+        } else {
+          silenceRunMs += dt;
+        }
+        lastTickAt = now;
+      } else {
+        lastTickAt = now;
+      }
 
       if (rms > SPEECH_RMS) {
         speechArmed = true;
