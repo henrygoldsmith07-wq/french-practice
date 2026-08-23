@@ -481,9 +481,13 @@ export default function App() {
       <span className="sr-only" role="status" aria-live="polite">
         {xpGain ? `${xpGain.amount} XP earned` : ''}
       </span>
-      <header className="flex items-center gap-2 px-4 py-2.5 border-b border-line bg-surface backdrop-blur">
+      {/* flex-wrap: on a narrow phone the title, the streak/XP badges and the
+          five header controls together exceed the viewport, and without it the
+          row overflowed horizontally and pushed Settings off-screen. Wrapping
+          keeps every control reachable rather than truncating or hiding one. */}
+      <header className="flex flex-wrap items-center gap-2 px-4 py-2.5 border-b border-line bg-surface backdrop-blur">
         <img src="/logo.svg" alt="" width={27} height={27} className="rounded-lg" aria-hidden="true" />
-        <h1 className="font-bold text-lg text-ink tracking-tight mr-1 whitespace-nowrap">
+        <h1 className="font-bold text-lg text-ink tracking-tight mr-1 whitespace-nowrap min-w-0">
           {getLanguage(settings.language).studio}
           <span className="sr-only"> — {getLanguage(settings.language).name} speaking practice</span>
         </h1>
