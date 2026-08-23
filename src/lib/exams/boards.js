@@ -50,56 +50,167 @@ export const EXAM_MODES = {
  * slot. `prep` is supervised preparation time; `target` is the length a
  * candidate should be aiming to fill.
  */
+
+// ─────────────────────────────────────────────────────────────────────────────
+// WJEC GCSE French — explicit qualification VERSIONS.
+//
+// Wales has TWO live GCSE French qualifications:
+//   • Legacy 3800QS — taught from 2016. Final full assessment Summer 2026;
+//     January 2027 resit only where offered.
+//   • Made for Wales 3830QS — first teaching September 2025, first assessment
+//     Summer 2027, first certification Summer 2027. Curriculum for Wales.
+//
+// Each version carries its own code/effective dates/source revision so specs
+// can be updated without touching the simulator. Structure for 3830QS is
+// verified against the WJEC Delivery Guide ("Teaching from 2025", © WJEC CBAC
+// Ltd 2025): Unit 1 Oracy NEA 30% (speaking 7–10 min + 10 min prep; three
+// tasks: read aloud & role-play · presentation & discussion · conversation),
+// Unit 2 Reading & Writing NEA 15%, Unit 3 Listening 20% (45 min), Unit 4
+// Reading & Writing 35% (90 min, incl. translation French → Cymraeg/English).
+// Per-task mark splits inside Unit 1 are OUR provisional modelling pending
+// published SAMs — every such task is flagged `provisionalSplit`.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const WJEC_GCSE_3800 = {
+  id: 'wjec-gcse-3800',
+  name: 'WJEC GCSE French',
+  badge: '3800QS · final award 2026',
+  qualification: 'GCSE',
+  country: 'Wales',
+  qualCode: '3800QS',
+  version: '3800-2016',
+  specVersion: 'Legacy GCSE French (3800QS, teaching from 2016)',
+  effectiveFrom: '2016-09',
+  finalFullAssessment: '2026-summer',
+  resitWindow: '2027-january (where applicable)',
+  verifiedAt: '2026-08-23',
+  supersededBy: 'wjec-gcse-3830',
+  verifyAt: 'wjec.co.uk — 3800QS final full assessment Summer 2026; check for January 2027 resit availability',
+  tiers: [TIER.FOUNDATION, TIER.HIGHER],
+  // Overall speaking assessment weighting within the qualification.
+  speakingWeight: 0.25,
+  tasks: [
+    {
+      id: 'roleplay',
+      label: 'Role-play',
+      prepShared: true,
+      target: { foundation: 90, higher: 120 },
+      marks: { foundation: 10, higher: 10 },
+      blurb: 'A scripted scenario with five prompts, one of which asks a question.',
+    },
+    {
+      id: 'photocard',
+      label: 'Photo card',
+      prepShared: true,
+      target: { foundation: 120, higher: 150 },
+      marks: { foundation: 10, higher: 10 },
+      blurb: 'Describe a photo, then answer questions connected to its theme.',
+    },
+    {
+      id: 'conversation',
+      label: 'Conversation',
+      prepShared: false,
+      target: { foundation: 180, higher: 240 },
+      marks: { foundation: 30, higher: 30 },
+      blurb: 'An unscripted conversation across two themes, including your own questions.',
+    },
+  ],
+  prepTotal: 900,
+  themes: [
+    'Identity and relationships with others',
+    'Healthy living and lifestyle',
+    'Education and work',
+    'Free-time activities',
+    'Customs, festivals and celebrations',
+    'Celebrity culture',
+    'Travel and tourism',
+    'Media and technology',
+    'The environment and where people live',
+  ],
+  grades: ['9', '8', '7', '6', '5', '4', '3', '2', '1', 'U'],
+};
+
+export const WJEC_GCSE_3830 = {
+  id: 'wjec-gcse-3830',
+  name: 'WJEC GCSE French (Made for Wales)',
+  badge: '3830QS · first award 2027',
+  qualification: 'GCSE',
+  country: 'Wales',
+  qualCode: '3830QS',
+  version: '3830-2025',
+  specVersion: 'GCSE French — Made for Wales (teaching from 2025)',
+  effectiveFrom: '2025-09',
+  firstAssessment: '2027-summer',
+  sourceRevision: '2026-03',
+  verifiedAt: '2026-08-23',
+  supersededBy: null,
+  verifyAt: 'wjec.co.uk/qualifications/french-gcse-teaching-from-2025 — amendments (Appendix A +1 adverb, Appendix B +24 vocabulary items) assessable from Summer 2028',
+  tiers: [], // Made-for-Wales GCSEs are untiered
+  speakingWeight: 0.30, // Unit 1 Oracy weighting
+  tasks: [
+    {
+      id: 'read-aloud-roleplay',
+      label: 'Read aloud & role-play',
+      prepShared: true,
+      target: { default: 150 },
+      marks: { default: 20 },
+      provisionalSplit: true,
+      blurb: 'Read a short passage aloud, then handle a role-play built around it.',
+    },
+    {
+      id: 'presentation-discussion',
+      label: 'Presentation & discussion',
+      prepShared: false,
+      target: { default: 210 },
+      marks: { default: 20 },
+      provisionalSplit: true,
+      blurb: 'Give a short presentation, then respond to the examiner’s questions.',
+    },
+    {
+      id: 'conversation',
+      label: 'Conversation',
+      prepShared: false,
+      target: { default: 240 },
+      marks: { default: 20 },
+      provisionalSplit: true,
+      blurb: 'An unscripted conversation drawing on the three broad themes.',
+    },
+  ],
+  prepTotal: 600, // 10 minutes supervised preparation
+  // The three broad areas of study for the Made-for-Wales qualification.
+  themes: [
+    'Language for leisure and wellbeing',
+    'Language for travel',
+    'Language for study and work',
+  ],
+  units: [
+    { unit: 1, title: 'Oracy', type: 'NEA', weighting: 0.30, marks: 60, durationMinutes: '7–10', prepMinutes: 10 },
+    { unit: 2, title: 'Reading and Writing', type: 'NEA', weighting: 0.15, marks: 45, durationMinutes: 60 },
+    { unit: 3, title: 'Listening', type: 'written', weighting: 0.20, marks: 45, durationMinutes: 45 },
+    { unit: 4, title: 'Reading and Writing', type: 'written', weighting: 0.35, marks: 70, durationMinutes: 90, includes: 'translation from French into Cymraeg/English' },
+  ],
+  amendments: {
+    summary: 'Appendix A grammar list +1 adverb; Appendix B core vocabulary +24 items',
+    assessableFrom: '2028-summer',
+  },
+  grades: ['9', '8', '7', '6', '5', '4', '3', '2', '1', 'U'],
+};
+
 export const BOARDS = {
+  // ── WJEC GCSE French — LEGACY 3800QS ──
+  'wjec-gcse-3800': WJEC_GCSE_3800,
+
+  // ── WJEC GCSE French — MADE FOR WALES 3830QS ──
+  'wjec-gcse-3830': WJEC_GCSE_3830,
+
+  // Back-compat alias: older callers (practice-bank tags, saved sessions,
+  // boundary sets) still say `wjec-gcse`. It now means EXPLICITLY the legacy
+  // 3800QS qualification — never a generic board.
   'wjec-gcse': {
+    ...WJEC_GCSE_3800,
     id: 'wjec-gcse',
-    name: 'WJEC GCSE French',
-    qualification: 'GCSE',
-    country: 'Wales',
-    specVersion: 'Reformed GCSE (first teaching 2024)',
-    verifyAt: 'wjec.co.uk — check the current specification before relying on timings',
-    tiers: [TIER.FOUNDATION, TIER.HIGHER],
-    // Overall speaking assessment weighting within the qualification.
-    speakingWeight: 0.25,
-    tasks: [
-      {
-        id: 'roleplay',
-        label: 'Role-play',
-        prepShared: true,
-        target: { foundation: 90, higher: 120 },
-        marks: { foundation: 10, higher: 10 },
-        blurb: 'A scripted scenario with five prompts, one of which asks a question.',
-      },
-      {
-        id: 'photocard',
-        label: 'Photo card',
-        prepShared: true,
-        target: { foundation: 120, higher: 150 },
-        marks: { foundation: 10, higher: 10 },
-        blurb: 'Describe a photo, then answer questions connected to its theme.',
-      },
-      {
-        id: 'conversation',
-        label: 'Conversation',
-        prepShared: false,
-        target: { foundation: 180, higher: 240 },
-        marks: { foundation: 30, higher: 30 },
-        blurb: 'An unscripted conversation across two themes, including your own questions.',
-      },
-    ],
-    prepTotal: 900,
-    themes: [
-      'Identity and relationships with others',
-      'Healthy living and lifestyle',
-      'Education and work',
-      'Free-time activities',
-      'Customs, festivals and celebrations',
-      'Celebrity culture',
-      'Travel and tourism',
-      'Media and technology',
-      'The environment and where people live',
-    ],
-    grades: ['9', '8', '7', '6', '5', '4', '3', '2', '1', 'U'],
+    aliasFor: 'wjec-gcse-3800',
+    aliasOnly: true, // hidden from boardList(); resolve via resolveWjecGcse()
   },
 
   'wjec-alevel': {
@@ -238,9 +349,63 @@ export const BOARDS = {
   },
 };
 
-export const boardList = () => Object.values(BOARDS);
+export const boardList = () => Object.values(BOARDS).filter((b) => !b.aliasOnly);
 export const getBoard = (id) => BOARDS[id] || null;
 export const getTask = (boardId, taskId) => getBoard(boardId)?.tasks.find((t) => t.id === taskId) || null;
+
+// ── Qualification versioning ───────────────────────────────────────────────
+// Machine-readable version tree for WJEC GCSE French. Specs update by editing
+// the version objects above; nothing downstream needs rewriting.
+
+export const QUALIFICATION_VERSIONS = {
+  'wjec-gcse': [
+    {
+      id: 'wjec-gcse-3800',
+      qualCode: '3800QS',
+      version: '3800-2016',
+      effectiveFrom: '2016-09',
+      finalFullAssessment: '2026-summer',
+      resitWindow: '2027-january (where applicable)',
+      status: 'legacy',
+    },
+    {
+      id: 'wjec-gcse-3830',
+      qualCode: '3830QS',
+      version: '3830-2025',
+      effectiveFrom: '2025-09',
+      firstAssessment: '2027-summer',
+      sourceRevision: '2026-03',
+      verifiedAt: '2026-08-23',
+      status: 'current',
+    },
+  ],
+};
+
+/**
+ * Resolve which WJEC GCSE qualification applies to an exam sitting.
+ * Defaults to the NEXT summer series from today (August onward rolls into the
+ * following summer). The January 2027 sitting is legacy-only.
+ */
+export function resolveWjecGcse({ examYear = null, sitting = 'summer' } = {}) {
+  let year = examYear;
+  if (year == null) {
+    const now = new Date();
+    year = now.getMonth() + 1 >= 8 ? now.getFullYear() + 1 : now.getFullYear();
+  }
+  year = Number(year);
+  if (!Number.isFinite(year)) return getBoard('wjec-gcse-3830');
+  if ((sitting === 'january' && year === 2027) || year <= 2026) return getBoard('wjec-gcse-3800');
+  if (sitting === 'january') return getBoard('wjec-gcse-3800'); // no January series for 3830QS yet — legacy assumption flagged via resitWindow
+  return getBoard('wjec-gcse-3830');
+}
+
+/** Resolve any board id; WJEC GCSE ids route through the version resolver. */
+export function resolveBoard(boardId, { examYear = null, sitting = 'summer' } = {}) {
+  if (boardId === 'wjec-gcse' || boardId === 'wjec-gcse-3800' || boardId === 'wjec-gcse-3830') {
+    return resolveWjecGcse({ examYear, sitting });
+  }
+  return getBoard(boardId);
+}
 
 /** Task length for a tier, falling back to the default where tiers do not apply. */
 export function targetSeconds(boardId, taskId, tier = TIER.HIGHER) {
@@ -367,6 +532,9 @@ export const TASK_CRITERIA = {
   roleplay: ['communication', 'accuracy'],
   photocard: ['communication', 'range', 'accuracy'],
   'reading-aloud': ['pronunciation', 'communication'],
+  // Made-for-Wales 3830QS Unit 1 tasks
+  'read-aloud-roleplay': ['pronunciation', 'communication', 'accuracy'],
+  'presentation-discussion': ['communication', 'range', 'accuracy', 'spontaneity'],
   conversation: ['communication', 'range', 'accuracy', 'spontaneity', 'pronunciation'],
   stimulus: ['communication', 'range', 'accuracy', 'spontaneity'],
   research: ['communication', 'range', 'accuracy', 'spontaneity'],
@@ -392,7 +560,8 @@ export function bandFor(criterionId, score) {
 export function specCaveat(boardId) {
   const b = getBoard(boardId);
   if (!b) return '';
-  return `Modelled on the ${b.specVersion}. Specifications change — verify timings and task order at ${b.verifyAt}.`;
+  const versionTag = b.qualCode ? ` (${b.qualCode}, version ${b.version})` : '';
+  return `Modelled on the ${b.specVersion}${versionTag}. Specifications change — verify timings and task order at ${b.verifyAt}.`;
 }
 
 /**

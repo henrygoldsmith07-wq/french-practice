@@ -7,7 +7,7 @@ import {
   recordRealExamResult, recordSkillScore, saveExamBoundarySet,
 } from '../lib/storage';
 import {
-  BOARDS, CRITERIA, EXAM_MODE, EXAM_MODES, TASK_CRITERIA, TIER, boardList, specCaveat, timingQa,
+  BOARDS, CRITERIA, EXAM_MODE, EXAM_MODES, TASK_CRITERIA, TIER, boardList, resolveWjecGcse, specCaveat, timingQa,
 } from '../lib/exams/boards.js';
 import {
   PHASE, buildPaper, initRun, beginPrep, beginSpeaking, timeLeft, phaseAllowance,
@@ -34,7 +34,7 @@ const fmt = (s) => {
 };
 
 export default function ExamSimulator({ apiKey, mockMode, onXp, onActivity }) {
-  const [boardId, setBoardId] = useState('wjec-gcse');
+  const [boardId, setBoardId] = useState(() => resolveWjecGcse().id);
   const [tier, setTier] = useState(TIER.HIGHER);
   const [theme, setTheme] = useState('');
   const [mode, setMode] = useState('full');
@@ -132,9 +132,10 @@ function Setup({
                 <button
                   key={b.id}
                   onClick={() => { setBoardId(b.id); if (!b.tiers.length) setTier(TIER.HIGHER); }}
-                  className={`text-left rounded-xl border px-3 py-2 text-sm transition ${boardId === b.id ? 'border-ink bg-ink text-bg' : 'border-line hover:border-ink2'}`}
+                  className={`text-left rounded-xl border px-3 py-2 text-sm transition ${boardId === b.id || (BOARDS[boardId]?.aliasFor === b.id) ? 'border-ink bg-ink text-bg' : 'border-line hover:border-ink2'}`}
                 >
-                  <span className="font-semibold block">{b.name}</span>
+                  <span className="block font-medium">{b.name}</span>
+                  {b.badge && <span className="block text-[10px] opacity-70">{b.badge}</span>}
                   <span className={`text-[11px] ${boardId === b.id ? 'opacity-80' : 'text-ink2'}`}>{b.qualification} · {b.country}</span>
                 </button>
               ))}

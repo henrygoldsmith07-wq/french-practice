@@ -666,7 +666,15 @@ export const READING_TASKS = [
 // ------------------------------------------------------------- selection ----
 
 const tierMatch = (item, tier) => !tier || !item.tier || item.tier === tier;
-const boardMatch = (item, boardId) => !boardId || !item.boards || item.boards.includes(boardId);
+// WJEC GCSE practice items are tagged with the historical `wjec-gcse` family
+// id; both qualification versions (3800QS / 3830QS) draw from the same bank.
+const BOARD_FAMILY = {
+  'wjec-gcse': 'wjec-gcse',
+  'wjec-gcse-3800': 'wjec-gcse',
+  'wjec-gcse-3830': 'wjec-gcse',
+};
+const boardMatch = (item, boardId) =>
+  !boardId || !item.boards || item.boards.includes(boardId) || (BOARD_FAMILY[boardId] && item.boards.includes(BOARD_FAMILY[boardId]));
 
 export function pickRoleplay({ theme = null, tier = null, boardId = null, exclude = [] } = {}) {
   return pick(ROLEPLAYS, { theme, tier, boardId, exclude });
