@@ -89,6 +89,8 @@ const KEYS = {
   contentCalibration: 'fp.contentCalibration.v1', // cached audit results
   lastPlacement: 'fp.lastPlacement.v1', // most recent adaptive placement result, for teacher pairing
   intelligibilityBenchmark: 'fp.intelligibilityBenchmark.v1', // human-rated recordings { target, transcript, humanMean, raters }
+  authenticAudioPack: 'fp.authenticAudioPack.v1', // imported licensed-recording catalog (validated by authenticAudio.validateAsset)
+  listeningProgression: 'fp.listeningProgression.v1', // { currentStage, attempts[], unlockedAt{}, stageStats[] }
 };
 
 export { KEYS };
@@ -1948,6 +1950,28 @@ export const getIntelligibilityBenchmark = () => {
   const v = read(KEYS.intelligibilityBenchmark, []);
   return Array.isArray(v) ? v : [];
 };
+
+// ── Authentic audio: licensed real recordings + 7-stage progression ──────
+export const getAuthenticAudioPack = () => {
+  const v = read(KEYS.authenticAudioPack, []);
+  return Array.isArray(v) ? v : [];
+};
+
+export function setAuthenticAudioPack(assets) {
+  write(KEYS.authenticAudioPack, Array.isArray(assets) ? assets : []);
+  return getAuthenticAudioPack();
+}
+
+export const getListeningProgression = () => {
+  const v = read(KEYS.listeningProgression, null);
+  return v && typeof v === 'object' ? v : { currentStage: 1, attempts: [], unlockedAt: {} };
+};
+
+export function saveListeningProgression(state) {
+  if (!state || typeof state !== 'object') return getListeningProgression();
+  write(KEYS.listeningProgression, state);
+  return state;
+}
 
 export function recordBenchmarkSample(sample) {
   const made = _makeBenchmarkSample(sample);

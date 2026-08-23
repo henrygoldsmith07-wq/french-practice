@@ -215,11 +215,41 @@ const BASE_TRACKS = [
 
 export const tracksByKind = (kind) => LISTENING_TRACKS.filter((t) => t.kind === kind);
 
-export const getTrack = (id) => LISTENING_TRACKS.find((t) => t.id === id) || null;
+export const getTrack = (id) => allListeningTracks().find((t) => t.id === id) || null;
 
 // The second-wave library (stories, longer podcasts, multi-voice dialogues and
 // adapted news) merges in here so every consumer keeps one import surface.
 export const LISTENING_TRACKS = [...BASE_TRACKS, ...NEW_LISTENING_TRACKS];
+
+// ── Authentic audio (real recordings) ────────────────────────────────────────
+// Imported licensed-recording packs surface as regular listening tracks of
+// kind 'authentique'. Storage is imported lazily-tolerantly: in node tests
+// there is no localStorage and the pack is simply empty.
+import { getAuthenticAudioPack } from './storage.js';
+
+export function authenticTrackFromAsset(a) {
+  return {
+    id: `aa-${a.id}`,
+    kind: 'authentique',
+    cefr: a.cefr || 'B1',
+    title: a.title,
+    description: a.notes || `Real recording — ${a.license}`,
+    audioSrc: a.audioSrc,
+    audioId: a.id,
+    attribution: a.attribution || `${a.title} — ${a.license}${a.speakers?.length ? ` (readers: ${a.speakers.join(', ')})` : ''}`,
+    stage: a.stage,
+    lines: a.lines || [],
+    questions: a.questions || [],
+  };
+}
+
+/** Built-in TTS tracks + any imported real-recording tracks. */
+export function allListeningTracks() {
+  const pack = (() => {
+    try { return getAuthenticAudioPack(); } catch { return []; }
+  })();
+  return [...LISTENING_TRACKS, ...(Array.isArray(pack) ? pack.map(authenticTrackFromAsset) : [])];
+}
 
 /** Tracks banded at or below a level, easiest first — for the path engine. */
 export function tracksUpTo(cefr) {

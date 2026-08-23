@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { LISTENING_KINDS, LISTENING_TRACKS, getTrack } from '../lib/listening';
+import { LISTENING_KINDS, allListeningTracks, getTrack } from '../lib/listening';
 import { recordSkillScore, recordListeningGap } from '../lib/storage';
 import { speakLines, stopSpeaking } from '../lib/tts';
 import Dictation from './Dictation';
@@ -104,7 +104,7 @@ export default function Listening({ mode, onModeChange, ttsRate, level = 'B1', o
               {kind.title} <span className="normal-case font-normal text-ink3">— {kind.description}</span>
             </h3>
             <div className="space-y-2">
-              {LISTENING_TRACKS.filter((t) => t.kind === kind.id).map((t) => (
+              {allListeningTracks().filter((t) => t.kind === kind.id).map((t) => (
                 <button
                   key={t.id}
                   onClick={() => onModeChange(t.id)}
