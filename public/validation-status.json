@@ -1,0 +1,79 @@
+{
+  "generatedAt": "2026-08-23T19:49:47.910Z",
+  "dataset": "validation-dataset.json",
+  "honestyNote": "'—' means no number is claimed yet. Floors per VALIDATION.md; never fabricate rows to move a status.",
+  "tracks": [
+    {
+      "track": "placement",
+      "n": 0,
+      "floor": 20,
+      "target": 20,
+      "status": "no-data",
+      "headline": "—"
+    },
+    {
+      "track": "progression",
+      "n": 0,
+      "floor": 15,
+      "target": 15,
+      "status": "no-data",
+      "headline": "—"
+    },
+    {
+      "track": "corpus",
+      "n": 0,
+      "floor": 30,
+      "target": 30,
+      "status": "no-data",
+      "headline": "—"
+    },
+    {
+      "track": "comprehension",
+      "n": 0,
+      "floor": 30,
+      "target": 30,
+      "status": "no-data",
+      "headline": "—"
+    },
+    {
+      "track": "pronunciation",
+      "n": 0,
+      "floor": 30,
+      "target": 40,
+      "status": "no-data",
+      "headline": "—"
+    },
+    {
+      "track": "examiner",
+      "n": 0,
+      "floor": 30,
+      "target": 30,
+      "status": "no-data",
+      "headline": "—"
+    },
+    {
+      "track": "real-exam",
+      "n": 0,
+      "floor": 20,
+      "target": 20,
+      "status": "no-data",
+      "headline": "—"
+    },
+    {
+      "track": "assistance",
+      "n": 0,
+      "floor": 20,
+      "target": 20,
+      "status": "no-data",
+      "headline": "—"
+    },
+    {
+      "track": "fsrs",
+      "n": 0,
+      "floor": 50,
+      "target": 200,
+      "status": "no-data",
+      "headline": "—"
+    }
+  ]
+}

@@ -25,6 +25,7 @@ import {
   xpInRange, dailyPace, weeklyXp, vocabGrowth, yearRecap,
 } from '../lib/analytics';
 import { WeeklyXPChart, GrowthChart, TrendChart } from './charts';
+import { EVIDENCE_FLOORS } from '../lib/validationStatusReport';
 import { X, Clock, Layers, Book, Mic, Volume, BarChart, TrendingUp } from './icons';
 
 // Analytics (full-screen): headline metrics, a skill breakdown, weekly and
@@ -486,6 +487,19 @@ function LearnerValidation(){
     ['Pronunciation vs humans', benchmarkStatus(mergeBenchmarkItems(getIntelligibilityBenchmark()))],
     ['Assistance fading', getAssistanceMetrics()],
   ];
+  // Roadmap evidence chips: current n vs documented floor, per track. The
+  // full table (incl. examiner/real-exam/fsrs) lives at /validation-status.json.
+  const evidenceTrack = {
+    'Placement accuracy': 'placement',
+    'Progression transfer': 'progression',
+    'AI vs human marking': 'corpus',
+    'Listening vs humans': 'comprehension',
+    'Reading vs humans': 'comprehension',
+    'Pronunciation vs humans': 'pronunciation',
+    'Assistance fading': 'assistance',
+  };
+  const chip = (track) => `${track} ${evidenceTrack[track] ? `${external.find(([n]) => n === track)?.[1]?.n ?? 0}/${EVIDENCE_FLOORS[evidenceTrack[track]]}` : `0/${EVIDENCE_FLOORS[track]}`}`;
+  const roadmapChips = Object.keys(EVIDENCE_FLOORS).map(chip).join(' · ');
   return (
     <section className="bg-surface border border-line rounded-2xl p-4 space-y-3">
       <h3 className="text-[11px] font-bold uppercase tracking-wider text-ink2">Learner validation</h3>
@@ -504,6 +518,10 @@ function LearnerValidation(){
             <span className="min-w-0 flex-1 truncate text-[11px] text-ink3" title={m.message}>{m.message}</span>
           </div>
         ))}
+        <p className="pt-1 text-[10px] leading-relaxed text-ink3" data-testid="evidence-roadmap">
+          <span className="font-bold uppercase tracking-wider">Roadmap floors:</span> {roadmapChips}
+          {' · '}full table: <span className="underline">/validation-status.json</span>
+        </p>
       </div>
     </section>
   );

@@ -1,0 +1,43 @@
+name: validation-status
+
+# Renders the honest evidence table whenever the research dataset changes.
+# public/validation-status.json is committed back so the live PWA serves the
+# current evidence state at /validation-status.json.
+
+on:
+  push:
+    paths:
+      - 'validation-dataset.json'
+  workflow_dispatch:
+  schedule:
+    - cron: '0 6 * * 1' # weekly Monday 06:00 UTC — freshness heartbeat
+
+permissions:
+  contents: write
+
+jobs:
+  render:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Render evidence summary
+        run: |
+          node scripts/validation-summary.mjs \
+            --dataset validation-dataset.json \
+            --md validation-summary.md \
+            --public public/validation-status.json
+          cat validation-summary.md >> "$GITHUB_STEP_SUMMARY"
+      - name: Commit refreshed public payload
+        run: |
+          if git diff --quiet public/validation-status.json; then
+            echo "No change to public/validation-status.json"
+            exit 0
+          fi
+          git config user.name "validation-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add public/validation-status.json
+          git commit -m "chore(validation): refresh public evidence snapshot"
+          git push
