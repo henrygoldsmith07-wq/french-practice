@@ -81,8 +81,14 @@ test.describe('Le Studio happy path', () => {
     await expect(input).toBeVisible({ timeout: 5000 });
     await input.fill('Bonjour, je voudrais un café.');
     await input.press('Enter');
-    // Partner reply + score badge appear
-    await expect(page.getByText(/mock/i).first()).toBeVisible({ timeout: 10000 });
+    // Partner reply + score badge appear. This used to wait for the word "mock",
+    // but mockTurn() replies with ordinary canned French ("Tres bon choix !...")
+    // and never says "mock", so the assertion could not pass for this flow.
+    // The corrections control only renders once a turn has actually been
+    // evaluated, which is the thing worth asserting; the localStorage checks
+    // below then prove the evaluation was scored and logged.
+    await expect(page.getByRole('button', { name: /Corrections & native version/i }))
+      .toBeVisible({ timeout: 10000 });
     // Assistance evidence was recorded for the completed turn
     const log = await page.evaluate(() => JSON.parse(localStorage.getItem('fp.assistanceLog.v1') || '[]'));
     expect(log.length).toBeGreaterThan(0);
