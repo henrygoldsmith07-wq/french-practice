@@ -1,20 +1,23 @@
 import { useEffect, useRef, useState } from 'react';
 import { LISTENING_KINDS, allListeningTracks, getTrack } from '../lib/listening';
-import { recordSkillScore, recordListeningGap } from '../lib/storage';
+import { recordSkillScore, recordListeningGap, getListeningProgression } from '../lib/storage';
 import { speakLines, stopSpeaking } from '../lib/tts';
 import Dictation from './Dictation';
 import AudioCourse from './AudioCourse';
 import NumberDash from './NumberDash';
+import ConditionsGym from './ConditionsGym';
 import { Volume, Play, Square, ChevronLeft, ChevronRight, Check, X, RefreshCw } from './icons';
 import { getSrs, getMetrics, getReviewEvents } from '../lib/storage';
 import { allEntries } from '../lib/vocab';
 import { listeningDifficultyLadder } from '../lib/learningAdaptation';
 import { playbackFor } from '../lib/accents';
 import { shuffleOptions } from './GrammarExercises';
+import { STAGES } from '../lib/authenticAudio';
 
 // Listening hub: TTS-narrated tracks (mini-podcasts, dialogues, news,
 // scenes) with listen-first transcripts, per-line highlighting, variable
-// speed, and comprehension quizzes — plus the Dictée drill.
+// speed, and comprehension quizzes — plus the Dictée drill and the
+// conditions gym (synthetic S6–S7 training).
 
 export default function Listening({ mode, onModeChange, ttsRate, level = 'B1', onXp, onActivity }) {
   const adaptive = (() => {
@@ -22,6 +25,16 @@ export default function Listening({ mode, onModeChange, ttsRate, level = 'B1', o
       return listeningDifficultyLadder({ level, srs: getSrs(), entries: allEntries(), metrics: getMetrics(), reviewEvents: getReviewEvents() });
     } catch { return null; }
   })();
+  const ladderStage = (() => {
+    try { return getListeningProgression()?.currentStage || 1; } catch { return 1; }
+  })();
+  if (mode === 'conditions') {
+    return (
+      <Shell title="Conditions gym" onBack={() => onModeChange(null)}>
+        <ConditionsGym ttsRate={ttsRate} onBack={() => onModeChange(null)} />
+      </Shell>
+    );
+  }
   if (mode === 'dictation') {
     return (
       <Shell title="Dictée" onBack={() => onModeChange(null)}>
@@ -60,7 +73,22 @@ export default function Listening({ mode, onModeChange, ttsRate, level = 'B1', o
             Train your ear: audio first, transcript after. Adjustable speed on everything.
           </p>
           {adaptive && <p className="text-[11px] text-ink3 mt-1">Suggested: stage {adaptive.stage} · {adaptive.rate.toFixed(2)}× · {adaptive.label} · {adaptive.accentCount} accent{adaptive.accentCount === 1 ? '' : 's'}</p>}
+          <p className="text-[11px] text-ink3 mt-1">
+            Authentic-audio ladder: stage {ladderStage} of 7 — {STAGES[ladderStage]?.label || 'slow TTS'}
+          </p>
         </div>
+
+        <button
+          onClick={() => onModeChange('conditions')}
+          className="w-full flex items-center gap-3.5 bg-surface border border-line rounded-2xl px-4 py-3.5 text-left hover:border-ink3 transition-colors"
+        >
+          <span className="w-10 h-10 shrink-0 grid place-items-center rounded-xl bg-surface2 text-ink"><Volume size={18} /></span>
+          <span className="flex-1">
+            <span className="block text-sm font-semibold text-ink">Conditions gym — S6–S7 training</span>
+            <span className="block text-xs text-ink3">Hesitations, overlapping voices, noise beds (synthetic)</span>
+          </span>
+          <ChevronRight size={16} className="text-ink3 shrink-0" />
+        </button>
 
         <button
           onClick={() => onModeChange('dictation')}

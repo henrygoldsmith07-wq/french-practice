@@ -79,6 +79,34 @@ export function stopSpeaking() {
   if (ttsSupported()) window.speechSynthesis.cancel();
 }
 
+/**
+ * Speak one segment WITHOUT cancelling whatever is already queued — the
+ * conditions gym staggers a second voice 600ms after the first, and a
+ * cancel would cut it off mid-word. Call stopSpeaking() yourself when a
+ * script begins. voiceIndex picks from the installed voice pool (index > 0
+ * gets a different voice and a slight pitch shift, like speakLines).
+ */
+export function speakSegment(text, { rate = 1, voiceIndex = 0, onEnd } = {}) {
+  if (!ttsSupported() || !text) {
+    if (onEnd) setTimeout(onEnd, 0);
+    return;
+  }
+  const utterance = new SpeechSynthesisUtterance(text);
+  utterance.lang = active.speechLang;
+  utterance.rate = Math.min(1.5, Math.max(0.5, rate));
+  const installed = langVoices();
+  const primary = pickVoice() || installed[0] || null;
+  const pool = [primary, ...installed.filter((v) => v !== primary)];
+  const voice = pool[voiceIndex] || primary;
+  if (voice) utterance.voice = voice;
+  if (voiceIndex > 0) utterance.pitch = Math.min(1.4, 0.85 + voiceIndex * 0.15);
+  if (onEnd) {
+    utterance.onend = onEnd;
+    utterance.onerror = onEnd;
+  }
+  window.speechSynthesis.speak(utterance);
+}
+
 export function getVoices() {
   return langVoices();
 }
