@@ -1,5 +1,11 @@
 # Validation Status — Le Studio French
 
+> **Running the study:** the operating manual for collecting real data is
+> [`docs/study-protocol.md`](docs/study-protocol.md) — per-stream collection
+> specs, consent rules, CSV column sets
+> (`docs/validation-templates/*.csv`, headers-only — import-safe), and the
+> CLI commands (`validation:status` / `import` / `packet`).
+
 > **Infrastructure vs outcomes.** This document distinguishes *what the code can now measure* from *what has been externally validated with real learners*. The former is shipped; the latter is empty until independent data is supplied and, by design, will stay empty rather than fabricate.
 
 ## Summary
