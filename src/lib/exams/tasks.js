@@ -698,13 +698,44 @@ function pick(pool, { theme, tier = null, boardId = null, exclude = [] }) {
   const skip = new Set(exclude);
   let candidates = pool.filter((i) => !skip.has(i.id) && tierMatch(i, tier) && boardMatch(i, boardId));
   if (theme) {
-    const themed = candidates.filter((i) => i.theme === theme);
+    // Made-for-Wales broad areas first match through their related legacy
+    // bank themes (the bank was authored against the older theme lists).
+    const related = WJEC_3830_THEME_MAP[theme];
+    let themed = related
+      ? candidates.filter((i) => related.includes(i.theme))
+      : [];
+    if (!themed.length) themed = candidates.filter((i) => i.theme === theme);
     if (themed.length) candidates = themed;
   }
   if (!candidates.length) candidates = pool.filter((i) => tierMatch(i, tier) && boardMatch(i, boardId));
   if (!candidates.length) candidates = pool;
   return candidates[Math.floor(Math.random() * candidates.length)] || null;
 }
+
+// Made-for-Wales 3830QS groups its content into three broad areas. The bank
+// was authored against the legacy theme lists, so each area maps to the
+// legacy themes it draws from — selection prefers the mapped set, then falls
+// back to the wider bank rather than failing.
+export const WJEC_3830_THEME_MAP = {
+  'Language for leisure and wellbeing': [
+    'Healthy living and lifestyle',
+    'Free-time activities',
+    'Customs, festivals and celebrations',
+    'Celebrity culture',
+  ],
+  'Language for travel': [
+    'Travel and tourism',
+    'The environment and where people live',
+    'Media and technology',
+  ],
+  'Language for study and work': [
+    'Education and work',
+    'Studying and my future',
+    'My personal world',
+    'My neighbourhood',
+    'People and lifestyle: education and work',
+  ],
+};
 
 /** Every theme that has at least one task, for the theme picker. */
 export function availableThemes() {

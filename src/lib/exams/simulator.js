@@ -94,6 +94,11 @@ function materialFor(taskId, { boardId, theme, tier }) {
     case 'roleplay': return pickRoleplay({ theme, tier, boardId });
     case 'photocard': return pickPhotocard({ theme, tier, boardId });
     case 'reading-aloud': return pickReadingPassage({ tier, boardId });
+    // Made-for-Wales 3830QS Unit 1 tasks. The oracy paper opens with a read
+    //-aloud passage the role-play is built around; the presentation-and-
+    // discussion task draws on the conversation bank's question ladders.
+    case 'read-aloud-roleplay': return pickReadingPassage({ tier, boardId });
+    case 'presentation-discussion': return pickConversation({ theme, boardId });
     case 'conversation':
     case 'stimulus':
     case 'research':

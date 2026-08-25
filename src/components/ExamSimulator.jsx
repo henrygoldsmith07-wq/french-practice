@@ -47,7 +47,9 @@ export default function ExamSimulator({ apiKey, mockMode, onXp, onActivity }) {
   const [error, setError] = useState(null);
 
   const board = BOARDS[boardId];
-  const themes = useMemo(() => availableThemes(), []);
+  // The theme picker follows the selected qualification: Made-for-Wales
+  // shows its three broad areas, legacy boards their published theme lists.
+  const themes = useMemo(() => (board?.themes?.length ? board.themes : availableThemes()), [boardId]);
   const selectedBoundary = boundarySets.find((set) => set.id === boundarySetId) || null;
 
   useEffect(() => {
@@ -292,6 +294,16 @@ function BoundaryImport({ boardId, tier, sets, selectedId, onSelect, onSaved }) 
   return (
     <section className="bg-surface border border-line rounded-2xl p-4 space-y-3">
       <div className="flex items-start justify-between gap-3">
+        <div>
+          <h3 className="text-sm font-bold">Grade boundaries</h3>
+          {/* Made for Wales: no published boundaries exist before the first
+              awarding (Summer 2027) — say so instead of implying estimates. */}
+          {boardId === 'wjec-gcse-3830' && (
+            <p className="mt-1 text-[11px] text-ink2">
+              3830QS has no published grade boundaries until its first awarding (Summer 2027) — the simulator shows an indicative band only.
+            </p>
+          )}
+        </div>
         <div>
           <h3 className="text-[11px] font-bold uppercase tracking-wider text-ink2">Real grade boundaries</h3>
           <p className="text-xs text-ink2 mt-1">Paste a teacher-checked CSV, TSV or JSON table. Nothing is bundled as official.</p>
