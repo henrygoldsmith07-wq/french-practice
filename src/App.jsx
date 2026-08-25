@@ -606,6 +606,7 @@ export default function App() {
               level={effectiveLevel}
               onTtsRate={(r) => updateSettings({ ...settings, ttsRate: r })}
               onTurn={handleTurn}
+              onXp={awardXp}
               onGrammarTip={(topicId) => {
                 setGrammarFocus(topicId);
                 setLearnView('grammar');

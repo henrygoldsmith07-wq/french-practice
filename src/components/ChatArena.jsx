@@ -3,15 +3,17 @@ import { langName } from '../lib/i18n';
 import useRecorder from '../hooks/useRecorder';
 import Waveform from './Waveform';
 import { getScenarios } from '../lib/data';
-import { transcribe, evaluateTurn, evaluateRedoTurn, getHint, explainMistake, friendlyError } from '../lib/groq';
+import { transcribe, evaluateTurn, evaluateRedoTurn, getHint, explainMistake, friendlyError, generateExercises } from '../lib/groq';
+import Quiz from './Quiz';
 import { scoreDelta, redoVerdict } from '../lib/redo';
 import { speechMetrics } from '../lib/analytics';
 import { activeLanguage } from '../lib/i18n';
 import {
   getSrs, getSessions, getMetrics, getReviewEvents, getGrammarProgress, getEvidenceLedgerModel,
   getSettings, recordGrammarError, recordWeaknessError, recordWeaknessRepair, getDueWeaknesses, getLearnerBrief,
-  recordAssistanceEvent, recordCorpusEntry,
+  recordAssistanceEvent, saveToNotebook,
 } from '../lib/storage';
+import { addErrorNotebook, getErrorNotebook } from '../lib/errorNotebook';
 import { allEntries } from '../lib/vocab';
 import { GRAMMAR_TOPICS } from '../lib/grammar';
 import { buildLearningPlan } from '../lib/learningAdaptation';
@@ -31,7 +33,7 @@ function readSessionBudget() {
   return null;
 }
 
-export default function ChatArena({ apiKey, mockMode, ttsRate, level, onTtsRate, onTurn, onGrammarTip, history, setHistory, scenario, setScenario, onEndSession }) {
+export default function ChatArena({ apiKey, mockMode, ttsRate, level, onTtsRate, onTurn, onGrammarTip, onXp, history, setHistory, scenario, setScenario, onEndSession }) {
   const [phase, setPhase] = useState('idle'); // idle | transcribing | editing | thinking
   const [draft, setDraft] = useState(''); // transcription editor / manual text
   const [spoken, setSpoken] = useState(null); // delivery coaching for a voice turn
@@ -212,6 +214,20 @@ export default function ChatArena({ apiKey, mockMode, ttsRate, level, onTtsRate,
       if (stale()) return; // scenario switched mid-flight — discard, don't append
       if (evaluation.grammar_topic) recordWeaknessError(evaluation.grammar_topic, { scenarioId: scenario.id });
       if (evaluation.grammar_topic) recordGrammarError(evaluation.grammar_topic);
+      // Permanent learning object: definite/likely errors become notebook
+      // entries automatically — retype drill now, recurrence tracking forever.
+      // Stylistic suggestions are advice, not mistakes; they don't get kept.
+      try {
+        const strong = (evaluation.corrections_detailed || []).find((c) => STRONG_LEVELS.has(c.level));
+        if (strong && !getErrorNotebook().some((e) => e.original === userText)) {
+          addErrorNotebook({
+            original: userText,
+            corrected: evaluation.native_alternative || strong.correction,
+            why: strong.note || strong.correction,
+            ruleId: evaluation.grammar_topic || null,
+          });
+        }
+      } catch { /* notebook must never break a turn */ }
       // Assistance-fading evidence: did this score happen with scaffolding or
       // without? Feeds the dependence check in assistanceValidation.
       try {
@@ -370,6 +386,7 @@ export default function ChatArena({ apiKey, mockMode, ttsRate, level, onTtsRate,
               mockMode={mockMode}
               level={level}
               correctionPolicy={turn.correctionPolicy}
+              onXp={onXp}
             />
             {turn.curveball && (
               <p className="text-center text-[11px] text-ink/90 font-semibold tracking-wide uppercase">
@@ -540,7 +557,7 @@ function AiBubble({ text, translation, ttsRate }) {
   );
 }
 
-function UserBubble({ turn, idx, redoActive, onRedo, onCancelRedo, onGrammarTip, apiKey, mockMode, level, correctionPolicy }) {
+function UserBubble({ turn, idx, redoActive, onRedo, onCancelRedo, onGrammarTip, apiKey, mockMode, level, correctionPolicy, onXp }) {
   const [expanded, setExpanded] = useState(false);
   const { evaluation } = turn;
   const feedbackOff = correctionPolicy?.preference === 'off';
@@ -580,8 +597,8 @@ function UserBubble({ turn, idx, redoActive, onRedo, onCancelRedo, onGrammarTip,
               <Markdown className="text-[13px] text-ink leading-relaxed">{evaluation.corrections}</Markdown>
             )}
             <ExplainRule turn={turn} apiKey={apiKey} mockMode={mockMode} level={level} />
-          </div>
-          <div>
+            <MistakeActions turn={turn} apiKey={apiKey} mockMode={mockMode} level={level} onXp={onXp} />
+          </div>          <div>
             <h4 className="text-[11px] font-bold uppercase tracking-wider text-ink mb-1">Like a native</h4>
             <p className="text-[13px] text-ink italic" lang="fr">{evaluation.native_alternative}</p>
             <SpeakButton text={evaluation.native_alternative} slow label="Listen" />
@@ -667,6 +684,74 @@ function TieredCorrections({ detailed }) {
       )}
       {strong.length === 0 && soft.length === 0 && unsure.length === 0 && (
         <p className="text-[13px] text-ink">No corrections — that landed cleanly.</p>
+      )}
+    </div>
+  );
+}
+
+// The mistake→learning-object chain, made tangible on the correction itself:
+// micro-drill the exact weak structure now, or park it as an SRS flashcard
+// the review queue will resurface. Notebook capture is automatic; these are
+// the learner-controlled extensions of the same chain.
+function MistakeActions({ turn, apiKey, mockMode, level, onXp }) {
+  const { evaluation } = turn;
+  const [drill, setDrill] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const strong = (evaluation.corrections_detailed || []).find((c) => STRONG_LEVELS.has(c.level));
+  const topicId = evaluation.grammar_topic || null;
+  const topicTitle = topicId ? (getGrammarTopic(topicId)?.title || topicId) : '';
+
+  const runDrill = async () => {
+    setBusy(true);
+    try {
+      const { exercises } = await generateExercises(apiKey, {
+        topic: topicTitle || strong?.correction || evaluation.corrections?.slice(0, 80) || 'sentence correction',
+        level,
+        mock: mockMode,
+      });
+      setDrill(exercises || []);
+    } catch {
+      setDrill([]); // generator unavailable — show nothing rather than break
+    }
+    setBusy(false);
+  };
+
+  const saveFlashcard = () => {
+    // Stable content id: re-saving the same mistake dedupes in the notebook.
+    let h = 0;
+    for (const ch of turn.userText) h = (h * 31 + ch.charCodeAt(0)) | 0;
+    saveToNotebook({
+      id: `mistake-${Math.abs(h).toString(36)}`,
+      fr: `Corrige : «${turn.userText}»`,
+      en: evaluation.native_alternative || strong?.correction || evaluation.native_alternative || '',
+      note: topicTitle || 'correction',
+    });
+    setSaved(true);
+  };
+
+  if (!strong && !topicId) return null;
+  return (
+    <div className="pt-1 space-y-2">
+      <div className="flex flex-wrap gap-2">
+        <button
+          onClick={runDrill}
+          disabled={busy}
+          className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-ink2 hover:text-ink min-h-8 px-2 rounded-lg border border-line bg-surface hover:border-ink3"
+        >
+          <Lightbulb size={12} /> {busy ? 'Building…' : 'Micro-drill this'}
+        </button>
+        <button
+          onClick={saveFlashcard}
+          disabled={saved}
+          className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-ink2 hover:text-ink min-h-8 px-2 rounded-lg border border-line bg-surface hover:border-ink3 disabled:opacity-60"
+        >
+          <Book size={12} /> {saved ? 'In review queue ✓' : 'Add as flashcard'}
+        </button>
+      </div>
+      {drill && (drill.length
+        ? <Quiz exercises={drill} onXp={onXp} />
+        : <p className="text-[11px] text-ink3">Drill unavailable right now — the flashcard keeps the mistake alive either way.</p>
       )}
     </div>
   );
