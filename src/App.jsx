@@ -1,5 +1,6 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import HomeDashboard from './components/HomeDashboard';
+import TodaySession from './components/TodaySession';
 import FeedbackWidget from './components/FeedbackWidget';
 const ChatArena = lazy(() => import('./components/ChatArena'));
 const SessionDashboard = lazy(() => import('./components/SessionDashboard'));
@@ -102,6 +103,7 @@ export default function App() {
   const [referenceTool, setReferenceTool] = useState(null);
   const [focusOpen, setFocusOpen] = useState(false);
   const [onboardingOpen, setOnboardingOpen] = useState(false);
+  const [todayOpen, setTodayOpen] = useState(false);
   const [prefs, setPrefsState] = useState(getPrefs);
   const pwa = usePwaInstall();
   const [installDismissed, setInstallDismissed] = useState(false);
@@ -588,6 +590,7 @@ export default function App() {
               onNavigate={setTab}
               lastActivity={getLastActivity()}
               onResume={resumeActivity}
+              onStartToday={() => setTodayOpen(true)}
               onPickScenario={(s) => {
                 if (s.id !== scenario.id) {
                   setScenario(s);
@@ -710,6 +713,18 @@ export default function App() {
       {profileOpen && (<Profile open={profileOpen} onClose={() => setProfileOpen(false)} onXp={awardXp} weeklyGoal={settings.weeklyGoal} onHeaderChange={({ coins: c, avatarId: a }) => { setCoins(c); setAvatarId(a); }} />)}
       {pathSetupOpen && (<PathSetup open={pathSetupOpen} onClose={() => setPathSetupOpen(false)} onCreated={(p) => { setPath(p); setPathSetupOpen(false); updateSettings({ ...settings, level: p.cefr }); }} />)}
       </Suspense>
+      <TodaySession
+        open={todayOpen}
+        onClose={() => setTodayOpen(false)}
+        minutes={20}
+        apiKey={apiKey}
+        mockMode={settings.mockMode}
+        level={effectiveLevel}
+        ttsRate={settings.ttsRate}
+        onTurn={handleTurn}
+        onXp={awardXp}
+        onActivity={handleActivity}
+      />
       {celebration && <Celebration data={celebration} onDone={() => setCelebration(null)} />}
     </div>
   );

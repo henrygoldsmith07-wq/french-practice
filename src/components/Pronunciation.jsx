@@ -5,7 +5,7 @@ import { randomPoolSentence, toWords, diffWordsEq, displayHits } from '../lib/se
 import { transcribe, accentFeedback, friendlyError } from '../lib/groq';
 import { speechMetrics } from '../lib/analytics';
 import { activeLanguage } from '../lib/i18n';
-import { recordSkillScore, recordPronunciationGap } from '../lib/storage';
+import { recordSkillScore, recordPronunciationGap, getMistakeGraph, saveMistakeGraph } from '../lib/storage';
 import { speak, stopSpeaking, adaptiveTtsRate } from '../lib/tts';
 import { SpeakButton, Spinner } from './ui';
 import { accentToleranceScore, calibratedConfidence, PHONEMES, getPhonemeProfile, nextMinimalPair, recordPhonemeAttempt, weakestPhonemes } from '../lib/phonemeProfile';
@@ -13,6 +13,7 @@ import { noiseGate } from '../lib/adaptivePractice';
 import { evaluateFluency, PAUSE_MIN_MS } from '../lib/speakingEvaluation';
 import { decodeToMono16k } from '../lib/acoustics';
 import { analyzePhonology } from '../lib/phonologicalScore';
+import { recordMistake, isAsrUncertain } from '../lib/mistakeGraph';
 import { Mic, Square, Play, RefreshCw } from './icons';
 
 // Pronunciation ("read aloud") and Shadowing ("listen & repeat") drills.
@@ -79,6 +80,29 @@ export default function Pronunciation({ mode, apiKey, mockMode, ttsRate, level, 
           // as misses so the existing minimal-pair drills target them.
           if (phonology.weakest && PHONEMES.some((p) => p.id === phonology.weakest.id)) {
             recordPhonemeAttempt(phonology.weakest.id, { correct: phonology.weakest.score >= 60, confidence: 0.5 });
+          }
+          // Mistake graph: weak phonological components become structural
+          // nodes (type: pronunciation). ASR uncertainty gate: if the audio
+          // clearly contained speech but almost nothing was recognised, the
+          // miss may be the recogniser's — keep the node, exclude from
+          // mastery maths.
+          const uncertain = isAsrUncertain({
+            heardWords: toWords(heard).length,
+            targetWords: target.length,
+            voicedRatio: durationMs > 0 && Number.isFinite(acoustic?.voicedMs)
+              ? Math.min(1, acoustic.voicedMs / durationMs)
+              : null,
+          });
+          if (phonology.weakest && phonology.weakest.score < 60) {
+            recordMistake(saveMistakeGraph(getMistakeGraph()), {
+              type: 'pronunciation',
+              concept: phonology.weakest.id,
+              source: shadow ? 'shadowing' : 'read-aloud',
+              attempt: sentence.text,
+              corrected: null,
+              confidence: accCal,
+              asrUncertain: uncertain,
+            });
           }
         } catch { /* audio decode unavailable — components stay null */ }
         const metrics = speechMetrics(heard, durationMs, activeLanguage().id);

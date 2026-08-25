@@ -199,11 +199,12 @@ function DrillCard({ icon: DrillIcon, title, subtitle, badge, disabled, onClick 
 // Retype queue for notebook corrections: the mistake was captured in the
 // Arena; here the learner proves the fix by typing it. Accent-insensitive
 // check (markCorrectedByLearner), XP on success, entry retires on pass.
-function NotebookRetype({ onXp }) {
+export function NotebookRetype({ onXp, onCleared }) {
   const [tick, setTick] = useState(0);
   const [draft, setDraft] = useState('');
   const [wrong, setWrong] = useState(false);
   const pending = useMemo(() => getErrorNotebook().filter((e) => !e.correctedByLearner), [tick]);
+  useEffect(() => { if (!pending.length) onCleared?.(); }, [pending.length, onCleared]);
   if (!pending.length) return null;
   const entry = pending[0];
 

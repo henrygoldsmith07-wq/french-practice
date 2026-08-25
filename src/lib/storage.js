@@ -92,6 +92,7 @@ const KEYS = {
   intelligibilityBenchmark: 'fp.intelligibilityBenchmark.v1', // human-rated recordings { target, transcript, humanMean, raters }
   authenticAudioPack: 'fp.authenticAudioPack.v1', // imported licensed-recording catalog (validated by authenticAudio.validateAsset)
   listeningProgression: 'fp.listeningProgression.v1', // { currentStage, attempts[], unlockedAt{}, stageStats[] }
+  mistakeGraph: 'fp.mistakeGraph.v1', // structural mistakes with mastery lifecycle (mistakeGraph.js)
 };
 
 export { KEYS };
@@ -2041,6 +2042,21 @@ export const getStudyProgress = () =>
     examinerScripts: getExaminerScripts(),
     realExamResults: getRealExamResults(),
   });
+
+// ---- mistake graph (structural mistakes with mastery lifecycle) ----
+
+export const getMistakeGraph = () => {
+  const v = read(KEYS.mistakeGraph, []);
+  return Array.isArray(v) ? v : [];
+};
+
+export function saveMistakeGraph(graph) {
+  const list = Array.isArray(graph) ? graph : [];
+  // Cap at the active frontier: retired mistakes older than the newest 150
+  // have taught their lesson; the notebook keeps the human-readable record.
+  write(KEYS.mistakeGraph, list.slice(-400));
+  return list;
+}
 
 // ---- pronunciation intelligibility benchmark (human-labelled samples) ----
 //

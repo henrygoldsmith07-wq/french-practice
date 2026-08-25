@@ -17,7 +17,7 @@ function suggestScenario(sessions) {
   return unseen || [...scenarios].sort((a, b) => (lastSeen[a.id] ?? -1) - (lastSeen[b.id] ?? -1))[0];
 }
 
-export default function HomeDashboard({ dailyGoal = 30, level, onStartLesson, onNavigate, onPickScenario, lastActivity, onResume, prefs }) {
+export default function HomeDashboard({ dailyGoal = 30, level, onStartLesson, onNavigate, onPickScenario, lastActivity, onResume, prefs, onStartToday, todayPlan }) {
   const settings = getSettings();
   const language = getLanguage(settings.language);
   const streak = getStreak();
@@ -85,21 +85,40 @@ export default function HomeDashboard({ dailyGoal = 30, level, onStartLesson, on
               : <>Have a 5-minute <span lang={language.id} className="font-semibold text-ink">{language.name}</span> conversation now. Speak naturally, get one useful correction, leave with a phrase worth remembering.</>}
           </p>
           <div className="mt-7 flex flex-wrap items-center justify-center gap-3">
-            <button
-              type="button"
-              onClick={lastActivity ? () => onResume(lastActivity) : () => startConversation(5)}
-              className="inline-flex items-center gap-2 bg-ink text-bg font-bold rounded-[14px] px-[26px] py-[13px] text-[15px] hover:opacity-85 hover:-translate-y-px transition"
-            >
-              {lastActivity ? <Play size={16} /> : <MessageCircle size={16} />}
-              {lastActivity ? 'Resume practice' : 'Start a 5-minute conversation'}
-            </button>
-            <button
-              type="button"
-              onClick={() => startConversation(5)}
-              className="inline-flex items-center gap-2 text-ink font-semibold px-5 py-3 text-[15px] hover:opacity-70 transition"
-            >
-              {lastActivity ? 'Start something new' : `Try ${suggested.title}`} <ArrowRight size={16} />
-            </button>
+            {onStartToday ? (
+              <>
+                <button
+                  type="button"
+                  onClick={onStartToday}
+                  className="inline-flex items-center gap-2 bg-ink text-bg font-bold rounded-[14px] px-[26px] py-[13px] text-[15px] hover:opacity-85 hover:-translate-y-px transition"
+                >
+                  <Play size={16} /> Start today's French
+                </button>
+                <div className="w-full flex flex-wrap items-center justify-center gap-1.5 -mt-1" aria-label="Today's session shape">
+                  {(todayPlan || ['Listen', 'Speak', 'Repair', 'Recall']).map((seg) => (
+                    <span key={seg} className="px-2 py-0.5 rounded-full bg-surface border border-line text-[10px] font-semibold text-ink2">{seg}</span>
+                  ))}
+                </div>
+              </>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  onClick={lastActivity ? () => onResume(lastActivity) : () => startConversation(5)}
+                  className="inline-flex items-center gap-2 bg-ink text-bg font-bold rounded-[14px] px-[26px] py-[13px] text-[15px] hover:opacity-85 hover:-translate-y-px transition"
+                >
+                  {lastActivity ? <Play size={16} /> : <MessageCircle size={16} />}
+                  {lastActivity ? 'Resume practice' : 'Start a 5-minute conversation'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => startConversation(5)}
+                  className="inline-flex items-center gap-2 text-ink font-semibold px-5 py-3 text-[15px] hover:opacity-70 transition"
+                >
+                  {lastActivity ? 'Start something new' : `Try ${suggested.title}`} <ArrowRight size={16} />
+                </button>
+              </>
+            )}
           </div>
           {lastActivity ? (
             <p className="mt-3 text-xs text-ink3">Or browse another scenario — your last session is still ready in Speak.</p>

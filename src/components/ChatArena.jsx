@@ -14,6 +14,8 @@ import {
   recordAssistanceEvent, saveToNotebook,
 } from '../lib/storage';
 import { addErrorNotebook, getErrorNotebook } from '../lib/errorNotebook';
+import { recordMistake, typeForCategory } from '../lib/mistakeGraph';
+import { categoryForTopic } from '../lib/errorTaxonomy';
 import { allEntries } from '../lib/vocab';
 import { GRAMMAR_TOPICS } from '../lib/grammar';
 import { buildLearningPlan } from '../lib/learningAdaptation';
@@ -28,7 +30,7 @@ const CURVEBALL_TURN = 3; // the surprise lands on the learner's 3rd turn
 function readSessionBudget() {
   try {
     const m = +sessionStorage.getItem('fp.sessionMins');
-    if (m === 5 || m === 10 || m === 15) return m * 60;
+    if (m === 5 || m === 10 || m === 15 || m === 16 || m === 20) return m * 60;
   } catch { /* ignore */ }
   return null;
 }
@@ -219,12 +221,26 @@ export default function ChatArena({ apiKey, mockMode, ttsRate, level, onTtsRate,
       // Stylistic suggestions are advice, not mistakes; they don't get kept.
       try {
         const strong = (evaluation.corrections_detailed || []).find((c) => STRONG_LEVELS.has(c.level));
-        if (strong && !getErrorNotebook().some((e) => e.original === userText)) {
+        if (strong) {
           addErrorNotebook({
             original: userText,
             corrected: evaluation.native_alternative || strong.correction,
             why: strong.note || strong.correction,
             ruleId: evaluation.grammar_topic || null,
+          });
+          // Structural mistake graph: concept + type + mastery lifecycle.
+          // (ASR-uncertainty lives at the transcription layer; a typed or
+          // edited send is by definition what the learner meant to say.)
+          const category = categoryForTopic(evaluation.grammar_topic || '');
+          recordMistake(saveMistakeGraph(getMistakeGraph()), {
+            type: typeForCategory(category),
+            concept: evaluation.grammar_topic || 'unknown',
+            source: 'conversation',
+            attempt: userText,
+            corrected: evaluation.native_alternative || strong.correction,
+            confidence: 0.5,
+            asrUncertain: false,
+            related: [evaluation.grammar_topic].filter(Boolean),
           });
         }
       } catch { /* notebook must never break a turn */ }

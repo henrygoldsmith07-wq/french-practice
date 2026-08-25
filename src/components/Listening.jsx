@@ -176,7 +176,7 @@ function Shell({ title, onBack, children }) {
   );
 }
 
-function TrackPlayer({ track, baseRate, level = 'B1', onXp, onActivity }) {
+export function TrackPlayer({ track, baseRate, level = 'B1', onXp, onActivity, onDone }) {
   const adaptive = (() => {
     try {
       return listeningDifficultyLadder({ level, srs: getSrs(), entries: allEntries(), metrics: getMetrics(), reviewEvents: getReviewEvents() });
@@ -215,7 +215,7 @@ function TrackPlayer({ track, baseRate, level = 'B1', onXp, onActivity }) {
       onEnd: () => {
         setPlaying(false);
         setCurrentLine(-1);
-        setListened(true);
+        setListened(true); onDone?.();
       },
     });
   };
@@ -225,7 +225,7 @@ function TrackPlayer({ track, baseRate, level = 'B1', onXp, onActivity }) {
     if (audioRef.current) audioRef.current.pause();
     setPlaying(false);
     setCurrentLine(-1);
-    setListened(true);
+    setListened(true); onDone?.();
   };
 
   // Authored questions keep the correct option at index 0 — shuffle per run
@@ -267,7 +267,7 @@ function TrackPlayer({ track, baseRate, level = 'B1', onXp, onActivity }) {
           src={track.audioSrc}
           preload="metadata"
           onError={() => setAudioFailed(true)}
-          onEnded={() => { setPlaying(false); setListened(true); }}
+          onEnded={() => { setPlaying(false); setListened(true); onDone?.(); }}
         />
       )}
       {/* player */}
