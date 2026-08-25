@@ -262,6 +262,7 @@ export function exportProgress() {
   const data = {};
   for (const key of Object.values(KEYS)) {
     if (key === KEYS.apiKey) continue; // never export the secret
+    if (key === KEYS.sessions) continue; // legacy last-10 mirror — sessionHistory is canonical
     const raw = localStorage.getItem(key);
     if (raw != null) data[key] = raw;
   }
@@ -770,10 +771,11 @@ export function saveSession(summary) {
     date: new Date().toISOString(),
   };
   sessions.push(saved);
-  // Canonical history is intentionally uncapped. Keep the legacy key in sync
-  // for old backups/builds, but all current reads use sessionHistory.
+  // Canonical history is intentionally uncapped. The legacy last-10 key is
+  // NOT mirrored any more: rewriting the full history on every save doubled
+  // the largest store's quota cost for a compat nobody needs (the app has
+  // moved to its own repo; exports carry the canonical key).
   write(KEYS.sessionHistory, sessions);
-  write(KEYS.sessions, sessions);
   recordStudyEvent({
     type: 'session.completed',
     sessionId: saved.id,

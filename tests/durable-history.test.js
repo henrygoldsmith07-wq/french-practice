@@ -22,7 +22,10 @@ test('last-10 session storage migrates to an uncapped canonical history', async 
 
   storage.saveSession({ id: 'new-session', scenarioId: 'market', turns: 3 });
   assert.equal(storage.getSessions().length, 11);
-  assert.equal(JSON.parse(globalThis.localStorage.getItem('fp.sessions')).length, 11);
+  // The legacy last-10 mirror is frozen, not rewritten: the canonical
+  // uncapped history is the only store that grows now.
+  assert.equal(JSON.parse(globalThis.localStorage.getItem('fp.sessions')).length, 10);
+  assert.equal(JSON.parse(globalThis.localStorage.getItem(storage.KEYS.sessionHistory)).length, 11);
   assert.equal(storage.getSessions().at(-1).id, 'new-session');
 });
 
