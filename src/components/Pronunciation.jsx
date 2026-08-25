@@ -11,6 +11,8 @@ import { SpeakButton, Spinner } from './ui';
 import { accentToleranceScore, calibratedConfidence, PHONEMES, getPhonemeProfile, nextMinimalPair, recordPhonemeAttempt, weakestPhonemes } from '../lib/phonemeProfile';
 import { noiseGate } from '../lib/adaptivePractice';
 import { evaluateFluency, PAUSE_MIN_MS } from '../lib/speakingEvaluation';
+import { decodeToMono16k } from '../lib/acoustics';
+import { analyzePhonology } from '../lib/phonologicalScore';
 import { Mic, Square, Play, RefreshCw } from './icons';
 
 // Pronunciation ("read aloud") and Shadowing ("listen & repeat") drills.
@@ -66,6 +68,19 @@ export default function Pronunciation({ mode, apiKey, mockMode, ttsRate, level, 
           accuracy,
           label: shadow ? 'Shadowing clarity' : 'Read-aloud clarity',
         });
+        // Phonological breakdown: decode the SAME blob we just transcribed
+        // and measure rhythm, intonation, voicing and phoneme-family proxies
+        // against the target text. Best-effort — never blocks scoring.
+        let phonology = null;
+        try {
+          const audio = await decodeToMono16k(blob);
+          phonology = analyzePhonology({ target: sentence.text, accuracy, audio });
+          // Feed the phoneme profile: weakest phonological components count
+          // as misses so the existing minimal-pair drills target them.
+          if (phonology.weakest && PHONEMES.some((p) => p.id === phonology.weakest.id)) {
+            recordPhonemeAttempt(phonology.weakest.id, { correct: phonology.weakest.score >= 60, confidence: 0.5 });
+          }
+        } catch { /* audio decode unavailable — components stay null */ }
         const metrics = speechMetrics(heard, durationMs, activeLanguage().id);
         // Fluency: acoustic pausing + delivery + vocabulary variety, all local.
         const fluency = evaluateFluency({
@@ -92,7 +107,7 @@ export default function Pronunciation({ mode, apiKey, mockMode, ttsRate, level, 
         } catch {
           feedback = ''; // scoring still stands without coach commentary
         }
-        setResult({ heard, accuracy, gained, hits: displayHits(sentence.text, hits), feedback, metrics, fluency, rawAcc: Math.round(rawAcc*100), calibrated: accuracy });
+        setResult({ heard, accuracy, gained, hits: displayHits(sentence.text, hits), feedback, metrics, fluency, phonology, rawAcc: Math.round(rawAcc*100), calibrated: accuracy });
       } catch (e) {
         setError(friendlyError(e));
       }
@@ -175,12 +190,46 @@ export default function Pronunciation({ mode, apiKey, mockMode, ttsRate, level, 
       ) : (
         <div className="fade-in bg-surface border border-line rounded-2xl p-5 space-y-4">
           <div className="flex items-center justify-between">
-            <span className="text-2xl font-bold text-ink tabular-nums">{result.accuracy}%</span>
+            <div>
+              <span className="text-2xl font-bold text-ink tabular-nums">{result.accuracy}%</span>
+              <span className="text-xs text-ink2 ml-2">intelligibility</span>
+            </div>
             <span className="text-xs text-ink2">
               {result.accuracy >= 90 ? 'Crystal clear.' : result.accuracy >= 65 ? 'Mostly understood.' : 'Hard to recognize — slow down and retry.'}
               {' '}+{result.gained} XP
             </span>
           </div>
+
+          {/* Phonological breakdown: components with confidence tiers */}
+          {result.phonology && result.phonology.components.some((c) => c.id !== 'intelligibility' && c.score != null) && (
+            <div className="space-y-1.5">
+              <h4 className="text-[11px] font-bold uppercase tracking-wider text-ink2 mb-1">Phonological components</h4>
+              {result.phonology.components.filter((c) => c.score != null).map((c) => (
+                <div key={c.id} className="flex items-center gap-2" title={c.note}>
+                  <span className="w-40 shrink-0 truncate text-xs text-ink">{c.label}</span>
+                  <div className="flex-1 h-1.5 rounded-full bg-surface2 overflow-hidden">
+                    <div className="h-full rounded-full bg-ink" style={{ width: `${c.score}%` }} />
+                  </div>
+                  <span className="w-8 shrink-0 text-right text-xs font-semibold text-ink tabular-nums">{c.score}</span>
+                  <span className={`shrink-0 text-[9px] font-bold uppercase tracking-wider px-1 py-0.5 rounded border ${
+                    c.confidence === 'measured' ? 'border-emerald-200 text-emerald-700'
+                      : c.confidence === 'estimated' ? 'border-amber-200 text-amber-700'
+                        : 'border-line text-ink3'
+                  }`}>{c.confidence}</span>
+                </div>
+              ))}
+              {result.phonology.weakest && (
+                <p className="text-[11px] text-review bg-reviewsoft rounded-lg px-2.5 py-1.5">
+                  Tomorrow's drill: <span className="font-semibold">{result.phonology.weakest.label}</span> ({result.phonology.weakest.score}) — weakest component.
+                  {result.phonology.weakest.id === 'r' || result.phonology.weakest.id === 'u-ou' || result.phonology.weakest.id.startsWith('nasal')
+                    ? ' A minimal pair is queued in Phoneme focus.'
+                    : result.phonology.weakest.id === 'rhythm' || result.phonology.weakest.id === 'intonation'
+                      ? ' Shadowing targets exactly this.'
+                      : ' Slow linked reading targets this.'}
+                </p>
+              )}
+            </div>
+          )}
           <div>
             <h4 className="text-[11px] font-bold uppercase tracking-wider text-ink2 mb-1">The recognizer heard</h4>
             <p className="text-sm text-ink2" lang="fr">{result.heard || '—'}</p>
