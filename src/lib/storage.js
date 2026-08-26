@@ -93,6 +93,7 @@ const KEYS = {
   authenticAudioPack: 'fp.authenticAudioPack.v1', // imported licensed-recording catalog (validated by authenticAudio.validateAsset)
   listeningProgression: 'fp.listeningProgression.v1', // { currentStage, attempts[], unlockedAt{}, stageStats[] }
   mistakeGraph: 'fp.mistakeGraph.v1', // structural mistakes with mastery lifecycle (mistakeGraph.js)
+  selectionTrial: 'fp.selectionTrial.v1', // frozen per-session target-selection records (P1 analysis)
 };
 
 export { KEYS };
@@ -2056,6 +2057,32 @@ export function saveMistakeGraph(graph) {
   // have taught their lesson; the notebook keeps the human-readable record.
   write(KEYS.mistakeGraph, list.slice(-400));
   return list;
+}
+
+// Selection-trial log (P1): freeze which weakness the curriculum picked and
+// why, so later analysis can judge whether the scheduler chose right. The
+// delayed retest outcome joins by mistakeId at analysis time.
+export const getSelectionTrial = () => {
+  const v = read(KEYS.selectionTrial, []);
+  return Array.isArray(v) ? v : [];
+};
+
+export function recordSelectionTrial(record) {
+  const list = getSelectionTrial();
+  list.push({
+    at: new Date().toISOString(),
+    engineVersion: record.engineVersion || null,
+    candidates: record.candidates || [],
+    selectedId: record.selectedId || null,
+    masteryBefore: record.masteryBefore ?? null,
+    recurrenceBefore: record.recurrenceBefore ?? null,
+    why: record.why || '',
+    segments: record.segments || [],
+    delivered: record.delivered || [],
+    retestResult: null, // joined later from the graph's retest history
+  });
+  write(KEYS.selectionTrial, list.slice(-200));
+  return list[list.length - 1];
 }
 
 // ---- pronunciation intelligibility benchmark (human-labelled samples) ----

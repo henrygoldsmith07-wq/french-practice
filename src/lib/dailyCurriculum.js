@@ -38,8 +38,17 @@ export function buildDailyCurriculum(input = {}) {
     minutes = 20, srsDue = 0, topMistake = null, pendingRetypes = 0,
     recentCorrections = 0, weaknessScenarioId = null, suggestedScenarioId = null,
     examSoon = false, listeningTrack = null, dayIndex = 0,
+    balanced = false, balancedDrillTopic = null,
   } = input;
   const total = Math.max(5, Math.min(45, Math.round(minutes)));
+
+  // BALANCED variant: identical time/modality budget, but learner-specific
+  // targeting is stripped — speak uses the rotation scenario, drill uses a
+  // generic rotating grammar topic. Same burden, no mistake-graph signal.
+  const effTopMistake = balanced ? null : topMistake;
+  const effWeaknessScenarioId = balanced ? null : weaknessScenarioId;
+  const effRecentCorrections = balanced ? 0 : recentCorrections;
+  const effPendingRetypes = balanced ? 0 : pendingRetypes;
 
   // Largest-remainder allocation: floors first, then leftover minutes go to
   // the largest fractional shares — the segments always sum to the budget.
@@ -51,8 +60,8 @@ export function buildDailyCurriculum(input = {}) {
   };
   addSource('retrieve', SEGMENT_WEIGHTS.retrieve, srsDue > 0);
   addSource('speak', SEGMENT_WEIGHTS.speak, true);
-  addSource('drill', SEGMENT_WEIGHTS.drill, Boolean(topMistake || pendingRetypes > 0));
-  addSource('review', SEGMENT_WEIGHTS.review, recentCorrections > 0);
+  addSource('drill', SEGMENT_WEIGHTS.drill, Boolean(effTopMistake || effPendingRetypes > 0 || balancedDrillTopic));
+  addSource('review', SEGMENT_WEIGHTS.review, effRecentCorrections > 0);
   if (!sources.length) addSource('speak', 1, true);
 
   let allocated = sources.reduce((a, s) => a + s.floor, 0);
@@ -68,7 +77,7 @@ export function buildDailyCurriculum(input = {}) {
   const skipped = [];
 
   // ── Speak: always present; production is the point ──────────────────────
-  const scenarioId = weaknessScenarioId || suggestedScenarioId || null;
+  const scenarioId = effWeaknessScenarioId || suggestedScenarioId || null;
   if (scenarioId) {
     segments.push({
       id: 'speak', label: 'Speak', minutes: minutesFor('speak'),
@@ -98,11 +107,17 @@ export function buildDailyCurriculum(input = {}) {
         payload: { kind: 'mistake', mistakeId: topMistake.id, concept: topMistake.concept, type: topMistake.type },
         why: `${topMistake.concept} — mastery ${topMistake.mastery}, slipped ${topMistake.recurrence}×.`,
       });
-    } else if (pendingRetypes > 0) {
+    } else if (balancedDrillTopic) {
+      segments.push({
+        id: 'drill', label: 'Targeted drill', minutes: minutesFor('drill'),
+        payload: { kind: 'mistake', concept: balancedDrillTopic, type: 'grammar' },
+        why: `Balanced rotation: ${balancedDrillTopic}.`,
+      });
+    } else if (effPendingRetypes > 0) {
       segments.push({
         id: 'drill', label: 'Repair', minutes: minutesFor('drill'),
         payload: { kind: 'retype' },
-        why: `${pendingRetypes} correction${pendingRetypes === 1 ? '' : 's'} waiting to be retyped from memory.`,
+        why: `${effPendingRetypes} correction${pendingRetypes === 1 ? '' : 's'} waiting to be retyped from memory.`,
       });
     }
   }

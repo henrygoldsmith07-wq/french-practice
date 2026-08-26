@@ -14,7 +14,7 @@ import {
   recordAssistanceEvent, saveToNotebook,
 } from '../lib/storage';
 import { addErrorNotebook, getErrorNotebook } from '../lib/errorNotebook';
-import { recordMistake, typeForCategory } from '../lib/mistakeGraph';
+import { recordMistake, typeForCategory, mistakeId as graphIdFor } from '../lib/mistakeGraph';
 import { categoryForTopic } from '../lib/errorTaxonomy';
 import { allEntries } from '../lib/vocab';
 import { GRAMMAR_TOPICS } from '../lib/grammar';
@@ -222,18 +222,14 @@ export default function ChatArena({ apiKey, mockMode, ttsRate, level, onTtsRate,
       try {
         const strong = (evaluation.corrections_detailed || []).find((c) => STRONG_LEVELS.has(c.level));
         if (strong) {
-          addErrorNotebook({
-            original: userText,
-            corrected: evaluation.native_alternative || strong.correction,
-            why: strong.note || strong.correction,
-            ruleId: evaluation.grammar_topic || null,
-          });
           // Structural mistake graph: concept + type + mastery lifecycle.
           // (ASR-uncertainty lives at the transcription layer; a typed or
           // edited send is by definition what the learner meant to say.)
           const category = categoryForTopic(evaluation.grammar_topic || '');
+          const type = typeForCategory(category);
+          const graphNodeId = graphIdFor({ type, concept: evaluation.grammar_topic || 'unknown' });
           recordMistake(saveMistakeGraph(getMistakeGraph()), {
-            type: typeForCategory(category),
+            type,
             concept: evaluation.grammar_topic || 'unknown',
             source: 'conversation',
             attempt: userText,
@@ -241,6 +237,13 @@ export default function ChatArena({ apiKey, mockMode, ttsRate, level, onTtsRate,
             confidence: 0.5,
             asrUncertain: false,
             related: [evaluation.grammar_topic].filter(Boolean),
+          });
+          addErrorNotebook({
+            original: userText,
+            corrected: evaluation.native_alternative || strong.correction,
+            why: strong.note || strong.correction,
+            ruleId: evaluation.grammar_topic || null,
+            mistakeId: graphNodeId,
           });
         }
       } catch { /* notebook must never break a turn */ }

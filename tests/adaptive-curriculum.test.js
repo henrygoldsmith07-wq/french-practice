@@ -52,10 +52,13 @@ test('day 2 retest: partial success moves mastery partway', () => {
     at: new Date(T0).toISOString(),
   });
   const id = g[0].id;
+  // Day 2, one hour apart: wrong first (rehearsal-class drop), then a
+  // correct retry 25h after the mistake itself — genuinely DELAYED.
   g = recordRetest(g, { id, at: new Date(T0 + DAY).toISOString(), correct: false, context: 'drill' });
   assert.equal(g[0].mastery, 0, 'wrong retest drops mastery');
   g = recordRetest(g, { id, at: new Date(T0 + DAY + 3600000).toISOString(), correct: true, context: 'drill' });
-  assert.equal(g[0].mastery, 12, 'same-session correct gives the small gain');
+  assert.equal(g[0].mastery, 35, 'delayed success 25h after the mistake counts fully');
+  assert.equal(g[0].retests[1].evidenceClass, 'DELAYED_NEW_CONTEXT');
 });
 
 test('day 5 new-context success, then spontaneous conversation: mastery rises to retirement', () => {

@@ -203,21 +203,35 @@ export function NotebookRetype({ onXp, onCleared }) {
   const [tick, setTick] = useState(0);
   const [draft, setDraft] = useState('');
   const [wrong, setWrong] = useState(false);
-  const pending = useMemo(() => getErrorNotebook().filter((e) => !e.correctedByLearner), [tick]);
+  const [rehearsed, setRehearsed] = useState(false);
+  const pending = useMemo(
+    () => getErrorNotebook().filter((e) => {
+      if (e.correctedByLearner) return false;
+      // A rehearsed entry comes back for its DELAYED proof the next day —
+      // typing it right after seeing the answer was exposure, not learning.
+      return !e.rehearsedAt || Date.now() - e.rehearsedAt >= 86400000;
+    }),
+    [tick],
+  );
   useEffect(() => { if (!pending.length) onCleared?.(); }, [pending.length, onCleared]);
   if (!pending.length) return null;
   const entry = pending[0];
 
   const check = () => {
     if (!draft.trim()) return;
-    const ok = markCorrectedByLearner(entry.id, draft);
-    if (ok) {
-      setWrong(false);
-      setDraft('');
-      onXp(3);
+    const outcome = markCorrectedByLearner(entry.id, draft);
+    if (!outcome) { setWrong(true); return; }
+    setWrong(false);
+    setDraft('');
+    if (outcome === 'retired') {
+      onXp(5);
+      setRehearsed(false);
       setTick((t) => t + 1);
     } else {
-      setWrong(true);
+      // Rehearsed: the delayed proof arrives tomorrow.
+      onXp(2);
+      setRehearsed(true);
+      setTick((t) => t + 1);
     }
   };
 
@@ -249,6 +263,11 @@ export function NotebookRetype({ onXp, onCleared }) {
         </button>
       </div>
       {wrong && <p className="text-xs text-red-500" role="status">Not quite — match the corrected sentence exactly (accents forgiven).</p>}
+      {rehearsed && (
+        <p className="text-xs text-ink2 bg-surface2 border border-line rounded-lg px-3 py-2" role="status">
+          Rehearsed — that was exposure, not proof. This correction returns tomorrow for the delayed check; passing it is what retires it.
+        </p>
+      )}
     </section>
   );
 }

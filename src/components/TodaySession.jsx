@@ -1,6 +1,8 @@
 import { useMemo, useRef, useState } from 'react';
 import { buildDailyCurriculum } from '../lib/dailyCurriculum';
-import { dueRetests, weakestMistakes, recordRetest } from '../lib/mistakeGraph';
+import { dueRetests, weakestMistakes, recordRetest, EVIDENCE_ENGINE_VERSION } from '../lib/mistakeGraph';
+import { getPracticeAssignment, balancedDrillTopic } from '../lib/assignment';
+import { recordSelectionTrial } from '../lib/storage';
 import {
   getSrs, getNotebook, getDueWeaknesses, rateCard,
   getMistakeGraph, saveMistakeGraph,
@@ -24,8 +26,16 @@ import { Check, ChevronRight, Play, X } from './icons';
 export default function TodaySession({ open, onClose, minutes = 20, apiKey, mockMode, level, ttsRate, onTurn, onXp, onActivity }) {
   const plan = useMemo(() => {
     if (!open) return null;
+    const variant = getPracticeAssignment();
+    const balanced = variant === 'balanced';
     const graph = getMistakeGraph();
-    const top = dueRetests(graph, Date.now(), 1)[0] || weakestMistakes(graph, 1)[0] || null;
+    // Freeze the selection candidates BEFORE choosing — P1 analysis joins
+    // the delayed retest outcome against this record later.
+    const candidates = dueRetests(graph, Date.now(), 3).map((n) => ({
+      id: n.id, concept: n.concept, type: n.type,
+      mastery: n.mastery, recurrence: n.recurrence,
+    }));
+    const top = candidates[0] || null;
     const srs = getSrs();
     const library = [...allEntries(), ...notebookAsEntries(getNotebook())];
     const srsDue = dueEntries(library, srs, Date.now(), { newCardCap: NEW_CARD_CAP }).length;
@@ -37,17 +47,35 @@ export default function TodaySession({ open, onClose, minutes = 20, apiKey, mock
     const weakness = (() => { try { return getDueWeaknesses()[0] || null; } catch { return null; } })();
     const scenarios = getScenarios();
     const suggested = scenarios.length ? scenarios[dayIndex % scenarios.length] : null;
-    return buildDailyCurriculum({
+    const rotationTopic = balancedDrillTopic(dayIndex);
+    const planBuilt = buildDailyCurriculum({
       minutes,
       srsDue,
-      topMistake: top ? { id: top.id, concept: top.concept, label: top.concept, type: top.type, mastery: top.mastery, recurrence: top.recurrence } : null,
+      topMistake: top,
       pendingRetypes,
       recentCorrections: notebook.filter((e) => e.correctedByLearner && Date.now() - Date.parse(e.at || e.lastSeenAt || 0) <= 48 * 3600000).length,
       weaknessScenarioId: weakness?.scenarioId || null,
       suggestedScenarioId: suggested?.id || null,
       listeningTrack: listeningTrack ? { id: listeningTrack.id, title: listeningTrack.title, audioSrc: listeningTrack.audioSrc || null } : null,
       dayIndex,
+      balanced,
+      balancedDrillTopic: balanced ? rotationTopic : null,
     });
+    // P1 selection-trial record: frozen before any practice happens.
+    try {
+      const drillSeg = planBuilt.segments.find((s) => s.id === 'drill');
+      recordSelectionTrial({
+        engineVersion: EVIDENCE_ENGINE_VERSION,
+        candidates,
+        selectedId: balanced ? rotationTopic : (top?.id || null),
+        masteryBefore: top?.mastery ?? null,
+        recurrenceBefore: top?.recurrence ?? null,
+        why: drillSeg?.why || '',
+        segments: planBuilt.segments.map((s) => ({ id: s.id, minutes: s.minutes })),
+        variant,
+      });
+    } catch { /* trial logging must never break the session */ }
+    return planBuilt;
   }, [open, minutes]);
 
   const [segIndex, setSegIndex] = useState(0);
@@ -146,6 +174,8 @@ function MissingSegment() {
 }
 
 // Compact SRS recall: due cards, capped, rated through the real scheduler.
+// Mistake-graph cards (id prefix 'mistake-') feed recordRetest as spaced,
+// non-immediate evidence — an SRS resurface is by definition delayed.
 function RecallRunner({ cardCap, onDone, onXp, onActivity }) {
   const deck = useMemo(() => {
     const srs = getSrs();
@@ -169,6 +199,23 @@ function RecallRunner({ cardCap, onDone, onXp, onActivity }) {
     rateCard(entry.id, rating, { mode: 'receptive', skill: 'vocabulary', itemLabel: entry.fr, label: entry.fr, source: 'today-recall' });
     onActivity?.({ type: 'cards', rating, itemId: entry.id, itemLabel: entry.fr, mode: 'receptive' });
     onXp(rating === 'again' ? 1 : 2);
+    // Mistake-graph cards close their loop: the SRS resurface IS the
+    // delayed retest, so the outcome feeds the node's mastery lifecycle.
+    if (entry.id.startsWith('mistake-')) {
+      try {
+        const nb = getErrorNotebook().find((e) => e.id === entry.id);
+        if (nb?.mistakeId) {
+          const graph = getMistakeGraph();
+          if (graph.some((m) => m.id === nb.mistakeId)) {
+            saveMistakeGraph(recordRetest(graph, {
+              id: nb.mistakeId,
+              correct: rating !== 'again',
+              context: 'srs-recall',
+            }));
+          }
+        }
+      } catch { /* graph bookkeeping must never break recall */ }
+    }
     setTimeout(() => setIdx((i) => i + 1), 250);
   };
   return (
@@ -182,9 +229,13 @@ function RecallRunner({ cardCap, onDone, onXp, onActivity }) {
   );
 }
 
-// Targeted micro-drill for the curriculum's weakest concept.
+// Targeted micro-drill for the curriculum's weakest concept. Completing it
+// records an IMMEDIATE retest — right after targeted practice, success is
+// rehearsal, not retention evidence (mastery unchanged on correct).
 function DrillRunner({ concept, level, apiKey, mockMode, onXp, onDone }) {
   const [state, setState] = useState({ busy: true, exercises: null });
+  const correctRef = useRef(0);
+  const awardCounting = (n) => { if (n >= 3) correctRef.current += 1; onXp(n); };
   useMemo(() => {
     let live = true;
     (async () => {
@@ -198,6 +249,19 @@ function DrillRunner({ concept, level, apiKey, mockMode, onXp, onDone }) {
     })();
     return () => { live = false; };
   }, [concept, level, apiKey, mockMode]);
+  const finish = () => {
+    try {
+      const graph = getMistakeGraph();
+      const node = graph.find((m) => m.concept === concept && m.status === 'active');
+      if (node) saveMistakeGraph(recordRetest(graph, {
+        id: node.id,
+        correct: correctRef.current >= 2,
+        context: 'targeted-drill',
+        immediate: true, // same-session, post-practice: rehearsal
+      }));
+    } catch { /* graph bookkeeping must never break the drill */ }
+    onDone();
+  };
   if (state.busy) return <div className="h-full grid place-items-center"><p className="text-sm text-ink2">Building your drill…</p></div>;
   if (!state.exercises?.length) {
     return (
@@ -211,7 +275,7 @@ function DrillRunner({ concept, level, apiKey, mockMode, onXp, onDone }) {
     <div className="h-full overflow-y-auto nice-scroll px-4 py-6">
       <div className="max-w-md mx-auto">
         <Quiz exercises={state.exercises} onXp={onXp} footer={
-          <button onClick={onDone} className="btn btn-primary w-full min-h-11 rounded-xl text-sm mt-3">Done drilling</button>
+          <button onClick={finish} className="btn btn-primary w-full min-h-11 rounded-xl text-sm mt-3">Done drilling</button>
         } />
       </div>
     </div>
