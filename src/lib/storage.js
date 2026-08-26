@@ -28,6 +28,7 @@ import {
   assistanceMetrics as _asstMetrics,
 } from './assistanceValidation.js';
 import { makeBenchmarkSample as _makeBenchmarkSample } from './intelligibility.js';
+import { applyLanguageEvidence, normaliseLanguageProgress } from './languageModel.js';
 // Thin localStorage wrapper — the app's only persistence layer (no backend).
 
 const KEYS = {
@@ -94,6 +95,7 @@ const KEYS = {
   listeningProgression: 'fp.listeningProgression.v1', // { currentStage, attempts[], unlockedAt{}, stageStats[] }
   mistakeGraph: 'fp.mistakeGraph.v1', // structural mistakes with mastery lifecycle (mistakeGraph.js)
   selectionTrial: 'fp.selectionTrial.v1', // frozen per-session target-selection records (P1 analysis)
+  languageModel: 'fp.languageModel.v1', // explicit grammar transfer stages
 };
 
 export { KEYS };
@@ -838,6 +840,7 @@ export function recordGrammarError(topicId, { mode = 'conversation', score = nul
     detail,
   });
   recordGrammarGap(topicId, { source: 'conversation' });
+  recordLanguageEvidence(topicId, { outcome: 'slip', source: 'conversation' });
   return all[topicId];
 }
 
@@ -1507,6 +1510,35 @@ export function cacheWord(word, translation) {
   write(KEYS.wordCache, cache);
 }
 
+// ---- living language transfer -------------------------------------------
+
+export function getLanguageModelProgress() {
+  return normaliseLanguageProgress(read(KEYS.languageModel, {}));
+}
+
+/**
+ * Persist one learner-reported transfer step. This is separate from grammar
+ * quiz progress because a high quiz score must not silently become a claim of
+ * spontaneous speaking ability.
+ */
+export function recordLanguageEvidence(structureId, event = {}) {
+  const current = getLanguageModelProgress();
+  const next = applyLanguageEvidence(current, structureId, event);
+  write(KEYS.languageModel, next);
+  const saved = next[structureId] || null;
+  if (saved) {
+    recordStudyEvent({
+      type: 'language-transfer',
+      structureId,
+      stage: saved.stage,
+      outcome: event.outcome === 'slip' ? 'slip' : 'success',
+      context: event.context || null,
+      source: event.source || 'language-map',
+    });
+  }
+  return saved;
+}
+
 // ---- grammar quiz progress ----
 
 export const getGrammarProgress = () => read(KEYS.grammar, {});
@@ -1522,6 +1554,17 @@ export function recordGrammarQuiz(topicId, score) {
   };
   write(KEYS.grammar, all);
   recordGrammarGap(topicId, { score: scoreValue, source: 'grammar-quiz' });
+  if (scoreValue >= 60) {
+    // Recognition and controlled production are the only stages a quiz can
+    // justify. Delayed/contextual/spontaneous use still needs transfer data.
+    recordLanguageEvidence(topicId, {
+      stage: scoreValue >= 80 ? 2 : 1,
+      allowJump: true,
+      source: 'grammar-quiz',
+    });
+  } else {
+    recordLanguageEvidence(topicId, { outcome: 'slip', source: 'grammar-quiz' });
+  }
   return all[topicId];
 }
 

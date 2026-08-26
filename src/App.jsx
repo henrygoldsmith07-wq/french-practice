@@ -666,6 +666,8 @@ export default function App() {
               onPrefsChange={updatePrefs}
               baseLevel={settings.level}
               onRun={runRecommendation}
+              onOpenGrammar={(topicId) => { setGrammarFocus(topicId); setLearnView('grammar'); setTab('learn'); }}
+              onOpenSpeaking={() => setTab('speak')}
             />
           )}
           {tab === 'progress' && settings.devPanel && (
