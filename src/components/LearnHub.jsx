@@ -1,5 +1,5 @@
 import { lazy, Suspense } from 'react';
-import { Book, Mic, Volume, BookOpen, Pencil, Sparkles, Landmark, Compass, Search, ChevronRight, GraduationCap } from './icons';
+import { Book, Mic, Volume, BookOpen, Pencil, Sparkles, Landmark, Compass, Search, ChevronRight, GraduationCap, Bookmark } from './icons';
 
 const LazyGrammar = lazy(() => import('./Grammar'));
 const LazySkills = lazy(() => import('./Skills'));
@@ -7,6 +7,7 @@ const LazyCulture = lazy(() => import('./Culture'));
 const LazyAiHub = lazy(() => import('./AiHub'));
 const LazyReference = lazy(() => import('./Reference'));
 const LazyExamSimulator = lazy(() => import('./ExamSimulator'));
+const LazyFieldNotes = lazy(() => import('./FieldNotes'));
 
 function ScreenLoader() {
   return (
@@ -19,6 +20,7 @@ function ScreenLoader() {
 const SECTIONS = [
   { id: 'grammar', title: 'Grammar', subtitle: '60 CEFR topics · A1 to C1', icon: Book },
   { id: 'skills', title: 'Skills', subtitle: 'Speaking · Listening · Reading · Writing', icon: Mic },
+  { id: 'field-notes', title: 'Field Notes', subtitle: 'Turn real life into a private practice loop', icon: Bookmark },
   { id: 'ai', title: 'AI tutor', subtitle: 'Ask anything, get exercises', icon: Sparkles },
   { id: 'culture', title: 'Culture', subtitle: 'Customs, food, regions, history', icon: Landmark },
   { id: 'exams', title: 'Exam simulator', subtitle: 'WJEC · AQA · Edexcel — speaking · writing · listening · reading', icon: GraduationCap },
@@ -43,6 +45,7 @@ export default function LearnHub({
   level,
   referenceTool,
   onCloseReference,
+  onOpenSpeaking,
 }) {
   if (view === 'grammar') {
     return (
@@ -68,6 +71,19 @@ export default function LearnHub({
       </div>
     );
   }
+  if (view === 'field-notes') {
+    return (
+      <div className="h-full flex flex-col min-h-0">
+        <HubBack onBack={() => onView(null)} label="Learn" />
+        <div className="flex-1 min-h-0">
+          <Suspense fallback={<ScreenLoader />}>
+            <LazyFieldNotes onXp={onXp} onActivity={onActivity} onOpenSpeaking={onOpenSpeaking} />
+          </Suspense>
+        </div>
+      </div>
+    );
+  }
+
   if (view === 'ai') {
     return (
       <div className="h-full flex flex-col min-h-0">
@@ -151,6 +167,7 @@ export default function LearnHub({
         </div>
         <div className="flex flex-wrap justify-center gap-2 pt-2">
           <span className="inline-block bg-surface border border-line rounded-full px-3.5 py-1.5 text-xs font-semibold text-ink2">A1 → C1 grammar library</span>
+          <span className="inline-block bg-surface border border-line rounded-full px-3.5 py-1.5 text-xs font-semibold text-ink2">Your life → your curriculum</span>
           <span className="inline-block bg-surface border border-line rounded-full px-3.5 py-1.5 text-xs font-semibold text-ink2">4 skills · PWA offline</span>
           <span className="inline-block bg-surface border border-line rounded-full px-3.5 py-1.5 text-xs font-semibold text-ink2">Search with ⌘K</span>
         </div>

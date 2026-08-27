@@ -29,6 +29,11 @@ import {
 } from './assistanceValidation.js';
 import { makeBenchmarkSample as _makeBenchmarkSample } from './intelligibility.js';
 import { applyLanguageEvidence, normaliseLanguageProgress } from './languageModel.js';
+import {
+  addFieldNote as _addFieldNote,
+  normaliseFieldNotes,
+  practiceFieldNote as _practiceFieldNote,
+} from './fieldNotes.js';
 // Thin localStorage wrapper — the app's only persistence layer (no backend).
 
 const KEYS = {
@@ -96,6 +101,7 @@ const KEYS = {
   mistakeGraph: 'fp.mistakeGraph.v1', // structural mistakes with mastery lifecycle (mistakeGraph.js)
   selectionTrial: 'fp.selectionTrial.v1', // frozen per-session target-selection records (P1 analysis)
   languageModel: 'fp.languageModel.v1', // explicit grammar transfer stages
+  fieldNotes: 'fp.fieldNotes.v1', // learner-captured real-world phrases and transfer evidence
 };
 
 export { KEYS };
@@ -1537,6 +1543,50 @@ export function recordLanguageEvidence(structureId, event = {}) {
     });
   }
   return saved;
+}
+
+// ---- field notes: real-world phrases turned into transfer evidence --------
+
+export const getFieldNotes = () => normaliseFieldNotes(read(KEYS.fieldNotes, []));
+
+export function saveFieldNote(input = {}, now = Date.now()) {
+  const result = _addFieldNote(getFieldNotes(), input, now);
+  write(KEYS.fieldNotes, result.notes);
+  if (result.added && result.note) {
+    recordStudyEvent({
+      type: 'field-note.capture',
+      noteId: result.note.id,
+      context: result.note.context,
+      source: result.note.source || 'field-notes',
+      stage: result.note.stage,
+      at: result.note.createdAt,
+    });
+  }
+  return { ...result, notes: getFieldNotes() };
+}
+
+export function practiceFieldNote(id, event = {}, now = Date.now()) {
+  const next = _practiceFieldNote(getFieldNotes(), id, event, now);
+  write(KEYS.fieldNotes, next);
+  const saved = next.find((note) => note.id === id) || null;
+  if (saved) {
+    recordStudyEvent({
+      type: 'field-note.practice',
+      noteId: id,
+      stage: saved.stage,
+      outcome: event?.outcome === 'slip' ? 'slip' : 'success',
+      mode: event?.mode || null,
+      context: saved.context,
+      at: saved.lastAt || new Date(now).toISOString(),
+    });
+  }
+  return saved;
+}
+
+export function removeFieldNote(id) {
+  const next = getFieldNotes().filter((note) => note.id !== id);
+  write(KEYS.fieldNotes, next);
+  return next;
 }
 
 // ---- grammar quiz progress ----

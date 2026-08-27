@@ -3,7 +3,7 @@ import { getStreak, getTodayXp, getSrs, getNotebook, getSettings, getSessions, g
 import { dueEntries, notebookAsEntries, weakEntries } from '../lib/memory';
 import { getScenarios } from '../lib/data';
 import { getLanguage } from '../lib/languages';
-import { ArrowRight, Layers, MessageCircle, Play, Target, Mic, BookOpen, StudioMark } from './icons';
+import { ArrowRight, Layers, MessageCircle, Play, Target, Mic, BookOpen, StudioMark, Bookmark } from './icons';
 import { weaknessAnalysis, dailyRecommendations } from '../lib/personalise';
 import { SCENARIO_ICONS } from './icons';
 import Mascot from './Mascot';
@@ -17,7 +17,7 @@ function suggestScenario(sessions) {
   return unseen || [...scenarios].sort((a, b) => (lastSeen[a.id] ?? -1) - (lastSeen[b.id] ?? -1))[0];
 }
 
-export default function HomeDashboard({ dailyGoal = 30, level, onStartLesson, onNavigate, onPickScenario, lastActivity, onResume, prefs, onStartToday, todayPlan }) {
+export default function HomeDashboard({ dailyGoal = 30, level, onStartLesson, onNavigate, onOpenFieldNotes, onPickScenario, lastActivity, onResume, prefs, onStartToday, todayPlan }) {
   const settings = getSettings();
   const language = getLanguage(settings.language);
   const streak = getStreak();
@@ -150,6 +150,20 @@ export default function HomeDashboard({ dailyGoal = 30, level, onStartLesson, on
           <p className="mt-2 text-xs text-ink3">{goalDone ? 'Daily goal complete — anything more today is bonus.' : `${goal - todayXp} XP to reach today’s goal.`}</p>
         </section>
 
+        {onOpenFieldNotes && (
+          <section className="bg-speaksoft border border-speak/30 rounded-[20px] p-[22px] flex flex-col sm:flex-row sm:items-center gap-4" aria-labelledby="field-notes-promo-title">
+            <span className="w-11 h-11 shrink-0 grid place-items-center rounded-2xl bg-surface text-speak border border-speak/20"><Bookmark size={19} /></span>
+            <div className="flex-1 min-w-0">
+              <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-speak">New · Field Notes</p>
+              <h3 id="field-notes-promo-title" className="mt-1 text-lg font-bold tracking-[-0.02em]">Make today’s French stick.</h3>
+              <p className="mt-1 text-sm text-ink2 leading-relaxed">Capture a line from a real message, menu or film — then bring it back until it is yours.</p>
+            </div>
+            <button type="button" onClick={onOpenFieldNotes} className="inline-flex items-center justify-center gap-1.5 bg-ink text-bg font-bold rounded-[14px] px-4 py-3 text-sm hover:opacity-90 transition shrink-0">
+              Capture a phrase <ArrowRight size={14} />
+            </button>
+          </section>
+        )}
+
         {/* The studio, in three calm products — mirrors le-studio-site .products */}
         <section aria-labelledby="today-studio-heading">
           <h3 id="today-studio-heading" className="text-center text-[clamp(22px,4vw,30px)] font-bold tracking-[-0.02em] text-ink">The studio, in three</h3>
@@ -189,7 +203,7 @@ export default function HomeDashboard({ dailyGoal = 30, level, onStartLesson, on
         <section aria-labelledby="today-explore-heading" className="pb-2">
           <h3 id="today-explore-heading" className="text-center text-[clamp(20px,3vw,26px)] font-bold tracking-[-0.02em]">Explore when you have time</h3>
           <p className="text-center text-ink2 mt-1 text-sm">Useful next steps, kept out of today’s decision.</p>
-          <div className="grid gap-3.5 sm:grid-cols-3 mt-5">
+          <div className="grid gap-3.5 sm:grid-cols-2 lg:grid-cols-4 mt-5">
             <MiniCard
               icon={Mic}
               title="Dictée"
@@ -207,6 +221,12 @@ export default function HomeDashboard({ dailyGoal = 30, level, onStartLesson, on
               title="Your path"
               desc="12 units · checkpoints · CEFR"
               onClick={() => onNavigate('grammar')}
+            />
+            <MiniCard
+              icon={Bookmark}
+              title="Field Notes"
+              desc="Capture real French, then reuse it."
+              onClick={onOpenFieldNotes}
             />
           </div>
           {todayRecs.length>0 && (<div className="mt-6 grid gap-2 sm:grid-cols-2"><p className="sm:col-span-2 text-center text-xs text-ink3">Today picks for you</p>{todayRecs.map(r=>(<div key={r.type} className="bg-surface border border-line rounded-xl px-4 py-3 flex items-center justify-between"><span className="text-sm font-semibold">{r.title}</span><span className="text-xs text-ink3">{r.subtitle}</span></div>))}</div>)}

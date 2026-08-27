@@ -137,6 +137,11 @@ stops at the source — even a stale mirror is refused.
   **recycling loop** — corrections become retry drills that need two clean
   passes before they retire, new words come back until they have been met three
   times, and missed grammar points steer later questions.
+- **Field Notes — your life becomes the syllabus** — capture a line from a
+  message, menu, film or work chat with the situation that made it matter. The
+  app turns that moment into a private four-step loop (capture → rehearse →
+  recall later → reuse in life), keeps it offline, and never calls a saved
+  phrase “mastered” until you have brought it back yourself.
 - **Vocabulary** — forty-two themed packs (520+ rich cards) alongside the CEFR
   packs: food, travel, work, feelings,
   family & people, the body, animals, clothing & colours, city & transport,

@@ -4,13 +4,14 @@ import { getScenarios } from '../lib/data';
 import { GRAMMAR_TOPICS } from '../lib/grammar';
 import { READING_TEXTS } from '../lib/reading';
 import { LISTENING_TRACKS } from '../lib/listening';
-import { saveToNotebook, getNotebook } from '../lib/storage';
+import { contextLabel } from '../lib/fieldNotes';
+import { saveToNotebook, getNotebook, getFieldNotes } from '../lib/storage';
 import { SpeakButton } from './ui';
 import Mascot from './Mascot';
-import { Search, X, MessageCircle, Book, BookOpen, Volume, Check } from './icons';
+import { Search, X, MessageCircle, Book, BookOpen, Volume, Check, Bookmark } from './icons';
 
 // Global search: one box over the whole studio — words, scenarios, grammar
-// topics, readings and listening tracks — with deep links into each.
+// topics, readings, listening tracks and personal Field Notes — with deep links into each.
 
 const norm = (s) => String(s).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
 const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
@@ -46,13 +47,14 @@ export default function GlobalSearch({ open, onClose, onGo }) {
       grammar: GRAMMAR_TOPICS.filter((t) => hit(t.title, t.summary)).slice(0, 4),
       reading: READING_TEXTS.filter((t) => hit(t.title, t.description)).slice(0, 3),
       listening: LISTENING_TRACKS.filter((t) => hit(t.title, t.description)).slice(0, 3),
+      fieldNotes: getFieldNotes().filter((note) => hit(note.french, note.meaning, note.source, note.context)).slice(0, 4),
     };
   }, [q]);
 
   if (!open) return null;
 
   const total = results
-    ? results.words.length + results.scenarios.length + results.grammar.length + results.reading.length + results.listening.length
+    ? results.words.length + results.scenarios.length + results.grammar.length + results.reading.length + results.listening.length + results.fieldNotes.length
     : 0;
 
   const save = (e) => {
@@ -112,6 +114,7 @@ export default function GlobalSearch({ open, onClose, onGo }) {
                     ['A grammar topic', jump.grammar && { type: 'grammar', id: jump.grammar.id }, Book],
                     ['Something to read', jump.reading && { type: 'reading', id: jump.reading.id }, BookOpen],
                     ['Something to hear', jump.listening && { type: 'listening', id: jump.listening.id }, Volume],
+                    ['Field Notes', { type: 'field-notes' }, Bookmark],
                   ].map(([label, go, Icon]) => (
                     <button key={label} onClick={() => go && onGo(go)} disabled={!go}
                       className="flex items-center gap-2.5 bg-surface border border-line rounded-xl px-3.5 py-3 text-left hover:border-ink3 transition-colors disabled:opacity-50">
@@ -180,6 +183,14 @@ export default function GlobalSearch({ open, onClose, onGo }) {
               <h3 className="text-[11px] font-bold uppercase tracking-wider text-ink2">Listening</h3>
               {results.listening.map((t) => (
                 <Row key={t.id} icon={Volume} title={t.title} sub={t.description} badge={t.cefr} onClick={() => onGo({ type: 'listening', id: t.id })} />
+              ))}
+            </section>
+          )}
+          {results && results.fieldNotes.length > 0 && (
+            <section className="space-y-1.5">
+              <h3 className="text-[11px] font-bold uppercase tracking-wider text-ink2">Your Field Notes</h3>
+              {results.fieldNotes.map((note) => (
+                <Row key={note.id} icon={Bookmark} title={note.french} sub={note.meaning || contextLabel(note.context)} onClick={() => onGo({ type: 'field-notes' })} />
               ))}
             </section>
           )}

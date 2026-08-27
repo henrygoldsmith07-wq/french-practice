@@ -155,6 +155,7 @@ export default function App() {
       import('./components/Offline');
       import('./components/PathSetup');
       import('./components/LearningPath');
+      import('./components/FieldNotes');
       import('./components/SettingsModal');
       import('./components/SessionDashboard');
     };
@@ -402,6 +403,7 @@ export default function App() {
       speaking: 'Exam speaking',
       writing: 'Writing practice',
       reading: 'Reading practice',
+      'field-note': evt.noteId ? 'Field note practice' : 'Field Notes',
     };
     // Grammar/listening titles live in heavy content chunks — resolve the
     // label lazily rather than importing those libraries for one lookup.
@@ -415,7 +417,7 @@ export default function App() {
         setLastActivity('listening', evt.trackId, `Listening: ${getTrack(evt.trackId)?.title || ''}`);
       }).catch(() => {});
     }
-    if (labels[evt.type]) setLastActivity(evt.type, evt.scenarioId || evt.topicId || evt.trackId || evt.textId, labels[evt.type]);
+    if (labels[evt.type]) setLastActivity(evt.type, evt.scenarioId || evt.topicId || evt.trackId || evt.textId || evt.noteId, labels[evt.type]);
     if (['cards', 'session', 'dictation', 'quickfire', 'grammar'].includes(evt.type)) {
       bumpChallengeMetric(evt.type);
     }
@@ -461,6 +463,7 @@ export default function App() {
     setPersonaliseOpen(false);
     if (type === 'arena' || type === 'speak') { setTab('speak'); return; }
     if (type === 'cards' || type === 'review') { setTab('review'); return; }
+    if (type === 'field-notes') { setTab('learn'); setLearnView('field-notes'); return; }
     if (type === 'grammar') { setLearnView('grammar'); setTab('learn'); return; }
     if (type === 'reading' || type === 'listening' || type === 'dictation' || type === 'quickfire') { setLearnView('skills'); setTab('learn'); return; }
   };
@@ -472,6 +475,7 @@ export default function App() {
       if (sc && sc.id !== scenario.id) { setScenario(sc); setHistory([]); setLastScores(null); }
       setTab('speak');
     }
+    if (hit.type === 'field-notes') { setTab('learn'); setLearnView('field-notes'); }
     if (hit.type === 'grammar') { setGrammarFocus(hit.id); setLearnView('grammar'); setTab('learn'); }
     if (hit.type === 'reading') { setSkillArea('reading'); setLearnView('skills'); setTab('learn'); }
     if (hit.type === 'listening') { setSkillArea('listening'); setListeningMode(hit.id); setLearnView('skills'); setTab('learn'); }
@@ -489,6 +493,7 @@ export default function App() {
     else if (la.type === 'cards') setTab('review');
     else if (la.type === 'dictation') { setSkillArea('listening'); setListeningMode('dictation'); setLearnView('skills'); setTab('learn'); }
     else if (la.type === 'quickfire') { setSkillArea('speaking'); setSpeakingMode('quickfire'); setLearnView('skills'); setTab('learn'); }
+    else if (la.type === 'field-note') { setTab('learn'); setLearnView('field-notes'); }
   };
 
   const endSession = () => {
@@ -588,6 +593,7 @@ export default function App() {
               prefs={prefs}
               onStartLesson={startLesson}
               onNavigate={setTab}
+              onOpenFieldNotes={() => { setTab('learn'); setLearnView('field-notes'); }}
               lastActivity={getLastActivity()}
               onResume={resumeActivity}
               onStartToday={() => setTodayOpen(true)}
@@ -649,6 +655,7 @@ export default function App() {
               level={effectiveLevel}
               referenceTool={referenceTool}
               onCloseReference={() => { setReferenceOpen(false); setReferenceTool(null); setLearnView(null); }}
+              onOpenSpeaking={() => setTab('speak')}
             />
           )}
           {tab === 'progress' && (
