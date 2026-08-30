@@ -57,6 +57,7 @@ const KEYS = {
   habits: 'fp.habits', // [{ text, key, count, lastSeen }] — recurring mistakes
   notebook: 'fp.notebook', // [{ id, fr, en, note, addedAt }] — saved words
   grammar: 'fp.grammar', // { [topicId]: { best, attempts, lastAt } } — quiz results
+  conjugation: 'fp.conjugation.v1', // { [itemId]: { seen, right, wrong, accentWrong } } — conjugation drill
   wordCache: 'fp.wordCache', // { [word]: translation } — tap-to-translate lookups
   reviewLog: 'fp.reviewLog', // { 'YYYY-MM-DD': count } — daily review activity (heatmap)
   reminderDay: 'fp.reminderDay', // last day a smart reminder fired
@@ -1588,6 +1589,19 @@ export function removeFieldNote(id) {
   write(KEYS.fieldNotes, next);
   return next;
 }
+
+// ---- conjugation drill progress ----
+// Per-cell counters only: {seen, right, wrong, accentWrong}. The drill's own
+// module owns the shape and the maths; storage just persists it.
+
+export const getConjugationProgress = () => {
+  const raw = read(KEYS.conjugation, {});
+  return raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
+};
+
+export const saveConjugationProgress = (stats) => {
+  write(KEYS.conjugation, stats && typeof stats === 'object' && !Array.isArray(stats) ? stats : {});
+};
 
 // ---- grammar quiz progress ----
 
