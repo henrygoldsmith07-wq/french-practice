@@ -5,13 +5,27 @@ import { exportProgress, importProgress, getSyncId, getLastBackup, getSettings, 
 import { allEntries } from '../lib/vocab';
 import { buildOfflinePack, offlinePackSize, offlinePackSummary } from '../lib/offlinePack';
 import { makeSyncCode, restoreSyncCode } from '../lib/account';
+import { fetchAccount, startGoogleSignIn, signOut as signOutAccount, push as pushRemote, pull as pullRemote, deleteRemote, remoteUpdatedAt } from '../lib/cloudAccount';
 import { X, Check, Download, Upload, BookOpen, Volume, RefreshCw, Copy, Key } from './icons';
 
 // Offline features: the app is a client-side PWA, so once the service worker
 // has cached it, every lesson works with no network and TTS audio is
 // generated on-device. This panel surfaces offline readiness, lets you save
 // stories/podcasts as text files, and moves progress between devices via a
-// backup file (there is no backend to sync through).
+// backup file, or — where a deployment configures it — through a Google
+// account that stores that same sync code for you.
+
+/** Google's four-colour "G", inlined so the button needs no network image. */
+function GoogleMark() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 18 18" aria-hidden="true">
+      <path fill="#4285F4" d="M17.64 9.2c0-.64-.06-1.25-.16-1.84H9v3.48h4.84a4.14 4.14 0 0 1-1.8 2.72v2.26h2.92c1.7-1.57 2.68-3.88 2.68-6.62Z" />
+      <path fill="#34A853" d="M9 18c2.43 0 4.47-.8 5.96-2.18l-2.92-2.26c-.81.54-1.84.86-3.04.86-2.34 0-4.32-1.58-5.03-3.7H.96v2.33A9 9 0 0 0 9 18Z" />
+      <path fill="#FBBC05" d="M3.97 10.72a5.41 5.41 0 0 1 0-3.44V4.95H.96a9 9 0 0 0 0 8.1l3.01-2.33Z" />
+      <path fill="#EA4335" d="M9 3.58c1.32 0 2.5.45 3.44 1.35l2.58-2.58C13.46.89 11.43 0 9 0A9 9 0 0 0 .96 4.95l3.01 2.33C4.68 5.16 6.66 3.58 9 3.58Z" />
+    </svg>
+  );
+}
 
 function downloadFile(name, text, type = 'text/plain') {
   const blob = new Blob([text], { type });
@@ -39,6 +53,10 @@ export default function Offline({ open, onClose, pwa }) {
   const fileRef = useRef(null);
   // account & sync-code state
   const [passphrase, setPassphrase] = useState('');
+  const [cloud, setCloud] = useState({ available: false, user: null });
+  const [cloudMsg, setCloudMsg] = useState(null);
+  const [cloudBusy, setCloudBusy] = useState(false);
+  const [knownRemote, setKnownRemote] = useState(null);
   const [code, setCode] = useState('');
   const [pasteCode, setPasteCode] = useState('');
   const [copied, setCopied] = useState(false);
@@ -100,6 +118,68 @@ export default function Offline({ open, onClose, pwa }) {
     } catch (err) {
       setError(err.message);
     }
+  };
+
+  // The account section hides itself entirely where no deployment configures
+  // one, so the offline story below is unchanged for everyone else.
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      const next = await fetchAccount();
+      if (!alive) return;
+      setCloud(next);
+      if (next.user) {
+        const at = await remoteUpdatedAt().catch(() => null);
+        if (alive) setKnownRemote(at);
+      }
+    })();
+    return () => { alive = false; };
+  }, []);
+
+  // The OAuth callback returns with ?signin=…; report it once, then clean the
+  // URL so a refresh does not repeat the message.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const outcome = params.get('signin');
+    if (!outcome) return;
+    setCloudMsg(outcome === 'ok' ? 'Signed in.' : outcome === 'cancelled' ? 'Sign-in cancelled.' : 'Sign-in failed. Please try again.');
+    params.delete('signin'); params.delete('reason');
+    const query = params.toString();
+    window.history.replaceState({}, '', window.location.pathname + (query ? `?${query}` : ''));
+  }, []);
+
+  const saveToAccount = async (force = false) => {
+    setCloudBusy(true); setCloudMsg(null);
+    const result = await pushRemote(passphrase, knownRemote, force);
+    setCloudBusy(false);
+    if (result.status === 'ok') {
+      setKnownRemote(result.updatedAt);
+      setCloudMsg(result.encrypted
+        ? 'Saved to your account, encrypted with your passphrase.'
+        : 'Saved to your account. Add a passphrase above to encrypt it first.');
+      return;
+    }
+    if (result.status === 'conflict') {
+      // Never overwrite a copy this device has not seen without asking.
+      const when = result.remoteUpdatedAt ? new Date(result.remoteUpdatedAt).toLocaleString() : 'unknown';
+      if (window.confirm(`Another device saved at ${when}. Overwrite it with this device's progress?`)) {
+        await saveToAccount(true);
+        return;
+      }
+      setCloudMsg('Left the other device\'s copy alone.');
+      return;
+    }
+    setCloudMsg(result.message || 'Sync failed.');
+  };
+
+  const restoreFromAccount = async () => {
+    setCloudBusy(true); setCloudMsg(null);
+    const result = await pullRemote(passphrase);
+    setCloudBusy(false);
+    if (result.status === 'empty') { setCloudMsg('Nothing has been saved to this account yet.'); return; }
+    if (result.status !== 'ok') { setCloudMsg(result.message || 'Sync failed.'); return; }
+    setKnownRemote(result.updatedAt);
+    setCloudMsg(`Restored ${result.restored} item${result.restored === 1 ? '' : 's'} from your account.`);
   };
 
   // Generate a sync code from the current progress (encrypted if a passphrase
@@ -252,8 +332,46 @@ export default function Offline({ open, onClose, pwa }) {
             </div>
 
             <p className="text-xs text-ink3 leading-relaxed">
-              There’s no server — your data stays on this device. To move it, create a <span className="font-semibold text-ink">sync code</span> here and paste it on another device. Add a passphrase to encrypt it so it’s safe to send to yourself. Your API key is never included.
+              Your data stays on this device. To move it, create a <span className="font-semibold text-ink">sync code</span> here and paste it on another device. Add a passphrase to encrypt it so it’s safe to send to yourself. Your API key is never included.
+              {cloud.available ? ' Signing in below stores that same code for you, so you don’t have to carry it by hand.' : ''}
             </p>
+
+            {cloud.available && (
+              <div className="rounded-xl border border-line bg-surface2 p-3.5 space-y-2.5">
+                {cloud.user ? (
+                  <>
+                    <p className="text-xs text-ink2">
+                      Signed in as <span className="font-semibold text-ink">{cloud.user.email}</span>
+                      {knownRemote ? ` — last saved ${new Date(knownRemote).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}` : ' — nothing saved yet'}.
+                      The passphrase below encrypts what is stored; leave it empty and the saved code is a plain backup.
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      <button onClick={() => saveToAccount()} disabled={cloudBusy} className="btn btn-primary text-xs px-3 py-1.5 rounded-lg disabled:opacity-40">Save to account</button>
+                      <button onClick={restoreFromAccount} disabled={cloudBusy} className="btn btn-secondary text-xs px-3 py-1.5 rounded-lg disabled:opacity-40">Restore from account</button>
+                      <button
+                        onClick={async () => { await signOutAccount(); setCloud({ ...cloud, user: null }); setKnownRemote(null); setCloudMsg('Signed out. Your progress stays on this device.'); }}
+                        className="btn btn-secondary text-xs px-3 py-1.5 rounded-lg"
+                      >Sign out</button>
+                      <button
+                        onClick={async () => {
+                          if (!window.confirm('Delete the copy stored in your account? This device keeps its progress.')) return;
+                          await deleteRemote(); setKnownRemote(null); setCloudMsg('Removed the copy from your account.');
+                        }}
+                        className="btn btn-secondary text-xs px-3 py-1.5 rounded-lg"
+                      >Delete account copy</button>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-xs text-ink2">Optional — Le Studio works fully offline without an account.</p>
+                    <button onClick={startGoogleSignIn} className="btn btn-secondary text-xs px-3 py-1.5 rounded-lg inline-flex items-center gap-2">
+                      <GoogleMark /> Continue with Google
+                    </button>
+                  </>
+                )}
+                {cloudMsg && <p role="status" className="text-[11px] text-ink3">{cloudMsg}</p>}
+              </div>
+            )}
 
             {/* optional passphrase */}
             <label className="block">
