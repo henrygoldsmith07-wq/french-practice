@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { getScenarios } from '../lib/data';
+import { getScenarios, getSituations } from '../lib/data';
 import { scenarioIcon, Check, Search, Shuffle, X } from './icons';
 
 // Full-screen scenario chooser for the Arena. The studio ships ~40 roleplays
@@ -26,6 +26,8 @@ export default function ScenarioPicker({ open, activeId, onPick, onClose }) {
   }, [open, onClose]);
 
   const scenarios = getScenarios();
+  const situations = useMemo(() => getSituations(), []);
+  const searching = query.trim().length > 0;
   const results = useMemo(() => {
     const needle = norm(query.trim());
     if (!needle) return scenarios;
@@ -85,6 +87,37 @@ export default function ScenarioPicker({ open, activeId, onPick, onClose }) {
 
       <div className="flex-1 overflow-y-auto nice-scroll px-4 py-3">
         <div className="max-w-2xl mx-auto">
+          {!searching && situations.length > 0 && (
+            <section aria-labelledby="situations-heading" className="mb-4">
+              <h3 id="situations-heading" className="text-[11px] font-bold uppercase tracking-[0.12em] text-ink2 mb-2">
+                Start with a situation
+              </h3>
+              <div className="grid grid-cols-2 gap-2">
+                {situations.map((sit) => {
+                  const Icon = scenarioIcon(sit.scenario.id);
+                  const active = sit.scenario.id === activeId;
+                  return (
+                    <button
+                      key={sit.id}
+                      onClick={() => pick(sit.scenario)}
+                      aria-current={active ? 'true' : undefined}
+                      className={`flex items-center gap-2.5 text-left rounded-xl border px-3 py-2.5 transition-colors ${
+                        active ? 'border-ink bg-surface2' : 'border-line bg-surface hover:border-ink3'
+                      }`}
+                    >
+                      <span className="w-8 h-8 shrink-0 grid place-items-center rounded-lg bg-surface2 border border-line text-ink2" aria-hidden="true">
+                        <Icon size={15} />
+                      </span>
+                      <span className="min-w-0">
+                        <span className="block text-[13px] font-bold text-ink" lang="fr">{sit.label}</span>
+                        <span className="block text-[11px] text-ink3 truncate">{sit.blurb}</span>
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </section>
+          )}
           {results.length === 0 ? (
             <p className="text-center text-sm text-ink3 py-10">
               Nothing matches “{query.trim()}”. Try a place or a task — “post office”, “rebooking”.

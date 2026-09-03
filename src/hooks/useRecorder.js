@@ -235,5 +235,9 @@ export default function useRecorder({ onComplete }) {
     }
   }, [cleanup]);
 
-  return { recording, elapsed, peakDb, error, start, stop, cancel, analyserRef };
+  // Dismiss a microphone error without starting a recording — the caller
+  // falls back to tap-to-listen + typing, never a dead mic screen.
+  const clearError = useCallback(() => setError(null), []);
+
+  return { recording, elapsed, peakDb, error, start, stop, cancel, clearError, analyserRef };
 }

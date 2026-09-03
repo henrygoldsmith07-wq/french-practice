@@ -1,5 +1,6 @@
 import { useMemo, useRef, useState } from 'react';
 import { buildDailyCurriculum } from '../lib/dailyCurriculum';
+import { takeawayPhrase } from '../lib/takeaway';
 import { dueRetests, weakestMistakes, recordRetest, EVIDENCE_ENGINE_VERSION } from '../lib/mistakeGraph';
 import { getPracticeAssignment, balancedDrillTopic } from '../lib/assignment';
 import { recordSelectionTrial } from '../lib/storage';
@@ -88,14 +89,28 @@ export default function TodaySession({ open, onClose, minutes = 20, apiKey, mock
   const close = () => { onClose(); setSegIndex(0); setHistory([]); setXp(0); };
 
   if (segIndex >= plan.segments.length) {
+    const speakSeg = plan.segments.find((s) => s.id === 'speak');
+    const speakScenario = speakSeg ? getScenarios().find((x) => x.id === speakSeg.payload.scenarioId) : null;
+    const takeaway = takeawayPhrase(history, speakScenario);
     return (
       <div className="fixed inset-0 z-[65] overflow-y-auto bg-bg" role="dialog" aria-modal="true" aria-label="Today's French complete">
         <div className="mx-auto min-h-full max-w-lg px-4 py-10 text-center space-y-5">
           <p className="text-3xl font-black text-ink">C'est tout.</p>
-          <p className="text-sm text-ink2">
-            Today's French — {plan.totalMinutes} minutes · {plan.segments.map((s) => s.label).join(' → ')}.
-          </p>
-          <p className="text-sm font-bold text-ink tabular-nums">+{xp} XP earned</p>
+          {takeaway ? (
+            <p className="text-lg text-ink leading-relaxed">
+              You can now say<br />
+              <span className="font-bold" lang="fr">«{takeaway}»</span>
+            </p>
+          ) : (
+            <p className="text-sm text-ink2">
+              Today's French — {plan.totalMinutes} minutes · {plan.segments.map((s) => s.label).join(' → ')}.
+            </p>
+          )}
+          {takeaway && (
+            <p className="text-xs text-ink3">
+              {plan.totalMinutes} minutes · {plan.segments.map((s) => s.label).join(' → ')}.
+            </p>
+          )}
           <button onClick={close} className="btn btn-primary w-full max-w-xs mx-auto min-h-12 rounded-xl text-sm">Close</button>
         </div>
       </div>

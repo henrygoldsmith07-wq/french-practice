@@ -103,6 +103,17 @@ export default function ChatArena({ apiKey, mockMode, ttsRate, level, onTtsRate,
 
   const [reversed, setReversed] = useState(false);
 
+  // Mic-failure fallback line: the partner's latest message, else the opener.
+  // Speech failure always falls back to tap-to-listen + typing — never a dead
+  // mic screen.
+  const fallbackListenText = (() => {
+    for (let i = history.length - 1; i >= 0; i -= 1) {
+      const reply = history[i]?.evaluation?.reply;
+      if (typeof reply === 'string' && reply.trim()) return reply;
+    }
+    return scenario.opener;
+  })();
+
   const changeScenario = (id) => {
     const s = getScenarios().find((x) => x.id === id);
     if (!s) return;
@@ -536,7 +547,21 @@ export default function ChatArena({ apiKey, mockMode, ttsRate, level, onTtsRate,
             </button>
           </div>
         )}
-        {recorder.error && <p role="alert" className="text-[11px] text-ink mt-2">{recorder.error}</p>}
+        {recorder.error && (
+          <div role="alert" className="mt-2 rounded-xl border border-line bg-surface2 px-3 py-2.5 space-y-1.5">
+            <p className="text-[11px] text-ink">{recorder.error} No problem — listen below and type your reply instead.</p>
+            <div className="flex flex-wrap items-center gap-2">
+              <SpeakButton text={fallbackListenText} rate={ttsRate} label="Tap to listen" />
+              <button
+                type="button"
+                onClick={() => recorder.start()}
+                className="min-h-9 px-3 rounded-lg text-xs font-semibold text-ink2 hover:text-ink border border-line"
+              >
+                Try microphone again
+              </button>
+            </div>
+          </div>
+        )}
         </div>
       </div>
     </div>

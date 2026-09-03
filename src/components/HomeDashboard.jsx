@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { getStreak, getTodayXp, getSrs, getNotebook, getSettings, getSessions, getHabits, getGrammarProgress } from '../lib/storage';
+import { getStreak, getTodayXp, getSrs, getNotebook, getSettings, getSessions, getHabits, getGrammarProgress, getWeeklyPractice } from '../lib/storage';
 import { dueEntries, notebookAsEntries, weakEntries } from '../lib/memory';
 import { getScenarios } from '../lib/data';
 import { getLanguage } from '../lib/languages';
@@ -51,6 +51,11 @@ export default function HomeDashboard({ dailyGoal = 30, level, onStartLesson, on
   const goal = Math.max(1, dailyGoal);
   const goalPct = Math.min(100, Math.round((todayXp / goal) * 100));
   const goalDone = todayXp >= goal;
+  // Weekly rhythm (Habit rule): days practised this week against the target.
+  // A missed day never breaks this — the week stays alive until Sunday.
+  const weekly = useMemo(() => {
+    try { return getWeeklyPractice(); } catch { return { daysThisWeek: 0, target: 3, met: false, current: 0, best: 0 }; }
+  }, []);
   const hour = new Date().getHours();
   const greeting = hour < 12 ? 'Bonjour !' : hour < 18 ? 'Bon après-midi !' : 'Bonsoir !';
 
@@ -70,7 +75,7 @@ export default function HomeDashboard({ dailyGoal = 30, level, onStartLesson, on
           <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-surface border border-line text-[11px] font-semibold text-ink2">
             <span className="w-2 h-2 rounded-full bg-success animate-pulse" aria-hidden />
             Le Studio · {language.name} · Today
-            {streak.count > 0 ? <span className="hidden sm:inline">· {streak.count}-day streak</span> : null}
+            <span className="hidden sm:inline">· {weekly.daysThisWeek}/{weekly.target} days this week</span>
           </div>
           <h2 id="today-hero-title" className="mt-5 text-[clamp(30px,6vw,52px)] font-extrabold leading-[1.05] tracking-[-0.03em] text-ink text-balance">
             {lastActivity ? (
@@ -92,12 +97,30 @@ export default function HomeDashboard({ dailyGoal = 30, level, onStartLesson, on
                   onClick={onStartToday}
                   className="inline-flex items-center gap-2 bg-ink text-bg font-bold rounded-[14px] px-[26px] py-[13px] text-[15px] hover:opacity-85 hover:-translate-y-px transition"
                 >
-                  <Play size={16} /> Start today's French
+                  <Play size={16} /> Speak today
                 </button>
                 <div className="w-full flex flex-wrap items-center justify-center gap-1.5 -mt-1" aria-label="Today's session shape">
                   {(todayPlan || ['Listen', 'Speak', 'Repair', 'Recall']).map((seg) => (
                     <span key={seg} className="px-2 py-0.5 rounded-full bg-surface border border-line text-[10px] font-semibold text-ink2">{seg}</span>
                   ))}
+                </div>
+                {/* Review and Learn sit behind the one button — quiet, secondary. */}
+                <div className="w-full flex items-center justify-center gap-4 text-[13px]">
+                  <button
+                    type="button"
+                    onClick={() => onNavigate('review')}
+                    className="font-semibold text-ink2 hover:text-ink transition"
+                  >
+                    Review{dueCount > 0 ? ` · ${dueCount} due` : ''}
+                  </button>
+                  <span aria-hidden="true" className="text-line">·</span>
+                  <button
+                    type="button"
+                    onClick={() => onNavigate('learn')}
+                    className="font-semibold text-ink2 hover:text-ink transition"
+                  >
+                    Learn
+                  </button>
                 </div>
               </>
             ) : (
@@ -130,7 +153,7 @@ export default function HomeDashboard({ dailyGoal = 30, level, onStartLesson, on
         {/* Stats — same calm grid as le-studio-site .stats */}
         <section className="grid grid-cols-2 sm:grid-cols-4 gap-3" aria-label="Today at a glance">
           <Stat value={todayXp} label="XP today" sub={`${goal - todayXp > 0 && !goalDone ? `${goal - todayXp} to goal` : goalDone ? 'Goal reached' : '—'}`} />
-          <Stat value={streak.count} label="day streak" sub={goalDone ? 'Keep it going' : 'Practice daily'} />
+          <Stat value={`${weekly.daysThisWeek}/${weekly.target}`} label="days this week" sub={weekly.met ? 'Week met — bonus from here' : 'A missed day doesn’t break this'} />
           <Stat value={dueCount} label="words due" sub={dueCount ? 'Review queue' : 'All clear'} />
           <Stat value={level || settings.level || '—'} label="your level" sub="CEFR · adaptive" />
         </section>

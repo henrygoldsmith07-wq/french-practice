@@ -71,6 +71,8 @@ const KEYS = {
   xpLog: 'fp.xpLog', // { 'YYYY-MM-DD': xp } — daily XP history (calendar, weekly goal)
   freezes: 'fp.freezes', // streak freezes owned (auto-consumed on a 1-day gap)
   vacation: 'fp.vacation', // ISO day until which streak loss is paused
+  weeklyDays: 'fp.weeklyDaysTarget', // days-per-week frequency target (Habit-style weekly rule)
+  household: 'fp.household.v1', // { members: [{id,name,createdAt,streak}], activeId } — family mode
   grammarErrors: 'fp.grammarErrors', // { [topicId]: count } — Arena mistake classifications
   gettingStarted: 'fp.gettingStarted', // '1' once the Home checklist is dismissed
   lastActivity: 'fp.lastActivity', // { type, id?, label, at } — powers Home's continue card
@@ -1452,6 +1454,180 @@ function bumpStreak() {
   const s = getStreak();
   if (s.lastDay === today) return;
   write(KEYS.streak, { count: s.count + 1, lastDay: today });
+  bumpHouseholdStreak(today);
+}
+
+// ---- weekly practice target (Habit-style: a missed day never breaks this) ----
+
+// Same rule as Habit's weeklyStreak: weeks that meet the days-per-week target
+// extend the run, whatever the days. The current week is alive until it ends,
+// so an unmet current week simply isn't counted yet — never a break, never a
+// reset-to-zero. This is the product's headline rhythm; the daily count is
+// just a number underneath it.
+
+export const WEEKLY_DAYS_DEFAULT = 3;
+
+export const getWeeklyDaysTarget = () => {
+  const n = read(KEYS.weeklyDays, WEEKLY_DAYS_DEFAULT);
+  return Number.isInteger(n) ? Math.max(1, Math.min(7, n)) : WEEKLY_DAYS_DEFAULT;
+};
+
+export function setWeeklyDaysTarget(n) {
+  const num = Number(n);
+  const v = Math.max(1, Math.min(7, Math.round(Number.isFinite(num) ? num : WEEKLY_DAYS_DEFAULT)));
+  write(KEYS.weeklyDays, v);
+  return v;
+}
+
+// Active days: any local-calendar day with real practice (XP earned, reviews
+// done, or a saved session). Sorted unique YYYY-MM-DD.
+export function getActiveDays() {
+  const days = new Set();
+  try {
+    for (const [day, xp] of Object.entries(getXpLog())) {
+      if (xp > 0 && /^\d{4}-\d{2}-\d{2}$/.test(day)) days.add(day);
+    }
+  } catch { /* logs unreadable — sessions below still count */ }
+  try {
+    for (const [day, count] of Object.entries(read(KEYS.reviewLog, {}))) {
+      if (count > 0 && /^\d{4}-\d{2}-\d{2}$/.test(day)) days.add(day);
+    }
+  } catch { /* review log unreadable */ }
+  try {
+    for (const s of getSessions()) {
+      const at = s?.date || s?.at || null;
+      if (typeof at === 'string' && /^\d{4}-\d{2}-\d{2}/.test(at)) days.add(at.slice(0, 10));
+    }
+  } catch { /* sessions unreadable */ }
+  return [...days].sort();
+}
+
+// Sunday-start week of a YYYY-MM-DD day — the same week rule as Habit, so the
+// "same weekly-target rule" claim is literally the same arithmetic.
+function sundayWeekStart(iso) {
+  const [y, m, d] = iso.split('-').map(Number);
+  const anchor = Date.UTC(y, m - 1, d);
+  return new Date(anchor - new Date(anchor).getUTCDay() * 86400000).toISOString().slice(0, 10);
+}
+
+function addDaysIso(iso, n) {
+  const [y, m, d] = iso.split('-').map(Number);
+  return new Date(Date.UTC(y, m - 1, d) + n * 86400000).toISOString().slice(0, 10);
+}
+
+export function getWeeklyPractice(targetPerWeek, todayIso) {
+  const raw = targetPerWeek == null ? getWeeklyDaysTarget() : Number(targetPerWeek);
+  const needed = Number.isFinite(raw) ? Math.max(1, Math.min(7, Math.round(raw))) : WEEKLY_DAYS_DEFAULT;
+  const today = typeof todayIso === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(todayIso) ? todayIso : dayStamp();
+  const active = getActiveDays().filter((d) => d <= today);
+  const thisWeek = sundayWeekStart(today);
+  const daysThisWeek = active.filter((d) => sundayWeekStart(d) === thisWeek).length;
+  if (!active.length) return { daysThisWeek, target: needed, met: false, current: 0, best: 0 };
+
+  const perWeek = new Map();
+  for (const day of active) {
+    const ws = sundayWeekStart(day);
+    perWeek.set(ws, (perWeek.get(ws) ?? 0) + 1);
+  }
+  const earliest = [...perWeek.keys()].sort()[0];
+  const met = [];
+  for (let ws = sundayWeekStart(earliest); ws <= thisWeek; ws = addDaysIso(ws, 7)) {
+    met.push((perWeek.get(ws) ?? 0) >= needed);
+  }
+  let best = 0;
+  let run = 0;
+  for (const m of met) {
+    run = m ? run + 1 : 0;
+    if (run > best) best = run;
+  }
+  // Grace mirrors the daily rule: the current week is still in progress, so
+  // an unmet current week doesn't break the run — it just isn't counted yet.
+  let i = met.length - 1;
+  if (i >= 0 && !met[i]) i -= 1;
+  let current = 0;
+  while (i >= 0 && met[i]) {
+    current += 1;
+    i -= 1;
+  }
+  return { daysThisWeek, target: needed, met: daysThisWeek >= needed, current, best };
+}
+
+// ---- family mode: one household, separate streaks, no comparison ----
+
+// One install, one household, one active learner at a time. Each member keeps
+// their own consecutive-day streak. Deliberately there is no ranking, no
+// total, no side-by-side score anywhere: switching shows only that member's
+// practice. Comparison is a feature this product refuses.
+
+const MAX_HOUSEHOLD_MEMBERS = 6;
+
+const blankHousehold = () => ({ members: [], activeId: null });
+
+function cleanHousehold(h) {
+  if (!h || !Array.isArray(h.members)) return blankHousehold();
+  const members = h.members
+    .filter((m) => m && typeof m.id === 'string' && m.id)
+    .map((m) => ({
+      id: m.id,
+      name: String(m.name || '').trim().slice(0, 40) || 'Learner',
+      createdAt: typeof m.createdAt === 'string' ? m.createdAt : null,
+      streak: m.streak && Number.isInteger(m.streak.count) && m.streak.count >= 0
+        ? { count: m.streak.count, lastDay: typeof m.streak.lastDay === 'string' ? m.streak.lastDay : null }
+        : { count: 0, lastDay: null },
+    }));
+  const activeId = members.some((m) => m.id === h.activeId) ? h.activeId : (members[0]?.id || null);
+  return { members, activeId };
+}
+
+export function getHousehold() {
+  return cleanHousehold(read(KEYS.household, null));
+}
+
+export function getActiveMember() {
+  const h = getHousehold();
+  return h.members.find((m) => m.id === h.activeId) || null;
+}
+
+export function addHouseholdMember(name) {
+  const clean = String(name || '').trim().slice(0, 40);
+  if (!clean) return null;
+  const h = getHousehold();
+  if (h.members.length >= MAX_HOUSEHOLD_MEMBERS) return null;
+  if (h.members.some((m) => m.name.toLowerCase() === clean.toLowerCase())) return null;
+  const member = {
+    id: `m-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`,
+    name: clean,
+    createdAt: new Date().toISOString(),
+    streak: { count: 0, lastDay: null },
+  };
+  h.members.push(member);
+  if (!h.activeId) h.activeId = member.id;
+  write(KEYS.household, h);
+  return member;
+}
+
+export function switchHouseholdMember(id) {
+  const h = getHousehold();
+  if (!h.members.some((m) => m.id === id)) return null;
+  h.activeId = id;
+  write(KEYS.household, h);
+  return getActiveMember();
+}
+
+// Advances the active member's own streak on a newly-active day. Called from
+// bumpStreak, so every saved practice counts for exactly one member. Exported
+// for tests; the optional day override is an ISO YYYY-MM-DD label.
+export function bumpHouseholdStreak(today) {
+  try {
+    const h = getHousehold();
+    if (!h.activeId) return;
+    const day = typeof today === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(today) ? today : dayStamp();
+    const m = h.members.find((x) => x.id === h.activeId);
+    if (!m || m.streak.lastDay === day) return;
+    const yesterday = addDaysIso(day, -1);
+    m.streak = { count: m.streak.lastDay === yesterday ? m.streak.count + 1 : 1, lastDay: day };
+    write(KEYS.household, h);
+  } catch { /* household bookkeeping must never break practice */ }
 }
 
 // ---- vocabulary notebook (one-click saved words) ----

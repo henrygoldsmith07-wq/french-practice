@@ -7,6 +7,7 @@ import {
   getAvatar, setAvatar, getOwnedAvatars, ownAvatar,
   getCollectibles, awardCollectible, getEventXp,
   getWeekXp, getSettings, getMetrics, getStarredLines,
+  getHousehold, addHouseholdMember, switchHouseholdMember,
 } from '../lib/storage';
 import {
   levelFromXp, AVATARS, ACHIEVEMENTS, dailyChallenges, COLLECTIBLES,
@@ -118,6 +119,7 @@ export default function Profile({ open, onClose, onXp, onHeaderChange, weeklyGoa
           </div>
 
           <WeeklyLeague level={level.level} />
+          <Household onChange={refresh} />
           <DailyChallenges data={data} onXp={onXp} onChange={refresh} onNewCard={(id) => setNewCards((c) => [...c, id])} />
           <SeasonalEvent collectibles={data.collectibles} />
           <Stats weeklyGoal={weeklyGoal} onCoinsChange={refresh} />
@@ -127,6 +129,100 @@ export default function Profile({ open, onClose, onXp, onHeaderChange, weeklyGoa
         </div>
       </div>
     </div>
+  );
+}
+
+// Household (family mode): one household on this install, each member with
+// their own streak. Names only, active member marked — never ranked, never
+// totalled, never placed side-by-side with scores. No comparison by design.
+function Household({ onChange }) {
+  const [household, setHousehold] = useState(() => getHousehold());
+  const [name, setName] = useState('');
+  const [notice, setNotice] = useState(null);
+
+  const reload = () => {
+    setHousehold(getHousehold());
+    onChange?.();
+  };
+
+  const switchTo = (id) => {
+    setNotice(null);
+    if (switchHouseholdMember(id)) reload();
+  };
+
+  const add = () => {
+    const clean = name.trim();
+    if (!clean) {
+      setNotice('Type a name first.');
+      return;
+    }
+    const member = addHouseholdMember(clean);
+    if (!member) {
+      setNotice(
+        household.members.length >= 6
+          ? 'Six members is the household limit.'
+          : 'That name is already in the household.',
+      );
+      return;
+    }
+    setName('');
+    setNotice(null);
+    reload();
+  };
+
+  return (
+    <section className="bg-surface border border-line rounded-2xl p-5 space-y-3" aria-labelledby="household-heading">
+      <h3 id="household-heading" className="text-[11px] font-bold uppercase tracking-wider text-ink2">
+        Household
+      </h3>
+      <p className="text-xs text-ink2 leading-relaxed">
+        One household, separate streaks. Switch to practise as someone else — members are never ranked against each other.
+      </p>
+      {household.members.length > 0 && (
+        <ul className="space-y-1.5">
+          {household.members.map((m) => {
+            const active = m.id === household.activeId;
+            return (
+              <li key={m.id}>
+                <button
+                  type="button"
+                  onClick={() => switchTo(m.id)}
+                  disabled={active}
+                  aria-current={active ? 'true' : undefined}
+                  className={`w-full flex items-center gap-2 rounded-xl border px-3 py-2.5 text-left transition-colors ${
+                    active ? 'border-ink bg-surface2' : 'border-line hover:border-ink3'
+                  }`}
+                >
+                  <span className="flex-1 min-w-0 truncate text-sm font-semibold text-ink">{m.name}</span>
+                  {active && (
+                    <span className="shrink-0 text-[11px] font-bold text-ink2">
+                      Active{m.streak.count > 0 ? ` · ${m.streak.count}-day` : ''}
+                    </span>
+                  )}
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+      {household.members.length < 6 && (
+        <div className="flex gap-2">
+          <input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && add()}
+            placeholder={household.members.length === 0 ? 'Add the first learner…' : 'Add someone…'}
+            maxLength={40}
+            aria-label="New household member name"
+            className="flex-1 min-w-0 bg-surface2 border border-line rounded-xl px-3 py-2.5 text-sm text-ink placeholder:text-ink3 focus:outline-none focus:border-ink"
+          />
+          <button type="button" onClick={add} className="btn btn-secondary shrink-0 min-h-10 px-4 rounded-xl text-xs">
+            Add
+          </button>
+        </div>
+      )}
+      {notice && <p role="status" className="text-xs text-ink2">{notice}</p>}
+    </section>
   );
 }
 

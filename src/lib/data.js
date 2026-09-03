@@ -576,6 +576,48 @@ FR_SCENARIOS.push(
       "Start with: «Bonsoir ! Qu'est-ce que vous vendez de fait main ?»",
       "«C'est vous qui fabriquez tout ça ? J'aimerais un cadeau original pour ma sœur.» — Do you make all this yourself? I'd like an original gift for my sister.",
     ],
+  },
+  {
+    id: 'directions',
+    title: 'Asking for Directions',
+    setup: "You're lost in town with a dying phone battery — stop a passer-by and find your way.",
+    aiRole: "Passant(e) pressé(e) mais aimable qui connaît bien le quartier et explique avec les mains.",
+    opener: "Oh là là, vous avez l'air perdu ! Vous cherchez quelque chose ?",
+    openerTranslation: "Oh dear, you look lost! Are you looking for something?",
+    curveball: "L'itinéraire simple est bloqué (travaux) — décris un détour avec deux points de repère.",
+    staticHints: [
+      "Vocabulary: «tout droit» (straight ahead), «tourner à gauche / à droite» (turn left / right), «à côté de» (next to), «c'est loin ?» (is it far?).",
+      "Start with: «Excusez-moi, je cherche…»",
+      "«Excusez-moi, je cherche la gare — c'est loin à pied ?» — Excuse me, I'm looking for the station — is it far on foot?",
+    ],
+  },
+  {
+    id: 'maison',
+    title: 'At Home',
+    setup: "An ordinary evening at home — small talk with your flatmate about dinner, plans and the weekend.",
+    aiRole: "Colocataire détendu(e) qui discute de la vie quotidienne : repas, sorties, week-end.",
+    opener: "Salut ! Ta journée s'est bien passée ? Je pensais faire des pâtes ce soir, ça te dit ?",
+    openerTranslation: "Hi! How was your day? I was thinking of making pasta tonight, fancy some?",
+    curveball: "Propose une sortie du week-end qui coûte un peu cher — vois si l'apprenant négocie ou propose autre chose.",
+    staticHints: [
+      "Vocabulary: «la journée» (the day), «ce soir» (tonight), «le week-end» (the weekend), «ça te dit ?» (fancy it?).",
+      "Start with: «Ma journée était…»",
+      "«Avec plaisir pour les pâtes ! Et ce week-end, on pourrait aller au marché.» — Pasta sounds great! And this weekend we could go to the market.",
+    ],
+  },
+  {
+    id: 'ecole',
+    title: "At School",
+    setup: "After class, you ask your teacher for help with homework you didn't understand.",
+    aiRole: "Professeur(e) patient(e) qui reformule, donne des exemples et vérifie que ça passe.",
+    opener: "Alors, qu'est-ce qui t'a posé problème dans les devoirs ? Montre-moi où tu bloques.",
+    openerTranslation: "So, what gave you trouble in the homework? Show me where you're stuck.",
+    curveball: "Demande à l'élève de réexpliquer la règle avec ses propres mots pour vérifier.",
+    staticHints: [
+      "Vocabulary: «les devoirs» (homework), «un exercice» (an exercise), «je bloque» (I'm stuck), «un exemple» (an example).",
+      "Start with: «Je n'ai pas compris l'exercice…»",
+      "«Je n'ai pas compris l'exercice trois — vous pouvez me donner un exemple ?» — I didn't understand exercise three — could you give me an example?",
+    ],
   }
 );
 
@@ -599,6 +641,23 @@ export const DAILY_TOPICS = [
 const SCENARIOS_BY_LANG = { fr: FR_SCENARIOS, de: DE_SCENARIOS, es: ES_SCENARIOS };
 export const getScenarios = () => SCENARIOS_BY_LANG[contentLang()] || FR_SCENARIOS;
 export const getScenario = (id) => getScenarios().find((s) => s.id === id) || getScenarios()[0];
+
+// Speak is organised by situation, not chapter. Four everyday situations lead:
+// café, school, directions, home. Each resolves to a full roleplay scenario.
+export const SITUATIONS = [
+  { id: 'cafe', label: 'Au café', blurb: 'Order, ask, pay', scenarioId: 'bistro' },
+  { id: 'ecole', label: "À l'école", blurb: 'Ask for help in class', scenarioId: 'ecole' },
+  { id: 'directions', label: 'Directions', blurb: 'Find your way in town', scenarioId: 'directions' },
+  { id: 'maison', label: 'À la maison', blurb: 'Chat at home', scenarioId: 'maison' },
+];
+
+export function getSituations() {
+  const scenarios = getScenarios();
+  return SITUATIONS.map((sit) => ({
+    ...sit,
+    scenario: scenarios.find((s) => s.id === sit.scenarioId) || null,
+  })).filter((sit) => sit.scenario);
+}
 
 export const FLASHCARDS = [
   { id: 'du-coup', front: 'du coup', meaning: 'so / as a result', example: "Il pleuvait, du coup on est restés à la maison.", exampleTranslation: 'It was raining, so we stayed home.', register: 'Very common, informal' },

@@ -3,6 +3,7 @@ import { Modal, Spinner } from './ui';
 import Quiz from './Quiz';
 import { ProgressRing, RadarChart, TrendChart, renderShareCard } from './charts';
 import { sessionReport, quizFromConversation, friendlyError } from '../lib/groq';
+import { takeawayPhrase } from '../lib/takeaway';
 import { saveSession, getSessions, getStreak } from '../lib/storage';
 import { Flame, Share as ShareIcon, Download as DownloadIcon, X as XIcon, Target } from './icons';
 
@@ -105,6 +106,15 @@ export default function SessionDashboard({ open, onClose, apiKey, mockMode, scen
 
         {report && (
           <div className="space-y-6 fade-in">
+            {/* The end-of-session line: what you can now SAY — never an XP number. */}
+            {(() => {
+              const takeaway = takeawayPhrase(history, scenario);
+              return takeaway ? (
+                <p className="text-center text-[15px] text-ink leading-relaxed bg-surface2 border border-line rounded-2xl px-5 py-4">
+                  You can now say <span className="font-bold" lang="fr">«{takeaway}»</span>
+                </p>
+              ) : null;
+            })()}
             {/* grade + streak + rings */}
             <div className="flex flex-wrap items-center gap-6">
               <div className="text-center">
