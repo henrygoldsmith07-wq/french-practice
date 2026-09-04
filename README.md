@@ -3,7 +3,8 @@
 A single-page React + Tailwind app for practicing intermediate French speaking.
 The interface is English-first; only the practice material (conversation, topics,
 examples) is in French, always with translations on hand.
-100% client-side — no backend. Your Groq API key lives only in `localStorage`.
+100% client-side by default — no backend required. Your Groq API key lives only
+in `localStorage`. Optional Google sign-in adds cross-device sync (see below).
 
 ## Run
 
@@ -298,3 +299,37 @@ stops at the source — even a stale mirror is refused.
 
 TTS uses the browser's `speechSynthesis` with the best available `fr-FR`
 voice and a 0.5×–1.5× speed slider. Haptics via `navigator.vibrate` on mobile.
+
+
+## Accounts & sync (optional)
+
+Le Studio works fully offline with no account, and the manual **sync code** in
+*Offline & devices* keeps working exactly as before.
+
+Where a deployment configures it, that panel also offers Google sign-in. Signing
+in does not introduce a second notion of "all my progress" — the account stores
+**exactly the same sync code** you would otherwise copy and paste, so there is
+one format and one restore path to keep correct. It just saves you carrying the
+code by hand.
+
+The passphrase field applies to both: set one and what is stored is AES-GCM
+encrypted and unreadable by the server; leave it empty and the saved code is a
+plain backup, exactly as it is when you paste it into a note. The UI says which
+of the two just happened rather than implying an encryption that is not there.
+
+Nothing is saved automatically, and if another device has saved since this one
+last looked, the push is refused and you are asked rather than silently
+overwriting.
+
+To enable it, set `DATABASE_URL`, `AUTH_SECRET`, `AUTH_GOOGLE_ID` and
+`AUTH_GOOGLE_SECRET` (see [`.env.example`](.env.example)) and apply
+`database/migrations/001_accounts_and_sync.sql`. With any missing, the account
+section does not appear at all.
+
+The routes under `api/` are serverless functions, so `npm run dev` (Vite alone)
+serves the app without them — use `vercel dev` to exercise sign-in locally.
+
+> The Groq relay in `server/` has its **own** identity configuration
+> (`AUTH_ISSUER` / `AUTH_AUDIENCE` / `AUTH_JWT_SECRET`) and its own quota
+> enforcement. It is a separate trust model and is deliberately not wired to
+> this sign-in; joining them is a decision for whoever operates the relay.
