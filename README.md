@@ -93,6 +93,16 @@ stops at the source — even a stale mirror is refused.
   public-domain classics (La Fontaine). Dual-language toggle, per-word
   tap-to-translate (text gloss → vocabulary dictionary → cached LLM lookup)
   with one-tap save to the notebook, and comprehension quizzes.
+- **Conjugation drill** — the reference tables, but as production. Type the
+  form from memory; irregular stems and the tenses learners avoid
+  (subjonctif, conditionnel) come round more often, and cells you get wrong
+  outrank cells you have never seen. Accents are **graded, not ignored**:
+  `parle` for `parlé` is marked wrong — it loses the mark in a written paper —
+  but it is named as an accent error rather than lumped in with writing the
+  wrong person, and every valid agreement reading of `allé(e)(s)` is accepted
+  because the drill cannot know the subject. A "what you keep missing" panel
+  ranks tenses and verbs by error rate, and stays silent until there are
+  enough answers for a rate to mean anything.
 - **CEFR curriculum** — the spine everything else maps onto. Five level packs
   (A1–C1) of level-banded core vocabulary sit at the front of the library, a
   grammar inventory names every point a learner is expected to control at each
