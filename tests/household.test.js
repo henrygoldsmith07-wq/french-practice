@@ -70,3 +70,30 @@ test('household survives export/import via KEYS', async () => {
   const exported = storage.exportProgress().data;
   assert.ok(exported[storage.KEYS.household]);
 });
+
+// P0.6 — honest isolation boundary. Streaks are per-member; the wider learner
+// state is currently SHARED across members on one install. This test pins the
+// CURRENT contract so the boundary is explicit and any future change toward
+// full per-member namespacing is a deliberate, tested migration rather than a
+// silent behaviour shift.
+test('P0.6: streaks are per-member while wider learner state stays shared (current contract)', async () => {
+  const storage = await freshStorage();
+  const a = storage.addHouseholdMember('Ava');
+  const b = storage.addHouseholdMember('Ben');
+
+  // Per-member: streaks diverge.
+  storage.bumpHouseholdStreak('2026-08-24'); // Ava
+  storage.switchHouseholdMember(b.id);
+  storage.bumpHouseholdStreak('2026-08-24'); // Ben, same day
+  const h = storage.getHousehold();
+  assert.equal(h.members.find((m) => m.id === a.id).streak.count, 1);
+  assert.equal(h.members.find((m) => m.id === b.id).streak.count, 1);
+
+  // Shared (current, documented): XP is not namespaced — both members see the
+  // same pool on this install. Asserting this makes the limit explicit.
+  const xpBefore = storage.getXp();
+  storage.switchHouseholdMember(a.id);
+  assert.equal(storage.getXp(), xpBefore, 'XP is shared across members today (documented limit)');
+  storage.switchHouseholdMember(b.id);
+  assert.equal(storage.getXp(), xpBefore, 'XP is shared across members today (documented limit)');
+});

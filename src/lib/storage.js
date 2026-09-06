@@ -1558,6 +1558,17 @@ export function getWeeklyPractice(targetPerWeek, todayIso) {
 // their own consecutive-day streak. Deliberately there is no ranking, no
 // total, no side-by-side score anywhere: switching shows only that member's
 // practice. Comparison is a feature this product refuses.
+//
+// ISOLATION BOUNDARY (honest scope): today ONLY the streak is per-member.
+// The rest of the learner state (SRS, notebook, mistake graph, XP, grammar,
+// etc.) lives under shared fp.* keys and is therefore SHARED across household
+// members on this install. Fully namespacing every learner key by member —
+// with a safe migration that preserves existing single-user data and keeps
+// export/import working — is a deliberate, larger change tracked separately,
+// NOT something to bolt on silently (a naive re-key would orphan existing
+// users' data and break exportProgress/importProgress). Until then, household
+// mode is honest about being "separate streaks on a shared device", which is
+// exactly what the UI copy says.
 
 const MAX_HOUSEHOLD_MEMBERS = 6;
 
