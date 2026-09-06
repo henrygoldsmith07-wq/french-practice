@@ -42,7 +42,7 @@ function env(overrides = {}) {
 }
 
 const validBody = Object.freeze({
-  model: 'llama-3.1-8b-instant',
+  model: 'nvidia/llama-3.3-nemotron-super-49b-v1.5',
   messages: [{ role: 'user', content: 'Say bonjour.' }],
   temperature: 0.2,
   response_format: { type: 'json_object' },

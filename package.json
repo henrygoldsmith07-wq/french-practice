@@ -5,14 +5,15 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build": "npm run check:secrets && vite build",
     "preview": "vite preview",
+    "check:secrets": "node scripts/check-no-shared-secrets.mjs",
     "test": "node --test tests/*.test.js",
     "lint:content": "node scripts/lint-content.mjs",
     "validation:status": "node scripts/validation-status.mjs",
     "validation:import": "node scripts/validation-import.mjs",
     "validation:packet": "node scripts/validation-packet.mjs",
-    "check": "npm run lint:content && npm test",
+    "check": "npm run check:secrets && npm run lint:content && npm test",
     "type-check": "npx tsc --noEmit"
   },
   "dependencies": {

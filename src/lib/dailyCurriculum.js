@@ -82,7 +82,7 @@ export function buildDailyCurriculum(input = {}) {
     segments.push({
       id: 'speak', label: 'Speak', minutes: minutesFor('speak'),
       payload: { scenarioId },
-      why: weaknessScenarioId
+      why: effWeaknessScenarioId
         ? 'Retests a structure you slipped on — in a fresh context.'
         : examSoon
           ? 'Exam-style speaking keeps production sharp.'
@@ -100,12 +100,16 @@ export function buildDailyCurriculum(input = {}) {
   }
 
   // ── Drill: the weakest mistake concept, or pending retypes ──────────────
+  // Branch on the EFFECTIVE (post-balance) values. In the balanced variant
+  // effTopMistake/effPendingRetypes are nulled so the balanced rotation owns
+  // the drill; using the raw topMistake here would leak learner-specific
+  // targeting back into the control arm.
   if (minutesFor('drill') > 0) {
-    if (topMistake) {
+    if (effTopMistake) {
       segments.push({
         id: 'drill', label: 'Targeted drill', minutes: minutesFor('drill'),
-        payload: { kind: 'mistake', mistakeId: topMistake.id, concept: topMistake.concept, type: topMistake.type },
-        why: `${topMistake.concept} — mastery ${topMistake.mastery}, slipped ${topMistake.recurrence}×.`,
+        payload: { kind: 'mistake', mistakeId: effTopMistake.id, concept: effTopMistake.concept, type: effTopMistake.type },
+        why: `${effTopMistake.concept} — mastery ${effTopMistake.mastery}, slipped ${effTopMistake.recurrence}×.`,
       });
     } else if (balancedDrillTopic) {
       segments.push({
@@ -117,16 +121,16 @@ export function buildDailyCurriculum(input = {}) {
       segments.push({
         id: 'drill', label: 'Repair', minutes: minutesFor('drill'),
         payload: { kind: 'retype' },
-        why: `${effPendingRetypes} correction${pendingRetypes === 1 ? '' : 's'} waiting to be retyped from memory.`,
+        why: `${effPendingRetypes} correction${effPendingRetypes === 1 ? '' : 's'} waiting to be retyped from memory.`,
       });
     }
   }
 
   // ── Review: delayed replay of very recent corrections ───────────────────
-  if (recentCorrections > 0 && minutesFor('review') > 0) {
+  if (effRecentCorrections > 0 && minutesFor('review') > 0) {
     segments.push({
       id: 'review', label: 'Delayed review', minutes: minutesFor('review'),
-      payload: { count: Math.min(recentCorrections, 6) },
+      payload: { count: Math.min(effRecentCorrections, 6) },
       why: 'Yesterday\'s corrections, replayed before they fade.',
     });
   }

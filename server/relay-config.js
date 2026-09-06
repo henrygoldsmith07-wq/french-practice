@@ -122,9 +122,12 @@ export function loadRelayConfig(env = process.env, { allowInjectedStore = false 
   if (!['production', 'local'].includes(mode)) issues.push('relay_mode_invalid');
   if (env.NODE_ENV === 'production' && mode !== 'production') issues.push('production_requires_production_mode');
 
-  const groqKey = String(env.GROQ_API_KEY || '').trim();
-  if (!groqKey) issues.push('groq_api_key_missing');
-  if (groqKey.length > 512) issues.push('groq_api_key_invalid');
+  // Provider credential: NVIDIA NIM is the upstream the client targets.
+  // Accept NVIDIA_API_KEY (preferred); GROQ_API_KEY is kept as a legacy alias
+  // so existing deployments keep working while they migrate.
+  const groqKey = String(env.NVIDIA_API_KEY || env.GROQ_API_KEY || '').trim();
+  if (!groqKey) issues.push('provider_api_key_missing');
+  if (groqKey.length > 512) issues.push('provider_api_key_invalid');
 
   const allowedOrigins = parseOrigins(env.ALLOWED_ORIGINS ?? env.ALLOWED_ORIGIN, mode, issues);
   const auth = parseAuth(env, mode, issues);

@@ -5,10 +5,18 @@ export const RELAY_ROUTES = Object.freeze({
 });
 
 export const MODEL_LIMITS = Object.freeze({
-  'llama-3.1-8b-instant': Object.freeze({ inputTokens: 8_192, outputTokens: 1_024 }),
-  'meta-llama/llama-4-scout-17b-16e-instruct': Object.freeze({ inputTokens: 8_192, outputTokens: 1_024 }),
+  // Chat / multimodal models the client actually calls (NVIDIA NIM ids).
+  'nvidia/llama-3.3-nemotron-super-49b-v1.5': Object.freeze({ inputTokens: 8_192, outputTokens: 1_024 }),
+  'nvidia/nemotron-nano-12b-v2-vl': Object.freeze({ inputTokens: 8_192, outputTokens: 1_024, vision: true }),
+  'nvidia/nemotron-3-nano-omni-30b-a3b-reasoning': Object.freeze({ inputTokens: 8_192, outputTokens: 1_024, audio: true }),
+  // Dedicated transcription model (audio/transcriptions route).
   'whisper-large-v3-turbo': Object.freeze({ inputTokens: 0, outputTokens: 0 }),
 });
+
+// Models that accept inline image parts (image_url) in user messages.
+const VISION_MODELS = new Set(['nvidia/nemotron-nano-12b-v2-vl']);
+// Models that accept inline audio parts (input_audio) in user messages.
+const AUDIO_INPUT_MODELS = new Set(['nvidia/nemotron-3-nano-omni-30b-a3b-reasoning']);
 
 function isPlainObject(value) {
   if (value === null || typeof value !== 'object' || Array.isArray(value)) return false;
@@ -41,21 +49,24 @@ function isBase64(value) {
     && /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(value);
 }
 
-function validateMessageContent(content, { vision, maxImageBytes }) {
+function validateMessageContent(content, { vision, audioInput, maxImageBytes, maxAudioBytes }) {
   if (typeof content === 'string') {
     if (!content.trim() || textSize(content) > 20_000) return { ok: false, code: 'message_content_invalid' };
     return { ok: true, tokens: estimateTokens(content) };
   }
-  if (!vision || !Array.isArray(content) || content.length < 1 || content.length > 4) {
+  if ((!vision && !audioInput) || !Array.isArray(content) || content.length < 1 || content.length > 4) {
     return { ok: false, code: 'message_content_invalid' };
   }
+  const allowedPartTypes = ['text'];
+  if (vision) allowedPartTypes.push('image_url');
+  if (audioInput) allowedPartTypes.push('input_audio');
   let tokens = 0;
   for (const part of content) {
-    if (!isPlainObject(part) || !['text', 'image_url'].includes(part.type)) return { ok: false, code: 'message_content_invalid' };
+    if (!isPlainObject(part) || !allowedPartTypes.includes(part.type)) return { ok: false, code: 'message_content_invalid' };
     if (part.type === 'text') {
       if (typeof part.text !== 'string' || !part.text.trim() || part.text.length > 20_000) return { ok: false, code: 'message_content_invalid' };
       tokens += estimateTokens(part.text);
-    } else {
+    } else if (part.type === 'image_url') {
       if (!isPlainObject(part.image_url) || !onlyKeys(part.image_url, ['url']) || typeof part.image_url.url !== 'string') {
         return { ok: false, code: 'image_invalid' };
       }
@@ -63,6 +74,17 @@ function validateMessageContent(content, { vision, maxImageBytes }) {
       const imageMatch = url.match(/^data:image\/(?:png|jpeg|jpg|webp);base64,(.*)$/);
       if (!imageMatch || !isBase64(imageMatch[1])) return { ok: false, code: 'image_invalid' };
       if (imageBytes(url) > maxImageBytes) return { ok: false, code: 'image_too_large' };
+      tokens += 256;
+    } else {
+      // input_audio: { input_audio: { data: <base64>, format: 'wav'|'mp3'|... } }
+      if (!isPlainObject(part.input_audio) || !onlyKeys(part.input_audio, ['data', 'format']) || typeof part.input_audio.data !== 'string') {
+        return { ok: false, code: 'audio_invalid' };
+      }
+      const raw = part.input_audio.data;
+      const data = raw.includes(',') ? raw.slice(raw.indexOf(',') + 1) : raw;
+      if (!isBase64(data)) return { ok: false, code: 'audio_invalid' };
+      const bytes = Math.floor((data.length * 3) / 4) - (data.endsWith('==') ? 2 : data.endsWith('=') ? 1 : 0);
+      if (bytes > maxAudioBytes) return { ok: false, code: 'audio_too_large' };
       tokens += 256;
     }
   }
@@ -114,8 +136,10 @@ export function validateChatRequest(body, config) {
       return { ok: false, code: 'messages_invalid' };
     }
     const content = validateMessageContent(message.content, {
-      vision: body.model === 'meta-llama/llama-4-scout-17b-16e-instruct' && message.role === 'user',
+      vision: VISION_MODELS.has(body.model) && message.role === 'user',
+      audioInput: AUDIO_INPUT_MODELS.has(body.model) && message.role === 'user',
       maxImageBytes: config.maxImageBytes,
+      maxAudioBytes: config.maxAudioBytes,
     });
     if (!content.ok) return content;
     inputTokens += content.tokens;

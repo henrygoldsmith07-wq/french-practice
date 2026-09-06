@@ -22,7 +22,7 @@ import {
   validateChatRequest,
 } from './relay-validation.js';
 
-const GROQ_BASE = 'https://api.groq.com/openai/v1';
+const GROQ_BASE = 'https://integrate.api.nvidia.com/v1';
 
 function requestId() {
   try { return randomUUID(); } catch { return createHash('sha256').update(`${Date.now()}:${Math.random()}`).digest('hex').slice(0, 16); }

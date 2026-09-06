@@ -28,6 +28,8 @@ jobs:
           cache: npm
           cache-dependency-path: package-lock.json
       - run: npm ci
+      - name: Secret guard (no shared/provider secrets via VITE_*)
+        run: npm run check:secrets
       - name: Lint content
         run: npm run lint:content
       - name: Unit tests

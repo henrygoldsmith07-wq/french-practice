@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { buildDailyCurriculum } from '../lib/dailyCurriculum';
 import { takeawayPhrase } from '../lib/takeaway';
 import { dueRetests, weakestMistakes, recordRetest, EVIDENCE_ENGINE_VERSION } from '../lib/mistakeGraph';
@@ -6,7 +6,7 @@ import { getPracticeAssignment, balancedDrillTopic } from '../lib/assignment';
 import { recordSelectionTrial } from '../lib/storage';
 import {
   getSrs, getNotebook, getDueWeaknesses, rateCard,
-  getMistakeGraph, saveMistakeGraph,
+  getMistakeGraph, saveMistakeGraph, getSyncId,
 } from '../lib/storage';
 import { getErrorNotebook } from '../lib/errorNotebook';
 import { allEntries } from '../lib/vocab';
@@ -27,7 +27,7 @@ import { Check, ChevronRight, Play, X } from './icons';
 export default function TodaySession({ open, onClose, minutes = 20, apiKey, mockMode, level, ttsRate, onTurn, onXp, onActivity }) {
   const plan = useMemo(() => {
     if (!open) return null;
-    const variant = getPracticeAssignment();
+    const variant = getPracticeAssignment(getSyncId());
     const balanced = variant === 'balanced';
     const graph = getMistakeGraph();
     // Freeze the selection candidates BEFORE choosing — P1 analysis joins
@@ -251,7 +251,7 @@ function DrillRunner({ concept, level, apiKey, mockMode, onXp, onDone }) {
   const [state, setState] = useState({ busy: true, exercises: null });
   const correctRef = useRef(0);
   const awardCounting = (n) => { if (n >= 3) correctRef.current += 1; onXp(n); };
-  useMemo(() => {
+  useEffect(() => {
     let live = true;
     (async () => {
       try {

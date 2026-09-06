@@ -3,20 +3,34 @@
 A single-page React + Tailwind app for practicing intermediate French speaking.
 The interface is English-first; only the practice material (conversation, topics,
 examples) is in French, always with translations on hand.
-100% client-side — no backend. Your Groq API key lives only in `localStorage`.
+100% client-side by default — no backend required. Your AI provider key (NVIDIA
+NIM, integrate.api.nvidia.com) lives only in `localStorage`. For a shared/public
+deployment, an optional authenticated relay (`server/relay.js`) holds the
+provider key server-side and proxies NVIDIA NIM, so the secret never reaches the
+browser.
 
 ## Run
 
 ```bash
 npm install
 npm run dev      # local dev server
-npm run build    # static build in dist/
+npm run build    # static build in dist/ (runs the shared-secret guard first)
 ```
 
-Add a free Groq API key (console.groq.com) via the settings modal, and pick
+Add an AI provider key via the settings modal, and pick
 your CEFR level (A1–C2) — it calibrates the AI's complexity and scoring — it is
-validated against the `/models` endpoint before being stored. Or flip on
+validated against the provider's `/models` endpoint before being stored. Or flip on
 **Mock Mode** in settings → Dev Panel to explore the whole app offline.
+
+### Optional authenticated relay (shared/public hosting)
+
+Direct, bring-your-own-key mode is fine for a private tool. For a public launch,
+set `VITE_GROQ_RELAY_URL` to the relay endpoint so the browser calls the relay
+instead of the provider directly; the relay holds the key server-side
+(`NVIDIA_API_KEY`, or the legacy `GROQ_API_KEY`), enforces per-user quotas, and
+validates every request. A build-time guard (`npm run check:secrets`) refuses to
+build if a shared/provider secret is ever exposed through a `VITE_*` variable —
+Vite inlines those into the public bundle.
 
 ## Pulse connection
 
