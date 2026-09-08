@@ -252,7 +252,22 @@ export default function HomeDashboard({ dailyGoal = 30, level, onStartLesson, on
               onClick={onOpenFieldNotes}
             />
           </div>
-          {todayRecs.length>0 && (<div className="mt-6 grid gap-2 sm:grid-cols-2"><p className="sm:col-span-2 text-center text-xs text-ink3">Today picks for you</p>{todayRecs.map(r=>(<div key={r.type} className="bg-surface border border-line rounded-xl px-4 py-3 flex items-center justify-between"><span className="text-sm font-semibold">{r.title}</span><span className="text-xs text-ink3">{r.subtitle}</span></div>))}</div>)}
+          {todayRecs.length>0 && (
+            <div className="mt-6 grid gap-2 sm:grid-cols-2">
+              <p className="sm:col-span-2 text-center text-xs text-ink3">Today picks for you — they're already in Today's session</p>
+              {todayRecs.map(r=>(
+                <button
+                  key={r.type}
+                  type="button"
+                  onClick={onStartToday}
+                  className="bg-surface border border-line rounded-xl px-4 py-3 flex items-center justify-between hover:border-ink3 transition text-left"
+                >
+                  <span className="text-sm font-semibold">{r.title}</span>
+                  <span className="text-xs text-ink3 inline-flex items-center gap-1">{r.subtitle} <ArrowRight size={12} /></span>
+                </button>
+              ))}
+            </div>
+          )}
           <div className="mt-6 flex flex-wrap justify-center gap-2">
             <span className="inline-block bg-surface border border-line rounded-full px-3.5 py-1.5 text-xs font-semibold text-ink2">Installable PWA</span>
             <span className="inline-block bg-surface border border-line rounded-full px-3.5 py-1.5 text-xs font-semibold text-ink2">Works offline</span>

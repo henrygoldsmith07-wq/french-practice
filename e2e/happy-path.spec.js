@@ -73,7 +73,7 @@ test.describe('Le Studio happy path', () => {
       localStorage.setItem('fp.settings', JSON.stringify({ mockMode: true, level: 'A1', ttsRate: 1, theme: null }));
     });
     await page.reload();
-    const speak = page.getByRole('button', { name: /^Speak/i });
+    const speak = page.getByRole('button', { name: 'Speak', exact: true });
     await expect(speak).toBeVisible({ timeout: 5000 });
     await speak.click();
     // Type a reply (mock mode evaluates instantly, no network)

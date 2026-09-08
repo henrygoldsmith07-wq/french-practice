@@ -17,6 +17,9 @@ import {
   validateTurnEvaluation, validateWritingFeedback,
   normalizeCorrectionsDetailed as normalizeCorrectionsDetailedStrict,
 } from './aiValidate.js';
+import {
+  fluencyDebriefFromHistory, normalizeFluencyReview,
+} from './fluencyReview.js';
 
 
 const BASE = 'https://integrate.api.nvidia.com/v1';
@@ -851,3 +854,37 @@ export async function sessionReport(apiKey, { scenario, history, level = 'B1', m
 }
 
 export { compositeScore } from './score.js';
+
+// ---- fluency-mode debrief (analysis AFTER the conversation, not during) ----
+
+const fluencySystem = () => `You are a ${LANG.name} fluency coach. The learner just finished a conversation run with NO interruptions: corrections were deliberately withheld so they could keep talking. Now, after the fact, you give them the debrief.
+
+Reply with ONLY a JSON object in exactly this shape:
+{
+  "corrections": [
+    { "original": "what the learner actually said", "correction": "the natural form", "why": "one-line reason in English", "topic": "grammar topic id from the list or null", "turn": 1-based turn number, "recurrences": how many turns the same slip appeared }
+  ],
+  "carried_well": ["1-2 things that genuinely worked, quoting the learner's ${LANG.name}"],
+  "summary": "1-2 sentences on the run as a whole."
+}
+HARD RULES: at most 3 corrections — pick the highest-value ones: errors that changed meaning, repeated across turns, or blocked the conversation. NEVER include stylistic suggestions or acceptable alternatives; only genuine mistakes. If the conversation was clean, return an empty corrections array.
+Topic ids, when the learner's main mistake maps to one: present, articles, negation, passe-compose, futur-conditionnel, subjonctif, pronoms, comparatif, relatifs, prepositions-lieu, accord-participe, pronominaux.`;
+
+export async function fluencyReview(apiKey, { scenario, history, level = 'B1', mock }) {
+  // Mock/offline: derive the debrief from the real per-turn evaluations —
+  // no network, no fabrication; the same pure model powers the fallback.
+  if (mock) return fluencyDebriefFromHistory(history);
+  const transcriptLines = history.map((t, i) =>
+    `Turn ${i + 1}\nLearner: ${t.userText}\nScores: ${JSON.stringify(t.evaluation?.scores || {})}`
+  ).join('\n\n');
+  try {
+    const json = await chatJson(apiKey, [
+      { role: 'system', content: `${fluencySystem()}\n\n${LEVEL_NOTES[level] || LEVEL_NOTES.B1}` },
+      { role: 'user', content: `Scenario: ${scenario?.title || 'free conversation'}\n\n${transcriptLines}` },
+    ], { label: 'fluency-review', temperature: 0.3 });
+    return normalizeFluencyReview(json, history);
+  } catch {
+    // The debrief must exist even when the model call fails — derive it.
+    return fluencyDebriefFromHistory(history);
+  }
+}

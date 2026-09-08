@@ -6,6 +6,7 @@ import { sessionReport, quizFromConversation, friendlyError } from '../lib/groq'
 import { takeawayPhrase } from '../lib/takeaway';
 import { saveSession, getSessions, getStreak } from '../lib/storage';
 import { Flame, Share as ShareIcon, Download as DownloadIcon, X as XIcon, Target } from './icons';
+import FluencyDebrief from './FluencyDebrief';
 
 // "Terminer la Session" overlay: report card + rings + radar + trends + share.
 
@@ -25,7 +26,7 @@ function radarValues(avg, history) {
   ];
 }
 
-export default function SessionDashboard({ open, onClose, apiKey, mockMode, scenario, history, level, onXp, onSessionSaved }) {
+export default function SessionDashboard({ open, onClose, apiKey, mockMode, scenario, history, level, onXp, onSessionSaved, fluencyReview, fluencyPending }) {
   const [report, setReport] = useState(null);
   const [error, setError] = useState(null);
   const [shareUrl, setShareUrl] = useState(null);
@@ -106,6 +107,11 @@ export default function SessionDashboard({ open, onClose, apiKey, mockMode, scen
 
         {report && (
           <div className="space-y-6 fade-in">
+            {/* Fluency-mode debrief: the 2–3 highest-value corrections from
+                an uninterrupted run, already fed into the mistake graph. */}
+            {(fluencyReview || fluencyPending) && (
+              <FluencyDebrief review={fluencyReview} pending={fluencyPending} />
+            )}
             {/* The end-of-session line: what you can now SAY — never an XP number. */}
             {(() => {
               const takeaway = takeawayPhrase(history, scenario);

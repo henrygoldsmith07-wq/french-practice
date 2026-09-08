@@ -1,9 +1,17 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { buildDailyCurriculum } from '../lib/dailyCurriculum';
 import { takeawayPhrase } from '../lib/takeaway';
-import { dueRetests, weakestMistakes, recordRetest, EVIDENCE_ENGINE_VERSION } from '../lib/mistakeGraph';
+import {
+  dueRetests, recordRetest, EVIDENCE_ENGINE_VERSION,
+} from '../lib/mistakeGraph';
+import {
+  calibrateSelection, applyCalibration, MIN_TRIALS_READY,
+} from '../lib/selectionCalibration';
+import {
+  probeCapabilities, nextFallback, resolvePlanCapabilities,
+} from '../lib/todayCapabilities';
 import { getPracticeAssignment, balancedDrillTopic } from '../lib/assignment';
-import { recordSelectionTrial } from '../lib/storage';
+import { recordSelectionTrial, getSelectionTrial, saveSelectionTrial } from '../lib/storage';
 import {
   getSrs, getNotebook, getDueWeaknesses, rateCard,
   getMistakeGraph, saveMistakeGraph, getSyncId,
@@ -18,11 +26,18 @@ import { TrackPlayer } from './Listening';
 import VocabCard from './VocabCard';
 import { NotebookRetype } from './Memory';
 import Quiz from './Quiz';
-import { Check, ChevronRight, Play, X } from './icons';
+import { ChevronRight, X } from './icons';
 
 // Today's French — one Start button, one composed session. Segments come
 // from the daily curriculum; the learner never chooses a mode. Every phase
 // writes through the app's real recorders, so abandoning mid-way still counts.
+//
+// Capability-aware: a segment that cannot run is replaced by the next link
+// in the fallback chain (AI drill → authored drill → retype → SRS → listen/
+// review) so an offline session stays complete instead of showing holes.
+//
+// Hooks live in the two sub-components below (TodayBody / SessionComplete)
+// so the early-return structure can never reorder them.
 
 export default function TodaySession({ open, onClose, minutes = 20, apiKey, mockMode, level, ttsRate, onTurn, onXp, onActivity }) {
   const plan = useMemo(() => {
@@ -30,12 +45,19 @@ export default function TodaySession({ open, onClose, minutes = 20, apiKey, mock
     const variant = getPracticeAssignment(getSyncId());
     const balanced = variant === 'balanced';
     const graph = getMistakeGraph();
+    // P2 calibration: join past selection trials with their delayed retest
+    // outcomes and derive conservative per-type weights. Below the sample
+    // floor this is a no-op — selection stays the urgency order.
+    const calibration = calibrateSelection(getSelectionTrial(), graph);
     // Freeze the selection candidates BEFORE choosing — P1 analysis joins
     // the delayed retest outcome against this record later.
-    const candidates = dueRetests(graph, Date.now(), 3).map((n) => ({
-      id: n.id, concept: n.concept, type: n.type,
-      mastery: n.mastery, recurrence: n.recurrence,
-    }));
+    const candidates = applyCalibration(
+      dueRetests(graph, Date.now(), 3).map((n) => ({
+        id: n.id, concept: n.concept, type: n.type,
+        mastery: n.mastery, recurrence: n.recurrence,
+      })),
+      calibration,
+    );
     const top = candidates[0] || null;
     const srs = getSrs();
     const library = [...allEntries(), ...notebookAsEntries(getNotebook())];
@@ -49,12 +71,22 @@ export default function TodaySession({ open, onClose, minutes = 20, apiKey, mock
     const scenarios = getScenarios();
     const suggested = scenarios.length ? scenarios[dayIndex % scenarios.length] : null;
     const rotationTopic = balancedDrillTopic(dayIndex);
+    const hasAi = Boolean(apiKey) || Boolean(mockMode);
+    const caps = probeCapabilities({
+      hasAi,
+      hasScenario: scenarios.length > 0,
+      concept: top?.concept || null,
+      pendingRetypes,
+      srsDue,
+      listeningTrack: listeningTrack ? { id: listeningTrack.id, title: listeningTrack.title, audioSrc: listeningTrack.audioSrc || null } : null,
+      recentCorrections: notebook.filter((e) => e.correctedByLearner && Date.now() - Date.parse(e.at || e.lastSeenAt || 0) <= 48 * 3600000).length,
+    });
     const planBuilt = buildDailyCurriculum({
       minutes,
       srsDue,
       topMistake: top,
       pendingRetypes,
-      recentCorrections: notebook.filter((e) => e.correctedByLearner && Date.now() - Date.parse(e.at || e.lastSeenAt || 0) <= 48 * 3600000).length,
+      recentCorrections: caps.recentCorrections ? 1 : 0,
       weaknessScenarioId: weakness?.scenarioId || null,
       suggestedScenarioId: suggested?.id || null,
       listeningTrack: listeningTrack ? { id: listeningTrack.id, title: listeningTrack.title, audioSrc: listeningTrack.audioSrc || null } : null,
@@ -62,33 +94,171 @@ export default function TodaySession({ open, onClose, minutes = 20, apiKey, mock
       balanced,
       balancedDrillTopic: balanced ? rotationTopic : null,
     });
-    // P1 selection-trial record: frozen before any practice happens.
+    // Resolve what can actually run: no segment is ever scheduled that
+    // cannot run. Offline, the AI drill becomes the authored drill (or
+    // retype/SRS/listen) BEFORE the session starts.
+    const planResolved = resolvePlanCapabilities(planBuilt, caps);
+    // P1 selection-trial record: frozen before any practice happens, with
+    // the resolved activity so analysis knows what was actually delivered.
     try {
-      const drillSeg = planBuilt.segments.find((s) => s.id === 'drill');
+      const drillSeg = planResolved.segments.find((s) => s.id === 'drill');
       recordSelectionTrial({
         engineVersion: EVIDENCE_ENGINE_VERSION,
         candidates,
-        selectedId: balanced ? rotationTopic : (top?.id || null),
+        selectedId: top?.id || null,
+        selectedConcept: top?.concept || (balanced ? rotationTopic : null),
+        activity: drillSeg?.payload?.kind || (planResolved.segments[0]?.id || null),
         masteryBefore: top?.mastery ?? null,
         recurrenceBefore: top?.recurrence ?? null,
         why: drillSeg?.why || '',
-        segments: planBuilt.segments.map((s) => ({ id: s.id, minutes: s.minutes })),
+        segments: planResolved.segments.map((s) => ({ id: s.id, minutes: s.minutes })),
         variant,
+        calibrationReady: Boolean(calibration.ready),
       });
     } catch { /* trial logging must never break the session */ }
-    return planBuilt;
-  }, [open, minutes]);
+    return planResolved;
+  }, [open, minutes, apiKey, mockMode]);
 
   const [segIndex, setSegIndex] = useState(0);
   const [xp, setXp] = useState(0);
   const [history, setHistory] = useState([]);
   const award = (n) => { setXp((x) => x + n); onXp?.(n); };
-  const advance = () => setSegIndex((i) => i + 1);
 
   if (!open || !plan) return null;
   const close = () => { onClose(); setSegIndex(0); setHistory([]); setXp(0); };
+  return (
+    <TodayBody
+      plan={plan}
+      segIndex={segIndex}
+      setSegIndex={setSegIndex}
+      close={close}
+      apiKey={apiKey}
+      mockMode={mockMode}
+      level={level}
+      ttsRate={ttsRate}
+      onTurn={onTurn}
+      onActivity={onActivity}
+      award={award}
+      history={history}
+      setHistory={setHistory}
+    />
+  );
+}
 
-  if (segIndex >= plan.segments.length) {
+// The in-session body: owns the delivery timers (per-segment time spent and
+// completion, recorded onto the frozen selection trial) and renders the
+// current segment. All hooks run unconditionally — the early return for the
+// finished state lives in the child below, never here.
+function TodayBody({ plan, segIndex, setSegIndex, close, apiKey, mockMode, level, ttsRate, onTurn, onActivity, award, history, setHistory }) {
+  const startRef = useRef(Date.now());
+  const segStartRef = useRef(Date.now());
+  const deliveredRef = useRef([]);
+  const recordedRef = useRef(false);
+  const missingRef = useRef(null);
+  const advance = () => {
+    const seg = plan.segments[segIndex];
+    if (seg) {
+      deliveredRef.current.push({
+        id: seg.id,
+        minutes: seg.minutes,
+        seconds: Math.round((Date.now() - segStartRef.current) / 1000),
+        skipped: false,
+      });
+    }
+    segStartRef.current = Date.now();
+    setSegIndex((i) => i + 1);
+  };
+  const skip = () => {
+    const seg = plan.segments[segIndex];
+    if (seg) {
+      deliveredRef.current.push({
+        id: seg.id,
+        minutes: seg.minutes,
+        seconds: Math.round((Date.now() - segStartRef.current) / 1000),
+        skipped: true,
+      });
+    }
+    segStartRef.current = Date.now();
+    setSegIndex((i) => i + 1);
+  };
+  // Persist the delivery record onto the newest selection trial once the
+  // session ends (the trial was frozen at start; outcomes join later).
+  useEffect(() => {
+    if (segIndex < plan.segments.length || recordedRef.current) return;
+    recordedRef.current = true;
+    try {
+      const trials = getSelectionTrial();
+      const last = trials[trials.length - 1];
+      if (last) {
+        last.delivered = deliveredRef.current;
+        last.timeSpent = Math.round((Date.now() - startRef.current) / 1000);
+        last.completed = deliveredRef.current.length === plan.segments.length
+          && !deliveredRef.current.some((d) => d.skipped && d.seconds < 5);
+        saveSelectionTrial(trials);
+      }
+    } catch { /* delivery logging must never break the close */ }
+  }, [segIndex, plan]);
+
+  const done = segIndex >= plan.segments.length;
+  const seg = done ? null : plan.segments[segIndex];
+
+  // Resolve the current segment's body. A missing body (should be rare — the
+  // plan was capability-resolved at build time, but e.g. a recall deck can
+  // empty itself mid-session) falls through to the next segment instead of a
+  // dead screen.
+  let body = null;
+  if (!done && seg) {
+    if (seg.id === 'speak') {
+      const sc = getScenarios().find((x) => x.id === seg.payload.scenarioId);
+      if (sc) {
+        body = (
+          <ChatArena
+            apiKey={apiKey}
+            mockMode={mockMode}
+            ttsRate={ttsRate}
+            level={level}
+            onTtsRate={() => {}}
+            onTurn={onTurn}
+            onXp={award}
+            history={history}
+            setHistory={setHistory}
+            scenario={sc}
+            setScenario={() => {}}
+            onEndSession={advance}
+            showEndButton
+          />
+        );
+      }
+    } else if (seg.id === 'retrieve') {
+      body = <RecallRunner cardCap={seg.payload.cardCap} onDone={advance} onXp={award} onActivity={onActivity} />;
+    } else if (seg.id === 'drill') {
+      body = (
+        <DrillChainRunner
+          payload={seg.payload}
+          level={level}
+          apiKey={apiKey}
+          mockMode={mockMode}
+          onXp={award}
+          onDone={advance}
+        />
+      );
+    } else if (seg.id === 'review') {
+      body = <DelayedReview count={seg.payload.count} onXp={award} onDone={advance} />;
+    } else if (seg.id === 'listen' && seg.payload.track) {
+      const track = allListeningTracks().find((t) => t.id === seg.payload.track.id);
+      if (track) body = <TrackPlayer track={track} baseRate={ttsRate} level={level} onXp={onXp} onActivity={onActivity} onDone={advance} />;
+    }
+  }
+
+  useEffect(() => {
+    if (done) return undefined;
+    if (body || missingRef.current === segIndex) return undefined;
+    missingRef.current = segIndex;
+    const t = setTimeout(skip, 0);
+    return () => clearTimeout(t);
+  }, [done, body, segIndex]);
+
+  if (done) {
     const speakSeg = plan.segments.find((s) => s.id === 'speak');
     const speakScenario = speakSeg ? getScenarios().find((x) => x.id === speakSeg.payload.scenarioId) : null;
     const takeaway = takeawayPhrase(history, speakScenario);
@@ -106,51 +276,10 @@ export default function TodaySession({ open, onClose, minutes = 20, apiKey, mock
               Today's French — {plan.totalMinutes} minutes · {plan.segments.map((s) => s.label).join(' → ')}.
             </p>
           )}
-          {takeaway && (
-            <p className="text-xs text-ink3">
-              {plan.totalMinutes} minutes · {plan.segments.map((s) => s.label).join(' → ')}.
-            </p>
-          )}
           <button onClick={close} className="btn btn-primary w-full max-w-xs mx-auto min-h-12 rounded-xl text-sm">Close</button>
         </div>
       </div>
     );
-  }
-
-  const seg = plan.segments[segIndex];
-
-  let body = <MissingSegment />;
-  if (seg.id === 'speak') {
-    const sc = getScenarios().find((x) => x.id === seg.payload.scenarioId);
-    if (sc) {
-      body = (
-        <ChatArena
-          apiKey={apiKey}
-          mockMode={mockMode}
-          ttsRate={ttsRate}
-          level={level}
-          onTtsRate={() => {}}
-          onTurn={onTurn}
-          onXp={award}
-          history={history}
-          setHistory={setHistory}
-          scenario={sc}
-          setScenario={() => {}}
-          onEndSession={advance}
-        />
-      );
-    }
-  } else if (seg.id === 'retrieve') {
-    body = <RecallRunner cardCap={seg.payload.cardCap} onDone={advance} onXp={award} onActivity={onActivity} />;
-  } else if (seg.id === 'drill') {
-    body = seg.payload.kind === 'retype'
-      ? <NotebookRetype onXp={award} onCleared={advance} />
-      : <DrillRunner concept={seg.payload.concept} level={level} apiKey={apiKey} mockMode={mockMode} onXp={award} onDone={advance} />;
-  } else if (seg.id === 'review') {
-    body = <DelayedReview count={seg.payload.count} onXp={award} onDone={advance} />;
-  } else if (seg.id === 'listen' && seg.payload.track) {
-    const track = allListeningTracks().find((t) => t.id === seg.payload.track.id);
-    if (track) body = <TrackPlayer track={track} baseRate={ttsRate} level={level} onXp={onXp} onActivity={onActivity} onDone={advance} />;
   }
 
   return (
@@ -171,7 +300,7 @@ export default function TodaySession({ open, onClose, minutes = 20, apiKey, mock
       <div className="flex-1 min-h-0 overflow-y-auto nice-scroll">{body}</div>
       {seg.id !== 'speak' && (
         <footer className="shrink-0 border-t border-line bg-surface px-4 py-3">
-          <button onClick={advance} className="btn btn-secondary w-full max-w-lg mx-auto min-h-11 rounded-xl text-sm inline-flex items-center justify-center gap-1.5">
+          <button onClick={skip} className="btn btn-secondary w-full max-w-lg mx-auto min-h-11 rounded-xl text-sm inline-flex items-center justify-center gap-1.5">
             Skip <ChevronRight size={14} />
           </button>
         </footer>
@@ -180,18 +309,141 @@ export default function TodaySession({ open, onClose, minutes = 20, apiKey, mock
   );
 }
 
-function MissingSegment() {
+// Targeted drill with a runtime fallback chain. The payload arrives with the
+// full ordered chain from the capability resolver; if the AI drill returns
+// nothing (offline, quota, error), the runner walks to the next link instead
+// of showing "unavailable" — the session always stays complete.
+function DrillChainRunner({ payload, level, apiKey, mockMode, onXp, onDone }) {
+  const [current, setCurrent] = useState(payload);
+  const kind = current?.kind || payload?.kind;
+
+  if (kind === 'authored-drill') {
+    return (
+      <AuthoredDrill
+        exercises={current.exercises}
+        topicTitle={current.title}
+        onXp={onXp}
+        onDone={onDone}
+      />
+    );
+  }
+  if (kind === 'retype') {
+    return <NotebookRetype onXp={onXp} onCleared={onDone} />;
+  }
+  if (kind === 'srs-retrieval') {
+    return <RecallRunner cardCap={current.cardCap || 5} onDone={onDone} onXp={onXp} />;
+  }
+  if (kind === 'listen') {
+    return <ListenFallback track={current.track} onDone={onDone} />;
+  }
+  if (kind === 'review') {
+    return <DelayedReview count={current.count} onXp={onXp} onDone={onDone} />;
+  }
+  // Default: the AI targeted drill (first link of the chain).
   return (
-    <div className="h-full grid place-items-center px-4">
-      <p className="text-sm text-ink2">Nothing available for this segment — tap Skip.</p>
+    <AiDrillRunner
+      concept={current.concept}
+      level={level}
+      apiKey={apiKey}
+      mockMode={mockMode}
+      onXp={onXp}
+      onDone={onDone}
+      onEmpty={() => {
+        const next = nextFallback(payload.chain, 'ai-drill');
+        if (next) setCurrent(next); else onDone();
+      }}
+    />
+  );
+}
+
+function FallbackBridge({ onEmpty }) {
+  return <div className="h-full grid place-items-center px-4"><p className="text-sm text-ink2">Preparing the next drill…</p></div>;
+}
+
+// The AI micro-drill: on failure/empty, falls through to the next chain link.
+function AiDrillRunner({ concept, level, apiKey, mockMode, onXp, onDone, onEmpty }) {
+  const [state, setState] = useState({ busy: true, exercises: null });
+  const correctRef = useRef(0);
+  const awardCounting = (n) => { if (n >= 3) correctRef.current += 1; onXp(n); };
+  useEffect(() => {
+    let live = true;
+    (async () => {
+      try {
+        const { generateExercises } = await import('../lib/groq');
+        const { exercises: ex } = await generateExercises(apiKey, { topic: concept, level, mock: mockMode });
+        if (live) setState({ busy: false, exercises: ex || [] });
+      } catch {
+        if (live) setState({ busy: false, exercises: [] });
+      }
+    })();
+    return () => { live = false; };
+  }, [concept, level, apiKey, mockMode]);
+  useEffect(() => {
+    if (!state.busy && state.exercises && !state.exercises.length) {
+      const t = setTimeout(onEmpty, 600);
+      return () => clearTimeout(t);
+    }
+    return undefined;
+  }, [state.busy, state.exercises, onEmpty]);
+  const finish = () => {
+    try {
+      const graph = getMistakeGraph();
+      const node = graph.find((m) => m.concept === concept && m.status === 'active');
+      if (node) saveMistakeGraph(recordRetest(graph, {
+        id: node.id,
+        correct: correctRef.current >= 2,
+        context: 'targeted-drill',
+        immediate: true, // same-session, post-practice: rehearsal
+      }));
+    } catch { /* graph bookkeeping must never break the drill */ }
+    onDone();
+  };
+  if (state.busy) return <div className="h-full grid place-items-center"><p className="text-sm text-ink2">Building your drill…</p></div>;
+  if (!state.exercises?.length) {
+    // Walk the fallback chain instead of a dead end. The parent swaps the
+    // runner for the next chain link; the brief pause avoids a flash.
+    return <FallbackBridge onEmpty={onEmpty} />;
+  }
+  return (
+    <div className="h-full overflow-y-auto nice-scroll px-4 py-6">
+      <div className="max-w-md mx-auto">
+        <Quiz exercises={state.exercises} onXp={awardCounting} footer={
+          <button onClick={finish} className="btn btn-primary w-full min-h-11 rounded-xl text-sm mt-3">Done drilling</button>
+        } />
+      </div>
     </div>
   );
+}
+
+// Authored drill from the grammar library — always available offline.
+function AuthoredDrill({ exercises, topicTitle, onXp, onDone }) {
+  return (
+    <div className="h-full overflow-y-auto nice-scroll px-4 py-6">
+      <div className="max-w-md mx-auto">
+        {topicTitle && <p className="text-[11px] uppercase tracking-wider text-ink3 mb-2">{topicTitle}</p>}
+        <Quiz exercises={exercises} onXp={onXp} footer={
+          <button onClick={onDone} className="btn btn-primary w-full min-h-11 rounded-xl text-sm mt-3">Done drilling</button>
+        } />
+      </div>
+    </div>
+  );
+}
+
+// Listen fallback inside the drill chain.
+function ListenFallback({ track, onDone }) {
+  const tracks = allListeningTracks();
+  const real = tracks.find((t) => t.id === track?.id);
+  useEffect(() => {
+    if (!real) onDone();
+  }, [real, onDone]);
+  if (!real) return null;
+  return <TrackPlayer track={real} baseRate={1} level="B1" onXp={() => {}} onActivity={() => {}} onDone={onDone} />;
 }
 
 // Compact SRS recall: due cards, capped, rated through the real scheduler.
 // Mistake-graph cards (id prefix 'mistake-') feed recordRetest as spaced,
 // non-immediate evidence — an SRS resurface is by definition delayed.
-function RecallRunner({ cardCap, onDone, onXp, onActivity }) {
+export function RecallRunner({ cardCap, onDone, onXp, onActivity }) {
   const deck = useMemo(() => {
     const srs = getSrs();
     const library = [...allEntries(), ...notebookAsEntries(getNotebook())];
@@ -244,62 +496,9 @@ function RecallRunner({ cardCap, onDone, onXp, onActivity }) {
   );
 }
 
-// Targeted micro-drill for the curriculum's weakest concept. Completing it
-// records an IMMEDIATE retest — right after targeted practice, success is
-// rehearsal, not retention evidence (mastery unchanged on correct).
-function DrillRunner({ concept, level, apiKey, mockMode, onXp, onDone }) {
-  const [state, setState] = useState({ busy: true, exercises: null });
-  const correctRef = useRef(0);
-  const awardCounting = (n) => { if (n >= 3) correctRef.current += 1; onXp(n); };
-  useEffect(() => {
-    let live = true;
-    (async () => {
-      try {
-        const { generateExercises } = await import('../lib/groq');
-        const { exercises: ex } = await generateExercises(apiKey, { topic: concept, level, mock: mockMode });
-        if (live) setState({ busy: false, exercises: ex || [] });
-      } catch {
-        if (live) setState({ busy: false, exercises: [] });
-      }
-    })();
-    return () => { live = false; };
-  }, [concept, level, apiKey, mockMode]);
-  const finish = () => {
-    try {
-      const graph = getMistakeGraph();
-      const node = graph.find((m) => m.concept === concept && m.status === 'active');
-      if (node) saveMistakeGraph(recordRetest(graph, {
-        id: node.id,
-        correct: correctRef.current >= 2,
-        context: 'targeted-drill',
-        immediate: true, // same-session, post-practice: rehearsal
-      }));
-    } catch { /* graph bookkeeping must never break the drill */ }
-    onDone();
-  };
-  if (state.busy) return <div className="h-full grid place-items-center"><p className="text-sm text-ink2">Building your drill…</p></div>;
-  if (!state.exercises?.length) {
-    return (
-      <div className="h-full grid place-items-center px-4 space-y-3 text-center">
-        <p className="text-sm text-ink2">Drill unavailable offline — skipped.</p>
-        <button onClick={onDone} className="btn btn-secondary min-h-10 px-4 rounded-lg text-xs">Continue</button>
-      </div>
-    );
-  }
-  return (
-    <div className="h-full overflow-y-auto nice-scroll px-4 py-6">
-      <div className="max-w-md mx-auto">
-        <Quiz exercises={state.exercises} onXp={onXp} footer={
-          <button onClick={finish} className="btn btn-primary w-full min-h-11 rounded-xl text-sm mt-3">Done drilling</button>
-        } />
-      </div>
-    </div>
-  );
-}
-
 // Delayed review: recent corrections replayed as retrieval prompts. A
 // self-marked "said it right" feeds the mistake graph's mastery lifecycle.
-function DelayedReview({ count, onXp, onDone }) {
+export function DelayedReview({ count, onXp, onDone }) {
   const items = useMemo(
     () => getErrorNotebook().filter((e) => e.correctedByLearner).slice(0, Math.max(1, count)),
     [count],

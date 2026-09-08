@@ -2354,15 +2354,27 @@ export function recordSelectionTrial(record) {
     engineVersion: record.engineVersion || null,
     candidates: record.candidates || [],
     selectedId: record.selectedId || null,
+    selectedConcept: record.selectedConcept || null,
+    activity: record.activity || null,
     masteryBefore: record.masteryBefore ?? null,
     recurrenceBefore: record.recurrenceBefore ?? null,
     why: record.why || '',
     segments: record.segments || [],
     delivered: record.delivered || [],
+    calibrationReady: Boolean(record.calibrationReady),
+    timeSpent: Number.isFinite(record.timeSpent) ? record.timeSpent : null,
+    completed: typeof record.completed === 'boolean' ? record.completed : null,
     retestResult: null, // joined later from the graph's retest history
   });
   write(KEYS.selectionTrial, list.slice(-200));
   return list[list.length - 1];
+}
+
+/** Patch a frozen trial after delivery (time spent, completion). */
+export function saveSelectionTrial(trials) {
+  const list = Array.isArray(trials) ? trials : [];
+  write(KEYS.selectionTrial, list.slice(-200));
+  return list;
 }
 
 // ---- pronunciation intelligibility benchmark (human-labelled samples) ----

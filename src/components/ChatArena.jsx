@@ -1,31 +1,44 @@
-import { useEffect, useRef, useState } from 'react';
+﻿import { useEffect, useRef, useState } from 'react';
 import { langName } from '../lib/i18n';
 import useRecorder from '../hooks/useRecorder';
 import Waveform from './Waveform';
 import { getScenarios } from '../lib/data';
-import { transcribe, evaluateTurn, evaluateRedoTurn, getHint, explainMistake, friendlyError, generateExercises } from '../lib/groq';
-import Quiz from './Quiz';
+import { transcribe, evaluateTurn, evaluateRedoTurn, getHint, friendlyError, fluencyReview } from '../lib/groq';
 import { scoreDelta, redoVerdict } from '../lib/redo';
 import { speechMetrics } from '../lib/analytics';
 import { activeLanguage } from '../lib/i18n';
 import {
   getSrs, getSessions, getMetrics, getReviewEvents, getGrammarProgress, getEvidenceLedgerModel,
   getSettings, recordGrammarError, recordWeaknessError, recordWeaknessRepair, getDueWeaknesses, getLearnerBrief,
-  recordAssistanceEvent, saveToNotebook,
+  recordAssistanceEvent,
 } from '../lib/storage';
-import { addErrorNotebook, getErrorNotebook } from '../lib/errorNotebook';
 import { recordMistake, typeForCategory, mistakeId as graphIdFor } from '../lib/mistakeGraph';
+import { saveMistakeGraph, getMistakeGraph } from '../lib/storage';
 import { categoryForTopic } from '../lib/errorTaxonomy';
 import { allEntries } from '../lib/vocab';
 import { GRAMMAR_TOPICS } from '../lib/grammar';
 import { buildLearningPlan } from '../lib/learningAdaptation';
-import { Markdown, ScoreBadge, SpeakButton, RateSlider, Spinner } from './ui';
+import { SpeakButton, RateSlider, Spinner } from './ui';
 import { speak, stopSpeaking } from '../lib/tts';
-import { ArrowRight, Book, Lightbulb, Mic, Square, scenarioIcon } from './icons';
-import { getGrammarTopic } from '../lib/grammar';
+import { ArrowRight, Lightbulb, Mic, Square, scenarioIcon } from './icons';
 import ScenarioPicker from './ScenarioPicker';
+import FluencyDebrief from './FluencyDebrief';
+import { Avatar, AiBubble, UserBubble, RedoCompare, STRONG_LEVELS } from './ArenaCorrections';
 
 const CURVEBALL_TURN = 3; // the surprise lands on the learner's 3rd turn
+
+// Conversation modes:
+//   coach    â€” per-turn corrections, hints, redo (the classic Arena loop)
+//   fluency  â€” no interruptions during the conversation; one debrief after,
+//              surfacing only the highest-value 2â€“3 corrections
+const CONVERSATION_MODES = ['coach', 'fluency'];
+const MODE_KEY = 'fp.conversationMode';
+function readConversationMode() {
+  try {
+    const v = localStorage.getItem(MODE_KEY);
+    return CONVERSATION_MODES.includes(v) ? v : 'coach';
+  } catch { return 'coach'; }
+}
 
 function readSessionBudget() {
   try {
@@ -35,10 +48,16 @@ function readSessionBudget() {
   return null;
 }
 
-export default function ChatArena({ apiKey, mockMode, ttsRate, level, onTtsRate, onTurn, onGrammarTip, onXp, history, setHistory, scenario, setScenario, onEndSession }) {
+export default function ChatArena({ apiKey, mockMode, ttsRate, level, onTtsRate, onTurn, onGrammarTip, onXp, history, setHistory, scenario, setScenario, onEndSession, conversationMode: conversationModeProp, onConversationMode, showEndButton = false }) {
   const [phase, setPhase] = useState('idle'); // idle | transcribing | editing | thinking
   const [draft, setDraft] = useState(''); // transcription editor / manual text
   const [spoken, setSpoken] = useState(null); // delivery coaching for a voice turn
+  // Controlled from App when it passes a mode; TodaySession uses the local
+  // default (coach — the daily session keeps per-turn corrections).
+  const [localMode, setLocalMode] = useState(readConversationMode);
+  const conversationMode = conversationModeProp || localMode;
+  const [debriefOpen, setDebriefOpen] = useState(false);
+  const [debriefLoading, setDebriefLoading] = useState(false);
   const [hintLevel, setHintLevel] = useState(0);
   const [hint, setHint] = useState('');
   const [hintLoading, setHintLoading] = useState(false);
@@ -49,6 +68,19 @@ export default function ChatArena({ apiKey, mockMode, ttsRate, level, onTtsRate,
   const [redoIdx, setRedoIdx] = useState(null);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [weaknessDue, setWeaknessDue] = useState(() => getDueWeaknesses()[0] || null);
+  const isFluency = conversationMode === 'fluency';
+  const setMode = (mode) => {
+    setLocalMode(mode);
+    try { localStorage.setItem(MODE_KEY, mode); } catch { /* ignore */ }
+    onConversationMode?.(mode);
+    // Switching mode restarts the conversation: corrections only make sense
+    // if the policy was consistent for every turn.
+    if (history.length) { setHistory([]); }
+    setRedoIdx(null);
+    setHint('');
+    setHintLevel(0);
+    setPhase('idle');
+  };
   const scrollRef = useRef(null);
   // Assistance-fading evidence: how many hints the learner burned on the turn
   // in flight. Recorded with the turn's score once the evaluation lands.
@@ -104,7 +136,7 @@ export default function ChatArena({ apiKey, mockMode, ttsRate, level, onTtsRate,
   const [reversed, setReversed] = useState(false);
 
   // Mic-failure fallback line: the partner's latest message, else the opener.
-  // Speech failure always falls back to tap-to-listen + typing — never a dead
+  // Speech failure always falls back to tap-to-listen + typing â€” never a dead
   // mic screen.
   const fallbackListenText = (() => {
     for (let i = history.length - 1; i >= 0; i -= 1) {
@@ -224,22 +256,28 @@ export default function ChatArena({ apiKey, mockMode, ttsRate, level, onTtsRate,
         learner,
         mock: mockMode,
       });
-      if (stale()) return; // scenario switched mid-flight — discard, don't append
+      if (stale()) return; // scenario switched mid-flight â€” discard, don't append
       if (evaluation.grammar_topic) recordWeaknessError(evaluation.grammar_topic, { scenarioId: scenario.id });
       if (evaluation.grammar_topic) recordGrammarError(evaluation.grammar_topic);
       // Permanent learning object: definite/likely errors become notebook
-      // entries automatically — retype drill now, recurrence tracking forever.
+      // entries automatically â€” retype drill now, recurrence tracking forever.
       // Stylistic suggestions are advice, not mistakes; they don't get kept.
       try {
         const strong = (evaluation.corrections_detailed || []).find((c) => STRONG_LEVELS.has(c.level));
-        if (strong) {
+        if (strong && conversationMode !== 'fluency') {
+          // Permanent learning object: definite/likely errors become notebook
+          // entries automatically â€” retype drill now, recurrence tracking
+          // forever. In fluency mode this happens once, after the session
+          // (the debrief records only the highest-value mistakes).
           // Structural mistake graph: concept + type + mastery lifecycle.
           // (ASR-uncertainty lives at the transcription layer; a typed or
           // edited send is by definition what the learner meant to say.)
           const category = categoryForTopic(evaluation.grammar_topic || '');
           const type = typeForCategory(category);
           const graphNodeId = graphIdFor({ type, concept: evaluation.grammar_topic || 'unknown' });
-          recordMistake(saveMistakeGraph(getMistakeGraph()), {
+          // Mutate-then-save: the graph must be written AFTER recordMistake.
+          const graph = getMistakeGraph();
+          recordMistake(graph, {
             type,
             concept: evaluation.grammar_topic || 'unknown',
             source: 'conversation',
@@ -249,6 +287,7 @@ export default function ChatArena({ apiKey, mockMode, ttsRate, level, onTtsRate,
             asrUncertain: false,
             related: [evaluation.grammar_topic].filter(Boolean),
           });
+          saveMistakeGraph(graph);
           addErrorNotebook({
             original: userText,
             corrected: evaluation.native_alternative || strong.correction,
@@ -273,7 +312,7 @@ export default function ChatArena({ apiKey, mockMode, ttsRate, level, onTtsRate,
       // Speaking corpus seed: store the AI side of this turn so a human rater
       // can pair their mark against it later (updateCorpusHumanMark, then a
       // second rater via updateCorpusSecondMark). Never fabricates the human
-      // half — the entry waits as AI-only until raters add theirs.
+      // half â€” the entry waits as AI-only until raters add theirs.
       try {
         recordCorpusEntry({
           mode: 'speaking',
@@ -289,7 +328,10 @@ export default function ChatArena({ apiKey, mockMode, ttsRate, level, onTtsRate,
         evaluation,
         reply: evaluation.reply,
         curveball: turnNumber === CURVEBALL_TURN,
-        correctionPolicy: learningPlan.correction,
+        mode: conversationMode,
+        correctionPolicy: isFluency
+          ? { ...learningPlan.correction, preference: 'off', timing: 'end-of-session' }
+          : learningPlan.correction,
         learningSnapshot: {
           targetLevel: learningPlan.progression.targetLevel,
           listeningStage: learningPlan.listening.stage,
@@ -356,12 +398,36 @@ export default function ChatArena({ apiKey, mockMode, ttsRate, level, onTtsRate,
               </button>
             );
           })}
-          <button onClick={() => setPickerOpen(true)} className="shrink-0 px-3.5 py-2.5 rounded-xl border border-dashed border-line bg-surface text-xs font-semibold text-ink2 hover:border-ink3 hover:text-ink whitespace-nowrap">Browse all {getScenarios().length} →</button>
+          <button onClick={() => setPickerOpen(true)} className="shrink-0 px-3.5 py-2.5 rounded-xl border border-dashed border-line bg-surface text-xs font-semibold text-ink2 hover:border-ink3 hover:text-ink whitespace-nowrap">Browse all {getScenarios().length} â†’</button>
         </div>
         <ScenarioPicker open={pickerOpen} activeId={scenario.id} onPick={changeScenario} onClose={() => setPickerOpen(false)} />
-        {weaknessDue && (
+        {/* Conversation mode: Coach corrects per turn; Fluency stays silent
+            until the end-of-session debrief. */}
+        <div className="flex items-center gap-1.5" role="group" aria-label="Conversation mode">
+          {['coach', 'fluency'].map((m) => (
+            <button
+              key={m}
+              onClick={() => setMode(m)}
+              aria-pressed={conversationMode === m}
+              title={m === 'coach'
+                ? 'Corrections on every turn, hints, redo'
+                : 'No interruptions â€” full debrief when you finish'}
+              className={`px-3 py-1.5 rounded-lg border text-[11px] font-semibold transition-colors ${
+                conversationMode === m
+                  ? 'border-ink bg-surface2 text-ink'
+                  : 'border-line text-ink3 hover:text-ink2'
+              }`}
+            >
+              {m === 'coach' ? 'ðŸŽ¯ Coach' : 'ðŸŒŠ Fluency'}
+            </button>
+          ))}
+          <span className="text-[10px] text-ink3 hidden sm:inline">
+            {isFluency ? 'Keep talking â€” corrections come at the end.' : 'Corrections each turn.'}
+          </span>
+        </div>
+        {weaknessDue && !isFluency && (
           <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 flex items-center justify-between gap-2" role="status">
-            <span className="text-xs text-ink"><span className="font-bold">Retest due:</span> {(() => { const t = getGrammarTopic(weaknessDue.topicId); return t ? t.title : weaknessDue.topicId; })()} — last slip {Math.max(1, Math.round((Date.now() - new Date(weaknessDue.lastErrorAt).getTime())/86400000))}d ago. Practise it again?</span>
+            <span className="text-xs text-ink"><span className="font-bold">Retest due:</span> {(() => { const t = getGrammarTopic(weaknessDue.topicId); return t ? t.title : weaknessDue.topicId; })()} â€” last slip {Math.max(1, Math.round((Date.now() - new Date(weaknessDue.lastErrorAt).getTime())/86400000))}d ago. Practise it again?</span>
             <button onClick={() => changeScenario(scenario.id)} className="shrink-0 text-xs font-semibold text-amber-800 underline">Keep this scenario</button>
           </div>
         )}
@@ -374,7 +440,7 @@ export default function ChatArena({ apiKey, mockMode, ttsRate, level, onTtsRate,
               reversed ? 'border-ink bg-surface2 text-ink' : 'border-line text-ink3 hover:text-ink2'
             }`}
           >
-            🔄 {reversed ? 'Roles swapped — you serve' : 'Swap roles'}
+            ðŸ”„ {reversed ? 'Roles swapped â€” you serve' : 'Swap roles'}
           </button>
           <div className="flex items-center gap-2">
             {secondsLeft != null && (
@@ -388,6 +454,15 @@ export default function ChatArena({ apiKey, mockMode, ttsRate, level, onTtsRate,
                 {Math.floor(secondsLeft / 60)}:{String(secondsLeft % 60).padStart(2, '0')}
               </span>
             )}
+            {showEndButton && history.length > 0 && (
+              <button
+                onClick={() => onEndSession?.()}
+                className="text-[11px] font-bold px-2.5 py-1.5 rounded-lg border border-ink text-ink bg-surface2 whitespace-nowrap"
+                title="Finish this conversation and see the report"
+              >
+                End Session
+              </button>
+            )}
             <RateSlider rate={ttsRate} onChange={onTtsRate} />
           </div>
         </div>
@@ -400,7 +475,7 @@ export default function ChatArena({ apiKey, mockMode, ttsRate, level, onTtsRate,
         <AiBubble text={scenario.opener} translation={scenario.openerTranslation} ttsRate={ttsRate} />
         {redoIdx != null && history[redoIdx] && (
           <div className="rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-ink" role="status">
-            <span className="font-bold">Redo mode</span> — correction hidden. Recall the fix from memory, then re-speak or re-type the same turn. We’ll compare the two attempts.
+            <span className="font-bold">Redo mode</span> â€” correction hidden. Recall the fix from memory, then re-speak or re-type the same turn. Weâ€™ll compare the two attempts.
           </div>
         )}
         {history.map((turn, i) => (
@@ -428,7 +503,7 @@ export default function ChatArena({ apiKey, mockMode, ttsRate, level, onTtsRate,
           </div>
         ))}
         {phase === 'thinking' && (
-          <div className="flex items-end gap-2 bubble-in" aria-label="Your partner is typing…">
+          <div className="flex items-end gap-2 bubble-in" aria-label="Your partner is typingâ€¦">
             <Avatar />
             <div className="bg-surface2 rounded-2xl rounded-bl-md px-4 py-3.5 flex gap-1.5">
               <span className="typing-dot" /><span className="typing-dot" /><span className="typing-dot" />
@@ -444,10 +519,10 @@ export default function ChatArena({ apiKey, mockMode, ttsRate, level, onTtsRate,
       </div>
 
       {/* hint strip */}
-      {(hint || hintLoading) && (
+      {(hint || hintLoading) && !isFluency && (
         <div className="mx-4 sm:max-w-2xl sm:mx-auto sm:w-full mb-2 fade-in rounded-xl bg-surface2 border border-line px-3 py-2">
           {hintLoading
-            ? <Spinner label={`Hint ${hintLevel}/3…`} />
+            ? <Spinner label={`Hint ${hintLevel}/3â€¦`} />
             : <p className="text-xs text-ink2"><span className="font-bold">Hint {hintLevel}/3:</span> {hint}</p>}
         </div>
       )}
@@ -457,7 +532,7 @@ export default function ChatArena({ apiKey, mockMode, ttsRate, level, onTtsRate,
         <div className="max-w-2xl mx-auto">
         {redoIdx != null && phase === 'idle' && !recorder.recording && (
           <div className="mb-2 flex items-center justify-between gap-2 rounded-xl bg-amber-50 border border-amber-200 px-3 py-2">
-            <span className="text-xs text-ink"><span className="font-bold">Retrying turn {redoIdx + 1}</span> — say it again without peeking.</span>
+            <span className="text-xs text-ink"><span className="font-bold">Retrying turn {redoIdx + 1}</span> â€” say it again without peeking.</span>
             <button onClick={() => setRedoIdx(null)} className="text-xs font-semibold text-ink2 hover:text-ink min-h-8 px-2">Cancel redo</button>
           </div>
         )}
@@ -487,10 +562,10 @@ export default function ChatArena({ apiKey, mockMode, ttsRate, level, onTtsRate,
             {spoken && (
               <p className="text-[11px] text-review bg-reviewsoft rounded-lg px-2.5 py-1.5" role="status">
                 {spoken.fillers > 0
-                  ? <>Coach: you hesitated on «{spoken.fillerWords.join('», «')}» — try to land the phrase in one breath.</>
+                  ? <>Coach: you hesitated on Â«{spoken.fillerWords.join('Â», Â«')}Â» â€” try to land the phrase in one breath.</>
                   : spoken.longestPauseMs > 1800
-                    ? <>Coach: a {(spoken.longestPauseMs / 1000).toFixed(1)}s pause mid-answer — bridge with «et puis…» while you think.</>
-                    : <>Coach: that came out fast ({spoken.wpm} wpm) — a slightly slower pace reads clearer.</>}
+                    ? <>Coach: a {(spoken.longestPauseMs / 1000).toFixed(1)}s pause mid-answer â€” bridge with Â«et puisâ€¦Â» while you think.</>
+                    : <>Coach: that came out fast ({spoken.wpm} wpm) â€” a slightly slower pace reads clearer.</>}
               </p>
             )}
             <textarea
@@ -516,19 +591,21 @@ export default function ChatArena({ apiKey, mockMode, ttsRate, level, onTtsRate,
           </div>
         ) : (
           <div className="flex items-end gap-2">
-            <button
-              onClick={askHint}
-              disabled={busy || hintLevel >= 3}
-              className="btn btn-secondary min-h-11 px-3 rounded-xl text-xs whitespace-nowrap"
-            >
-              <Lightbulb size={14} /> {hintLevel === 0 ? 'Hint' : `Hint ${Math.min(3, hintLevel + 1)}/3`}
-            </button>
+            {!isFluency && (
+              <button
+                onClick={askHint}
+                disabled={busy || hintLevel >= 3}
+                className="btn btn-secondary min-h-11 px-3 rounded-xl text-xs whitespace-nowrap"
+              >
+                <Lightbulb size={14} /> {hintLevel === 0 ? 'Hint' : `Hint ${Math.min(3, hintLevel + 1)}/3`}
+              </button>
+            )}
             <div className={`flex-1 flex items-center gap-2 rounded-xl border px-3 ${redoIdx != null ? 'bg-amber-50 border-amber-300 focus-within:border-amber-400' : 'bg-surface2 border-line focus-within:border-ink'}`}>
               <input
                 value={draft}
                 onChange={(e) => setDraft(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && send(draft)}
-                placeholder={busy ? '…' : redoIdx != null ? `Redo turn ${redoIdx + 1} — type your improved ${langName()}…` : `Or type in ${langName()}…`}
+                placeholder={busy ? 'â€¦' : redoIdx != null ? `Redo turn ${redoIdx + 1} â€” type your improved ${langName()}â€¦` : `Or type in ${langName()}â€¦`}
                 disabled={busy}
                 className="flex-1 bg-transparent py-3 text-sm text-ink placeholder:text-ink3 focus:outline-none"
                 aria-label={redoIdx != null ? 'Retry reply' : 'Typed reply'}
@@ -547,6 +624,7 @@ export default function ChatArena({ apiKey, mockMode, ttsRate, level, onTtsRate,
             </button>
           </div>
         )}
+
         {recorder.error && (
           <div role="alert" className="mt-2 rounded-xl border border-line bg-surface2 px-3 py-2.5 space-y-1.5">
             <p className="text-[11px] text-ink">{recorder.error} No problem — listen below and type your reply instead.</p>
@@ -564,305 +642,6 @@ export default function ChatArena({ apiKey, mockMode, ttsRate, level, onTtsRate,
         )}
         </div>
       </div>
-    </div>
-  );
-}
-
-function Avatar() {
-  return (
-    <span
-      className="w-9 h-9 shrink-0 rounded-full bg-surface2 border border-line grid place-items-center mb-1 text-[10px] font-semibold tracking-widest text-ink2"
-      aria-hidden="true"
-    >
-      FR
-    </span>
-  );
-}
-
-function AiBubble({ text, translation, ttsRate }) {
-  const [showTranslation, setShowTranslation] = useState(false);
-  return (
-    <div className="flex items-end gap-2 max-w-[88%] sm:max-w-[75%] bubble-in">
-      <Avatar />
-      <div className="bg-surface2 rounded-2xl rounded-bl-md px-4 py-3 space-y-2">
-        <p className="text-[15px] text-ink leading-relaxed" lang="fr">{text}</p>
-        {showTranslation && <p className="text-xs text-ink2 italic border-t border-line pt-2">{translation}</p>}
-        <div className="flex items-center gap-2">
-          <SpeakButton text={text} rate={ttsRate} label="Replay" />
-          <button
-            onClick={() => setShowTranslation((v) => !v)}
-            className="text-[11px] text-ink2 hover:text-ink min-h-8 px-1"
-          >
-            {showTranslation ? 'Hide' : 'Translate'}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function UserBubble({ turn, idx, redoActive, onRedo, onCancelRedo, onGrammarTip, apiKey, mockMode, level, correctionPolicy, onXp }) {
-  const [expanded, setExpanded] = useState(false);
-  const { evaluation } = turn;
-  const feedbackOff = correctionPolicy?.preference === 'off';
-  const redoHidden = redoActive && !expanded; // correction collapsed while redo active
-  return (
-    <div className="flex flex-col items-end gap-1.5 bubble-in">
-      <div className="flex items-end gap-2 max-w-[88%] sm:max-w-[75%]">
-        <div className={`rounded-2xl rounded-br-md px-4 py-3 shadow-md shadow-black/15 ${turn.redo ? 'bg-ink text-bg' : 'bg-accent text-onaccent'}`}> 
-          <p className={`text-[15px] leading-relaxed ${turn.redo ? 'text-bg' : 'text-onaccent'}`} lang="fr">{turn.userText}</p>
-        </div>
-        <ScoreBadge value={evaluation.scores.overall} />
-      </div>
-      <div className="flex items-center gap-2">
-        {!feedbackOff ? (
-          <button
-            onClick={() => setExpanded((v) => !v)}
-            className="text-[11px] text-ink2 hover:text-ink min-h-8 px-1"
-          >
-            {expanded ? 'Hide feedback' : correctionPolicy?.timing === 'delayed' ? 'Review saved feedback' : 'Corrections & native version'}
-          </button>
-        ) : <span className="text-[11px] text-ink3 min-h-8 px-1 grid place-items-center">Feedback off</span>}
-        {!turn.redo && (
-          redoActive ? (
-            <button onClick={onCancelRedo} className="text-[11px] font-semibold text-amber-700 hover:text-amber-800 min-h-8 px-2 rounded-lg bg-amber-50 border border-amber-200">Cancel redo</button>
-          ) : (
-            <button onClick={() => onRedo(idx)} className="text-[11px] font-semibold text-ink2 hover:text-ink min-h-8 px-2 rounded-lg border border-line bg-surface hover:border-ink3">Redo this turn →</button>
-          )
-        )}
-      </div>
-      {expanded && (
-        <div className="w-full sm:max-w-[85%] fade-in bg-surface2 border border-line rounded-2xl p-4 space-y-3 text-left">
-          <div>
-            <h4 className="text-[11px] font-bold uppercase tracking-wider text-ink2 mb-1">Corrections</h4>
-            {evaluation.corrections_detailed?.length ? (
-              <TieredCorrections detailed={evaluation.corrections_detailed} />
-            ) : (
-              <Markdown className="text-[13px] text-ink leading-relaxed">{evaluation.corrections}</Markdown>
-            )}
-            <ExplainRule turn={turn} apiKey={apiKey} mockMode={mockMode} level={level} />
-            <MistakeActions turn={turn} apiKey={apiKey} mockMode={mockMode} level={level} onXp={onXp} />
-          </div>          <div>
-            <h4 className="text-[11px] font-bold uppercase tracking-wider text-ink mb-1">Like a native</h4>
-            <p className="text-[13px] text-ink italic" lang="fr">{evaluation.native_alternative}</p>
-            <SpeakButton text={evaluation.native_alternative} slow label="Listen" />
-          </div>
-          {(() => {
-            const tipTopic = getGrammarTopic(evaluation.grammar_topic);
-            return tipTopic ? (
-              <button
-                onClick={() => onGrammarTip?.(tipTopic.id)}
-                className="w-full flex items-center gap-2.5 bg-surface border border-line rounded-xl px-3.5 py-2.5 text-left hover:border-ink3 transition-colors"
-              >
-                <Book size={14} className="text-ink2 shrink-0" />
-                <span className="flex-1 text-xs text-ink">
-                  <span className="font-semibold">Grammar tip:</span> this looks like{' '}
-                  <span lang="fr" className="font-semibold">{tipTopic.title}</span> — review the lesson
-                </span>
-                <ArrowRight size={13} className="text-ink3 shrink-0" />
-              </button>
-            ) : null;
-          })()}
-        </div>
-      )}
-      {redoActive && !expanded && (
-        <p className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5 w-full sm:max-w-[85%] text-left">
-          Correction hidden — redo the turn from memory. Open feedback only after you retry.
-        </p>
-      )}
-    </div>
-  );
-}
-
-// Correction confidence tiers: definite errors lead, valid-but-less-natural
-// forms are offered as suggestions, and "uncertain" items stay collapsed
-// unless asked for — the anti-overcorrection rule made visible.
-const STRONG_LEVELS = new Set(['definite_error', 'likely_error']);
-const SOFT_LEVELS = new Set(['stylistic_suggestion', 'acceptable_alternative']);
-const LEVEL_LABEL = {
-  definite_error: 'Error',
-  likely_error: 'Likely error',
-  stylistic_suggestion: 'More natural',
-  acceptable_alternative: 'Also correct',
-  uncertain: 'Not sure',
-};
-
-function TieredCorrections({ detailed }) {
-  const [showUncertain, setShowUncertain] = useState(false);
-  const strong = detailed.filter((c) => STRONG_LEVELS.has(c.level));
-  const soft = detailed.filter((c) => SOFT_LEVELS.has(c.level));
-  const unsure = detailed.filter((c) => c.level === 'uncertain');
-  const Row = ({ c, tone }) => (
-    <li className="space-y-0.5">
-      <p className="text-[13px] leading-relaxed">
-        <span lang="fr" className={tone === 'strong' ? 'text-ink line-through decoration-ink3' : 'text-ink2'}>{c.original}</span>
-        <span className="text-ink3 mx-1.5" aria-hidden="true">→</span>
-        <span lang="fr" className={`font-semibold ${tone === 'strong' ? 'text-ink' : 'text-ink2'}`}>{c.correction}</span>
-        <span className={`ml-2 align-middle text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded border ${
-          tone === 'strong' ? 'border-amber-300 bg-amber-50 text-amber-800' : 'border-line bg-surface text-ink3'
-        }`}>{LEVEL_LABEL[c.level]}</span>
-      </p>
-      {c.note && <p className="text-[11px] text-ink3">{c.note}</p>}
-    </li>
-  );
-  return (
-    <div className="space-y-2">
-      {strong.length > 0 && (
-        <ul className="space-y-2">{strong.map((c, i) => <Row key={`s${i}`} c={c} tone="strong" />)}</ul>
-      )}
-      {soft.length > 0 && (
-        <div>
-          <p className="text-[10px] font-bold uppercase tracking-wider text-ink3 mb-1">Suggestions — your version already works</p>
-          <ul className="space-y-2">{soft.map((c, i) => <Row key={`o${i}`} c={c} tone="soft" />)}</ul>
-        </div>
-      )}
-      {unsure.length > 0 && (
-        <div>
-          <button onClick={() => setShowUncertain((v) => !v)} className="text-[11px] text-ink3 hover:text-ink2 min-h-8">
-            {showUncertain ? 'Hide' : `Show ${unsure.length}`} the tutor wasn’t sure about
-          </button>
-          {showUncertain && (
-            <ul className="space-y-2 pt-1">{unsure.map((c, i) => <Row key={`u${i}`} c={c} tone="soft" />)}</ul>
-          )}
-        </div>
-      )}
-      {strong.length === 0 && soft.length === 0 && unsure.length === 0 && (
-        <p className="text-[13px] text-ink">No corrections — that landed cleanly.</p>
-      )}
-    </div>
-  );
-}
-
-// The mistake→learning-object chain, made tangible on the correction itself:
-// micro-drill the exact weak structure now, or park it as an SRS flashcard
-// the review queue will resurface. Notebook capture is automatic; these are
-// the learner-controlled extensions of the same chain.
-function MistakeActions({ turn, apiKey, mockMode, level, onXp }) {
-  const { evaluation } = turn;
-  const [drill, setDrill] = useState(null);
-  const [busy, setBusy] = useState(false);
-  const [saved, setSaved] = useState(false);
-  const strong = (evaluation.corrections_detailed || []).find((c) => STRONG_LEVELS.has(c.level));
-  const topicId = evaluation.grammar_topic || null;
-  const topicTitle = topicId ? (getGrammarTopic(topicId)?.title || topicId) : '';
-
-  const runDrill = async () => {
-    setBusy(true);
-    try {
-      const { exercises } = await generateExercises(apiKey, {
-        topic: topicTitle || strong?.correction || evaluation.corrections?.slice(0, 80) || 'sentence correction',
-        level,
-        mock: mockMode,
-      });
-      setDrill(exercises || []);
-    } catch {
-      setDrill([]); // generator unavailable — show nothing rather than break
-    }
-    setBusy(false);
-  };
-
-  const saveFlashcard = () => {
-    // Stable content id: re-saving the same mistake dedupes in the notebook.
-    let h = 0;
-    for (const ch of turn.userText) h = (h * 31 + ch.charCodeAt(0)) | 0;
-    saveToNotebook({
-      id: `mistake-${Math.abs(h).toString(36)}`,
-      fr: `Corrige : «${turn.userText}»`,
-      en: evaluation.native_alternative || strong?.correction || evaluation.native_alternative || '',
-      note: topicTitle || 'correction',
-    });
-    setSaved(true);
-  };
-
-  if (!strong && !topicId) return null;
-  return (
-    <div className="pt-1 space-y-2">
-      <div className="flex flex-wrap gap-2">
-        <button
-          onClick={runDrill}
-          disabled={busy}
-          className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-ink2 hover:text-ink min-h-8 px-2 rounded-lg border border-line bg-surface hover:border-ink3"
-        >
-          <Lightbulb size={12} /> {busy ? 'Building…' : 'Micro-drill this'}
-        </button>
-        <button
-          onClick={saveFlashcard}
-          disabled={saved}
-          className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-ink2 hover:text-ink min-h-8 px-2 rounded-lg border border-line bg-surface hover:border-ink3 disabled:opacity-60"
-        >
-          <Book size={12} /> {saved ? 'In review queue ✓' : 'Add as flashcard'}
-        </button>
-      </div>
-      {drill && (drill.length
-        ? <Quiz exercises={drill} onXp={onXp} />
-        : <p className="text-[11px] text-ink3">Drill unavailable right now — the flashcard keeps the mistake alive either way.</p>
-      )}
-    </div>
-  );
-}
-
-function RedoCompare({ redo, before, idx }) {  const sign = (n) => (n > 0 ? `+${n}` : String(n));
-  const tone = redo.deltaOverall > 0 ? 'text-emerald-700 bg-emerald-50 border-emerald-200' : redo.deltaOverall < 0 ? 'text-amber-800 bg-amber-50 border-amber-200' : 'text-ink2 bg-surface2 border-line';
-  return (
-    <div className={`fade-in rounded-2xl border px-4 py-3 space-y-2 text-left sm:max-w-[85%] ml-auto w-full ${tone}`}> 
-      <div className="flex items-center justify-between gap-3">
-        <h4 className="text-[11px] font-bold uppercase tracking-wider">Redo — turn {idx + 1}</h4>
-        <span className={`text-xs font-black tabular-nums ${redo.deltaOverall > 0 ? 'text-emerald-700' : redo.deltaOverall < 0 ? 'text-amber-700' : 'text-ink2'}`}>{sign(redo.deltaOverall)} overall</span>
-      </div>
-      <p className="text-xs leading-relaxed"><span className="font-semibold">Retry:</span> <span lang="fr">“{redo.retryText}”</span></p>
-      <p className="text-xs leading-relaxed italic">{redo.verdict}{redo.note ? ` — ${redo.note}` : ''}</p>
-      <div className="flex flex-wrap gap-1.5 pt-1">
-        {Object.entries(redo.deltas).map(([k, v]) => (
-          <span key={k} className={`text-[11px] font-semibold px-2 py-1 rounded-full border ${v > 0 ? 'bg-emerald-100 border-emerald-200 text-emerald-800' : v < 0 ? 'bg-amber-100 border-amber-200 text-amber-800' : 'bg-surface border-line text-ink3'}`}>
-            {k} {sign(v)}
-          </span>
-        ))}
-      </div>
-      <div className="flex gap-2 text-[11px] text-ink2">
-        <span>Before {before.overall}</span><span aria-hidden="true">→</span><span className="font-bold text-ink">Retry {redo.evaluation.scores.overall}</span>
-      </div>
-    </div>
-  );
-}
-
-// On-demand deep dive: asks the LLM to explain the underlying rule behind
-// this turn's corrections, in plain English with an extra example.
-function ExplainRule({ turn, apiKey, mockMode, level }) {
-  const [busy, setBusy] = useState(false);
-  const [explanation, setExplanation] = useState(null);
-  const [error, setError] = useState(null);
-
-  const run = async () => {
-    setBusy(true);
-    setError(null);
-    try {
-      setExplanation(await explainMistake(apiKey, {
-        userText: turn.userText,
-        corrections: turn.evaluation.corrections,
-        level,
-        mock: mockMode,
-      }));
-    } catch (e) {
-      setError(friendlyError(e));
-    }
-    setBusy(false);
-  };
-
-  if (explanation) {
-    return (
-      <div className="fade-in mt-2 bg-surface border border-line rounded-xl px-3.5 py-2.5">
-        <h5 className="text-[10px] font-bold uppercase tracking-wider text-ink3 mb-1">The rule behind it</h5>
-        <Markdown className="text-xs text-ink leading-relaxed">{explanation}</Markdown>
-      </div>
-    );
-  }
-  if (busy) return <div className="mt-2"><Spinner label="Digging into the rule…" /></div>;
-  return (
-    <div className="mt-1.5">
-      <button onClick={run} className="flex items-center gap-1.5 text-[11px] font-semibold text-ink2 hover:text-ink min-h-8">
-        <Lightbulb size={13} /> Why? Explain the rule
-      </button>
-      {error && <p role="alert" className="text-xs text-ink">{error}</p>}
     </div>
   );
 }

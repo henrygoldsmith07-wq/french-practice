@@ -25,6 +25,7 @@ const GlobalSearch = lazy(() => import('./components/GlobalSearch'));
 import { getPath, applyActivity } from './lib/path';
 import { getScenarios } from './lib/data';
 import usePwaInstall from './hooks/usePwaInstall';
+import useOverlayNav from './hooks/useOverlayNav';
 import {
   getApiKey, getSettings, setSettings as persistSettings, getStreak, getXp, addXp,
   getActiveSession, setActiveSession, clearActiveSession,
@@ -88,6 +89,12 @@ export default function App() {
   });
   const [lastScores, setLastScores] = useState(null);
   const [telemetry, setTelemetry] = useState([]);
+  // Fluency mode state: the debrief is produced once, after the session.
+  const [conversationMode, setConversationMode] = useState(() => {
+    try { return localStorage.getItem('fp.conversationMode') === 'fluency' ? 'fluency' : 'coach'; } catch { return 'coach'; }
+  });
+  const [fluencyReviewResult, setFluencyReviewResult] = useState(null);
+  const [debriefPending, setDebriefPending] = useState(false);
   const [streakTick, setStreakTick] = useState(0);
   const [xp, setXp] = useState(getXp);
   const [xpGain, setXpGain] = useState(null);
@@ -177,45 +184,7 @@ export default function App() {
     [learningPathOpen, () => setLearningPathOpen(false)],
     [pathSetupOpen, () => setPathSetupOpen(false)],
   ];
-  const anyOverlayOpen = overlayClosers.some(([o]) => o);
-  const closeTopOverlay = () => overlayClosers.find(([o]) => o)?.[1]();
-  // One history entry covers the whole overlay session. Without consuming it
-  // on UI/Escape close, every overlay left a stale entry behind and Android
-  // Back needed two presses to leave the page.
-  const overlayEntryRef = useRef(false); // false | true (open) | 'consume'
-  useEffect(() => {
-    if (!anyOverlayOpen) {
-      if (overlayEntryRef.current === true) {
-        overlayEntryRef.current = 'consume';
-        window.history.back(); // consume the entry we pushed on open
-      }
-      return undefined;
-    }
-    if (!overlayEntryRef.current) {
-      window.history.pushState({ overlay: true }, '');
-      overlayEntryRef.current = true;
-    }
-    const onKey = (e) => { if (e.key === 'Escape') closeTopOverlay(); };
-    const onPop = () => {
-      if (overlayEntryRef.current === 'consume') {
-        // Our own consume-pop landing late (fast close→reopen). Ignore.
-        overlayEntryRef.current = false;
-        return;
-      }
-      if (overlayEntryRef.current === true) {
-        // Browser Back consumed the entry itself — close, don't re-consume.
-        overlayEntryRef.current = false;
-        closeTopOverlay();
-      }
-    };
-    window.addEventListener('keydown', onKey);
-    window.addEventListener('popstate', onPop);
-    return () => {
-      window.removeEventListener('keydown', onKey);
-      window.removeEventListener('popstate', onPop);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [anyOverlayOpen]);
+  useOverlayNav(overlayClosers);
 
   useEffect(() => {
     if (!libraryReady || !settings.smartReminders || !shouldRemindToday()) return;
@@ -497,13 +466,35 @@ export default function App() {
   };
 
   const endSession = () => {
-    if (history.length > 0) setDashboardOpen(true);
+    if (history.length === 0) return;
+    if (conversationMode === 'fluency') {
+      // Fluency run: analyse AFTER the session, then show the report with
+      // the debrief attached. Only the highest-value corrections surface.
+      if (debriefPending) return;
+      setDebriefPending(true);
+      (async () => {
+        try {
+          const { fluencyReview } = await import('./lib/groq');
+          const { recordFluencyMistakes } = await import('./lib/fluencyReview');
+          const review = await fluencyReview(apiKey, {
+            scenario, history, level: effectiveLevel, mock: settings.mockMode,
+          });
+          recordFluencyMistakes(review);
+          setFluencyReviewResult(review);
+        } catch { /* the report must open even if the debrief fails */ }
+        setDebriefPending(false);
+        setDashboardOpen(true);
+      })();
+      return;
+    }
+    setDashboardOpen(true);
   };
 
   const closeDashboard = () => {
     setDashboardOpen(false);
     setHistory([]);
     setLastScores(null);
+    setFluencyReviewResult(null);
   };
 
   return (
@@ -549,7 +540,9 @@ export default function App() {
             <span role="img" aria-hidden="true">{(AVATARS.find((a) => a.id === avatarId) || AVATARS[0]).emoji}</span>
           </button>
           {tab === 'speak' && history.length > 0 && (
-            <button onClick={endSession} className="btn btn-secondary min-h-10 px-3.5 rounded-xl text-xs">End Session</button>
+            <button onClick={endSession} disabled={debriefPending} className="btn btn-secondary min-h-10 px-3.5 rounded-xl text-xs">
+              {debriefPending ? 'Reviewing…' : 'End Session'}
+            </button>
           )}
           <button onClick={toggleTheme} aria-label={isDark ? 'Switch to light mode' : 'Switch to dark mode'} title={isDark ? 'Light mode' : 'Dark mode'} className="w-10 h-10 grid place-items-center rounded-full text-ink2 hover:bg-surface2 hover:text-ink text-lg">
             {isDark ? <Sun size={18} /> : <Moon size={18} />}
@@ -613,6 +606,11 @@ export default function App() {
               mockMode={settings.mockMode}
               ttsRate={settings.ttsRate}
               level={effectiveLevel}
+              conversationMode={conversationMode}
+              onConversationMode={(m) => {
+                setConversationMode(m);
+                try { localStorage.setItem('fp.conversationMode', m); } catch { /* ignore */ }
+              }}
               onTtsRate={(r) => updateSettings({ ...settings, ttsRate: r })}
               onTurn={handleTurn}
               onXp={awardXp}
@@ -698,7 +696,7 @@ export default function App() {
         <SettingsModal open={settingsOpen} onClose={() => setSettingsOpen(false)} apiKey={apiKey} onKeyChange={handleApiKeyChange} settings={settings} onSettingsChange={updateSettings} onReplayOnboarding={() => { setSettingsOpen(false); setOnboardingOpen(true); }} />
       )}
       {dashboardOpen && (
-        <SessionDashboard open={dashboardOpen} onClose={closeDashboard} apiKey={apiKey} mockMode={settings.mockMode} scenario={scenario} history={history} level={effectiveLevel} onXp={awardXp} onSessionSaved={(report) => { setStreakTick((t) => t + 1); handleActivity({ type: 'session', scenarioId: scenario.id, score: report?.average_scores?.overall ?? 0 }); }} />
+        <SessionDashboard open={dashboardOpen} onClose={closeDashboard} apiKey={apiKey} mockMode={settings.mockMode} scenario={scenario} history={history} level={effectiveLevel} onXp={awardXp} fluencyReview={fluencyReviewResult} fluencyPending={debriefPending} onSessionSaved={(report) => { setStreakTick((t) => t + 1); handleActivity({ type: 'session', scenarioId: scenario.id, score: report?.average_scores?.overall ?? 0 }); }} />
       )}
       {personaliseOpen && (<Personalise open={personaliseOpen} onClose={() => setPersonaliseOpen(false)} prefs={prefs} onPrefsChange={updatePrefs} baseLevel={settings.level} onRun={runRecommendation} />)}
       {offlineOpen && <Offline open={offlineOpen} onClose={() => setOfflineOpen(false)} pwa={pwa} />}
