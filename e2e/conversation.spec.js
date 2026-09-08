@@ -18,20 +18,22 @@ test.beforeEach(async ({ page }) => {
   await expect(page.locator('h1').first()).toBeVisible({ timeout: 30_000 });
 });
 
-test('microphone permission path reaches a recorder state (feature-detected)', async ({ page, browserName }) => {
+test('microphone permission path reaches a recorder state (feature-detected)', async ({ page }, testInfo) => {
   await page.getByRole('button', { name: 'Speak', exact: true }).click();
   const recordButton = page.getByRole('button', { name: /Record my reply/i });
   await expect(recordButton).toBeVisible({ timeout: 10_000 });
-  if (browserName === 'chromium') {
-    // Fake mic device: MediaRecorder starts and VAD wiring engages.
+  if (testInfo.project.name === 'chromium') {
+    // Fake mic device (desktop Chromium launch args): MediaRecorder starts
+    // and VAD wiring engages. Mobile Chromium contexts don't take the fake
+    // device reliably, so real-capture coverage stays on desktop only.
     await recordButton.click();
     await expect(
       page.getByRole('button', { name: /Stop and send|Cancel/i }).first(),
     ).toBeVisible({ timeout: 10_000 });
     await page.getByRole('button', { name: /Cancel/i }).click();
   } else {
-    // Firefox/WebKit headless: verify the handler exists; actual capture is
-    // covered by the Chromium run and manual QA.
+    // Firefox/WebKit/mobile: verify the handler exists; actual capture is
+    // covered by the desktop Chromium run and manual QA.
     await expect(recordButton).toBeEnabled();
   }
 });

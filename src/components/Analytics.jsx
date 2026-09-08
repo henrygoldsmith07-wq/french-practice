@@ -25,6 +25,7 @@ import {
   xpInRange, dailyPace, weeklyXp, vocabGrowth, yearRecap,
 } from '../lib/analytics';
 import { WeeklyXPChart, GrowthChart, TrendChart } from './charts';
+import StudyPanel from './StudyPanel';
 import {
   EvidenceLedger, WeaknessMemory, EvidenceStudy, AdaptivePracticeEvidence,
   LearnerValidation, ErrorNotebookStats, LearnerErrorModel, SessionHistory,
@@ -173,6 +174,7 @@ export default function Analytics({ open, onClose }) {
             </div>
           </section>
 
+          <StudyPanel />
           <EvidenceStudy />
           <AdaptivePracticeEvidence />
           <LearnerValidation />

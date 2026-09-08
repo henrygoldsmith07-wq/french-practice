@@ -24,6 +24,7 @@ import { ArrowRight, Lightbulb, Mic, Square, scenarioIcon } from './icons';
 import ScenarioPicker from './ScenarioPicker';
 import FluencyDebrief from './FluencyDebrief';
 import { Avatar, AiBubble, UserBubble, RedoCompare, STRONG_LEVELS } from './ArenaCorrections';
+import { markOutcomeRecurrence } from '../lib/studyFlow';
 
 const CURVEBALL_TURN = 3; // the surprise lands on the learner's 3rd turn
 
@@ -277,6 +278,7 @@ export default function ChatArena({ apiKey, mockMode, ttsRate, level, onTtsRate,
           const graphNodeId = graphIdFor({ type, concept: evaluation.grammar_topic || 'unknown' });
           // Mutate-then-save: the graph must be written AFTER recordMistake.
           const graph = getMistakeGraph();
+          const existing = graph.some((m) => m.id === graphNodeId);
           recordMistake(graph, {
             type,
             concept: evaluation.grammar_topic || 'unknown',
@@ -288,6 +290,11 @@ export default function ChatArena({ apiKey, mockMode, ttsRate, level, onTtsRate,
             related: [evaluation.grammar_topic].filter(Boolean),
           });
           saveMistakeGraph(graph);
+          // Study: a fresh occurrence of a known mistake is recurrence
+          // evidence against every outcome row that targeted it.
+          try {
+            if (existing) markOutcomeRecurrence({ mistakeId: graphNodeId, recurred: true });
+          } catch { /* study bookkeeping never breaks a turn */ }
           addErrorNotebook({
             original: userText,
             corrected: evaluation.native_alternative || strong.correction,

@@ -10,6 +10,12 @@ import {
 import {
   probeCapabilities, nextFallback, resolvePlanCapabilities,
 } from '../lib/todayCapabilities';
+import {
+  enrolStudyState, enrolArm, studyStatus, daySinceEnrolment, isCheckScheduled,
+  buildHeldOutPool, makeCheckRecord, saveCheckRecord, recordCheckOutcome,
+  startOutcomeRecord, linkRetestToOutcomes, markOutcomeRecurrence,
+  updateOutcomeDelivery, attachTransferToOutcomes,
+} from '../lib/studyFlow';
 import { getPracticeAssignment, balancedDrillTopic } from '../lib/assignment';
 import { recordSelectionTrial, getSelectionTrial, saveSelectionTrial } from '../lib/storage';
 import {
@@ -26,6 +32,7 @@ import { TrackPlayer } from './Listening';
 import VocabCard from './VocabCard';
 import { NotebookRetype } from './Memory';
 import Quiz from './Quiz';
+import HeldOutCheck from './HeldOutCheck';
 import { ChevronRight, X } from './icons';
 
 // Today's French — one Start button, one composed session. Segments come
@@ -45,6 +52,10 @@ export default function TodaySession({ open, onClose, minutes = 20, apiKey, mock
     const variant = getPracticeAssignment(getSyncId());
     const balanced = variant === 'balanced';
     const graph = getMistakeGraph();
+    // Evidence Study: keep enrolment fresh (idempotent) and record which arm
+    // owns this session. The arm itself is never shown to the learner.
+    const study = enrolStudyState({ startLevel: level || null });
+    const arm = enrolArm(study, variant);
     // P2 calibration: join past selection trials with their delayed retest
     // outcomes and derive conservative per-type weights. Below the sample
     // floor this is a no-op — selection stays the urgency order.
@@ -98,11 +109,36 @@ export default function TodaySession({ open, onClose, minutes = 20, apiKey, mock
     // cannot run. Offline, the AI drill becomes the authored drill (or
     // retype/SRS/listen) BEFORE the session starts.
     const planResolved = resolvePlanCapabilities(planBuilt, caps);
+    // Evidence Study: deterministic held-out check insertion. On a check day
+    // a brief, unscaffolded, CEFR-matched check rides at the END of the
+    // session — measurement only, never practice, never mastery input.
+    const today = new Date();
+    const sDay = daySinceEnrolment(study, today);
+    const checkDue = isCheckScheduled(study, sDay);
+    let heldOut = null;
+    if (checkDue) {
+      const pool = buildHeldOutPool({
+        participantId: study.participantId,
+        day: sDay,
+        level: level || study.startLevel || 'B1',
+        vocabEntries: allEntries(),
+        srsMap: getSrs(),
+        listeningTracks: tracks,
+      });
+      if (pool.words.length || pool.track) {
+        const saved = saveCheckRecord(makeCheckRecord({
+          participantId: study.participantId, day: sDay, level: level || study.startLevel || 'B1', pool,
+        }));
+        // The persisted record keeps ids only; the words ride on the in-memory
+        // plan so the check can render without re-reading the library.
+        heldOut = { ...saved, poolWords: pool.words };
+      }
+    }
     // P1 selection-trial record: frozen before any practice happens, with
     // the resolved activity so analysis knows what was actually delivered.
     try {
       const drillSeg = planResolved.segments.find((s) => s.id === 'drill');
-      recordSelectionTrial({
+      const trial = recordSelectionTrial({
         engineVersion: EVIDENCE_ENGINE_VERSION,
         candidates,
         selectedId: top?.id || null,
@@ -115,9 +151,11 @@ export default function TodaySession({ open, onClose, minutes = 20, apiKey, mock
         variant,
         calibrationReady: Boolean(calibration.ready),
       });
+      // Longitudinal outcome skeleton for this selection (study only).
+      startOutcomeRecord({ trial, graph, arm, day: sDay });
     } catch { /* trial logging must never break the session */ }
-    return planResolved;
-  }, [open, minutes, apiKey, mockMode]);
+    return { ...planResolved, study, heldOut, studyDay: sDay };
+  }, [open, minutes, apiKey, mockMode, level]);
 
   const [segIndex, setSegIndex] = useState(0);
   const [xp, setXp] = useState(0);
@@ -155,6 +193,7 @@ function TodayBody({ plan, segIndex, setSegIndex, close, apiKey, mockMode, level
   const deliveredRef = useRef([]);
   const recordedRef = useRef(false);
   const missingRef = useRef(null);
+  const totalSteps = plan.segments.length + (plan.heldOut ? 1 : 0);
   const advance = () => {
     const seg = plan.segments[segIndex];
     if (seg) {
@@ -184,7 +223,7 @@ function TodayBody({ plan, segIndex, setSegIndex, close, apiKey, mockMode, level
   // Persist the delivery record onto the newest selection trial once the
   // session ends (the trial was frozen at start; outcomes join later).
   useEffect(() => {
-    if (segIndex < plan.segments.length || recordedRef.current) return;
+    if (segIndex < totalSteps || recordedRef.current) return;
     recordedRef.current = true;
     try {
       const trials = getSelectionTrial();
@@ -195,12 +234,16 @@ function TodayBody({ plan, segIndex, setSegIndex, close, apiKey, mockMode, level
         last.completed = deliveredRef.current.length === plan.segments.length
           && !deliveredRef.current.some((d) => d.skipped && d.seconds < 5);
         saveSelectionTrial(trials);
+        // Study: fold delivery into the outcome record for this trial.
+        updateOutcomeDelivery({ trialAt: last.at, timeSpent: last.timeSpent, completed: last.completed, delivered: last.delivered });
       }
     } catch { /* delivery logging must never break the close */ }
   }, [segIndex, plan]);
 
-  const done = segIndex >= plan.segments.length;
-  const seg = done ? null : plan.segments[segIndex];
+  const done = segIndex >= totalSteps;
+  // The held-out check is an implicit extra step after the last normal segment.
+  const onCheckStep = !done && segIndex >= plan.segments.length && plan.heldOut;
+  const seg = onCheckStep ? null : (done ? null : plan.segments[segIndex]);
 
   // Resolve the current segment's body. A missing body (should be rare — the
   // plan was capability-resolved at build time, but e.g. a recall deck can
@@ -250,6 +293,24 @@ function TodayBody({ plan, segIndex, setSegIndex, close, apiKey, mockMode, level
     }
   }
 
+  if (!body && onCheckStep && plan.heldOut) {
+    body = (
+      <HeldOutCheck
+        check={plan.heldOut}
+        onDone={(finished) => {
+          recordCheckOutcome(plan.heldOut.id, finished);
+          // Transfer score attaches to this study day's outcome rows —
+          // measurement only; selection never sees these items.
+          const score = finished?.total
+            ? Math.round((finished.correct / finished.total) * 100)
+            : null;
+          attachTransferToOutcomes({ day: plan.studyDay, score });
+          advance();
+        }}
+      />
+    );
+  }
+
   useEffect(() => {
     if (done) return undefined;
     if (body || missingRef.current === segIndex) return undefined;
@@ -289,16 +350,18 @@ function TodayBody({ plan, segIndex, setSegIndex, close, apiKey, mockMode, level
           <span className="text-sm font-bold text-ink whitespace-nowrap">Aujourd'hui</span>
           <span className="text-[11px] text-ink3 tabular-nums">{plan.totalMinutes} min</span>
           <div className="flex-1 flex gap-1.5">
-            {plan.segments.map((s, i) => (
+            {(plan.heldOut ? [...plan.segments, { id: 'held-out' }] : plan.segments).map((s, i) => (
               <span key={s.id} className={`h-1.5 flex-1 rounded-full ${i < segIndex ? 'bg-success' : i === segIndex ? 'bg-ink animate-pulse' : 'bg-surface2'}`} />
             ))}
           </div>
           <button onClick={close} aria-label="End today's session" className="w-8 h-8 grid place-items-center rounded-full text-ink3 hover:text-ink"><X size={15} /></button>
         </div>
-        <p className="max-w-lg mx-auto mt-1 text-[11px] text-ink3">{seg.why}</p>
+        <p className="max-w-lg mx-auto mt-1 text-[11px] text-ink3">
+          {seg ? seg.why : 'A short, unscaffolded check on material you haven\'t practised — measurement only.'}
+        </p>
       </header>
       <div className="flex-1 min-h-0 overflow-y-auto nice-scroll">{body}</div>
-      {seg.id !== 'speak' && (
+      {seg && seg.id !== 'speak' && (
         <footer className="shrink-0 border-t border-line bg-surface px-4 py-3">
           <button onClick={skip} className="btn btn-secondary w-full max-w-lg mx-auto min-h-11 rounded-xl text-sm inline-flex items-center justify-center gap-1.5">
             Skip <ChevronRight size={14} />
@@ -389,12 +452,12 @@ function AiDrillRunner({ concept, level, apiKey, mockMode, onXp, onDone, onEmpty
     try {
       const graph = getMistakeGraph();
       const node = graph.find((m) => m.concept === concept && m.status === 'active');
-      if (node) saveMistakeGraph(recordRetest(graph, {
-        id: node.id,
-        correct: correctRef.current >= 2,
-        context: 'targeted-drill',
-        immediate: true, // same-session, post-practice: rehearsal
-      }));
+      if (node) {
+        const retest = { at: new Date().toISOString(), correct: correctRef.current >= 2, context: 'targeted-drill', immediate: true };
+        saveMistakeGraph(recordRetest(graph, { id: node.id, ...retest }));
+        // Study: same-session drill outcome → immediate slot only (never retention).
+        linkRetestToOutcomes({ mistakeId: node.id, retest: { ...retest, immediate: true } });
+      }
     } catch { /* graph bookkeeping must never break the drill */ }
     onDone();
   };
@@ -474,11 +537,10 @@ export function RecallRunner({ cardCap, onDone, onXp, onActivity }) {
         if (nb?.mistakeId) {
           const graph = getMistakeGraph();
           if (graph.some((m) => m.id === nb.mistakeId)) {
-            saveMistakeGraph(recordRetest(graph, {
-              id: nb.mistakeId,
-              correct: rating !== 'again',
-              context: 'srs-recall',
-            }));
+            const retest = { at: new Date().toISOString(), correct: rating !== 'again', context: 'srs-recall' };
+            saveMistakeGraph(recordRetest(graph, { id: nb.mistakeId, ...retest }));
+            // Study: the SRS resurface IS the delayed retest.
+            linkRetestToOutcomes({ mistakeId: nb.mistakeId, retest });
           }
         }
       } catch { /* graph bookkeeping must never break recall */ }
@@ -517,7 +579,11 @@ export function DelayedReview({ count, onXp, onDone }) {
     try {
       const graph = getMistakeGraph();
       const match = graph.find((m) => m.original === entry.original || m.concept === entry.ruleId);
-      if (match) saveMistakeGraph(recordRetest(graph, { id: match.id, correct: remembered, context: 'delayed-review' }));
+      if (match) {
+        const retest = { at: new Date().toISOString(), correct: remembered, context: 'delayed-review' };
+        saveMistakeGraph(recordRetest(graph, { id: match.id, ...retest }));
+        linkRetestToOutcomes({ mistakeId: match.id, retest });
+      }
     } catch { /* graph bookkeeping must never break review */ }
     onXp(remembered ? 2 : 1);
     setRevealed(false);

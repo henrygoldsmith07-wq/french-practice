@@ -34,6 +34,9 @@ import {
   normaliseFieldNotes,
   practiceFieldNote as _practiceFieldNote,
 } from './fieldNotes.js';
+import {
+  setArmOverrideReader,
+} from './evidenceStudy.js';
 // Thin localStorage wrapper — the app's only persistence layer (no backend).
 
 const KEYS = {
@@ -102,6 +105,11 @@ const KEYS = {
   listeningProgression: 'fp.listeningProgression.v1', // { currentStage, attempts[], unlockedAt{}, stageStats[] }
   mistakeGraph: 'fp.mistakeGraph.v1', // structural mistakes with mastery lifecycle (mistakeGraph.js)
   selectionTrial: 'fp.selectionTrial.v1', // frozen per-session target-selection records (P1 analysis)
+  studyState: 'fp.study.state.v1', // Evidence Study enrolment (anonymous participant, locked arm)
+  studyChecks: 'fp.study.checks.v1', // held-out transfer check records (measurement-only)
+  studyOutcomes: 'fp.study.outcomes.v1', // per-selection longitudinal outcome rows
+  studyArmOverride: 'fp.study.armOverride.v1', // study operators only; never set in the UI
+  studyImported: 'fp.study.imported.v1', // imported researcher bundles (aggregation only, never local truth)
   languageModel: 'fp.languageModel.v1', // explicit grammar transfer stages
   fieldNotes: 'fp.fieldNotes.v1', // learner-captured real-world phrases and transfer evidence
 };
@@ -2267,6 +2275,56 @@ export function buildValidationBundle() {
   };
 }
 
+// V2 bundle: adds the anonymised Evidence Study streams. Participant id is
+// already anonymous; the arm is INCLUDED (researchers need it for the
+// two-arm comparison) because export is the consented, explicit act — the
+// in-app UI still never reveals it. No transcripts, no names, no raw text.
+export function buildStudyBundle({ includeStudy = true } = {}) {
+  const bundle = buildValidationBundle();
+  if (!includeStudy) return bundle;
+  const study = getStudyState();
+  bundle.version = 2;
+  bundle.study = study ? {
+    participantId: study.participantId,
+    arm: study.arm,                       // researchers need the arm; UI never shows it
+    armSource: study.armSource,
+    startLevel: study.startLevel ?? null, // CEFR band only, never theta
+    startTheta: null,                     // deliberately stripped: not needed for analysis
+    enrolledAt: study.enrolledAt,
+    weeks: study.weeks ?? null,
+    status: study.status,
+    engineVersion: study.engineVersion ?? null,
+  } : null;
+  bundle.studyOutcomes = getStudyOutcomes().map((o) => ({
+    id: o.id,
+    at: o.at,
+    day: o.day ?? null,
+    activity: o.activity ?? null,
+    variant: o.variant ?? null,
+    concept: o.concept ?? null,
+    type: o.type ?? null,
+    masteryBefore: o.masteryBefore ?? null,
+    immediate: o.immediate ?? null,
+    delayedShort: o.delayedShort ?? null,
+    delayedLong: o.delayedLong ?? null,
+    transfer: o.transfer ?? null,
+    recurred: o.recurred ?? null,
+    hintsUsed: o.hintsUsed ?? null,
+    timeSpent: o.timeSpent ?? null,
+    completed: o.completed ?? null,
+  }));
+  bundle.studyChecks = getStudyChecks().map((c) => ({
+    id: c.id,
+    day: c.day,
+    level: c.level,
+    at: c.at,
+    trackId: c.trackId ?? null,
+    results: c.results ?? null,
+    engineVersion: c.engineVersion ?? null,
+  }));
+  return bundle;
+}
+
 export function ingestValidationBundle(json, { dryRun = false } = {}) {
   const report = { ok: false, dryRun: Boolean(dryRun), added: {}, skipped: 0, attempted: 0, errors: [] };
   let bundle;
@@ -2308,6 +2366,32 @@ export function ingestValidationBundle(json, { dryRun = false } = {}) {
       }
     }
     report.added[key] = added;
+  }
+  // V2 study streams: imported bundles are pooled for researchers, never
+  // merged into this device's own study state or outcomes.
+  if (bundle.study && bundle.study.participantId) {
+    const key = `${bundle.study.participantId}|${bundle.study.enrolledAt || ''}`;
+    const existing = getImportedStudyBundles();
+    const dupe = existing.some((b) => `${b.participantId}|${b.enrolledAt || ''}` === key);
+    report.attempted += 1;
+    if (dupe) {
+      report.skipped += 1;
+      report.added.studyAggregates = 0;
+    } else if (dryRun) {
+      report.added.studyAggregates = 1;
+    } else {
+      existing.push({
+        participantId: bundle.study.participantId,
+        arm: bundle.study.arm || null,
+        enrolledAt: bundle.study.enrolledAt || null,
+        study: bundle.study,
+        outcomes: Array.isArray(bundle.studyOutcomes) ? bundle.studyOutcomes : [],
+        checks: Array.isArray(bundle.studyChecks) ? bundle.studyChecks : [],
+        importedAt: new Date().toISOString(),
+      });
+      saveImportedStudyBundles(existing);
+      report.added.studyAggregates = 1;
+    }
   }
   report.ok = report.errors.length === 0;
   return report;
@@ -2375,6 +2459,77 @@ export function saveSelectionTrial(trials) {
   const list = Array.isArray(trials) ? trials : [];
   write(KEYS.selectionTrial, list.slice(-200));
   return list;
+}
+
+// ---- Evidence Study (longitudinal two-arm study) ---------------------------
+// Local-first, consent-gated, anonymous. See src/lib/evidenceStudy.js for the
+// protocol. The arm lives here but the UI never prints it.
+
+export const getStudyState = () => read(KEYS.studyState, null);
+
+export function saveStudyState(state) {
+  write(KEYS.studyState, state || null);
+  return state;
+}
+
+export const getStudyChecks = () => {
+  const v = read(KEYS.studyChecks, []);
+  return Array.isArray(v) ? v : [];
+};
+
+export function saveStudyChecks(list) {
+  write(KEYS.studyChecks, Array.isArray(list) ? list.slice(-120) : []);
+  return list;
+}
+
+export const getStudyOutcomes = () => {
+  const v = read(KEYS.studyOutcomes, []);
+  return Array.isArray(v) ? v : [];
+};
+
+export function saveStudyOutcomes(list) {
+  write(KEYS.studyOutcomes, Array.isArray(list) ? list.slice(-400) : []);
+  return list;
+}
+
+// Operator-only arm override (test harness / study ops). The UI never writes
+// or displays it; evidenceStudy.assignArm reads it through the injector below.
+export const getStudyArmOverride = () => read(KEYS.studyArmOverride, null);
+export function setStudyArmOverride(arm) {
+  if (arm !== 'adaptive' && arm !== 'balanced') return null;
+  write(KEYS.studyArmOverride, arm);
+  return arm;
+}
+setArmOverrideReader(getStudyArmOverride);
+
+// Imported study bundles (researcher aggregation). These NEVER mix into the
+// local participant's own outcomes — they are a read-only pool for combined
+// counts across participants.
+export const getImportedStudyBundles = () => {
+  const v = read(KEYS.studyImported, []);
+  return Array.isArray(v) ? v : [];
+};
+
+export function saveImportedStudyBundles(list) {
+  write(KEYS.studyImported, Array.isArray(list) ? list.slice(-200) : []);
+  return list;
+}
+
+/** Pooled aggregate across imported participants: n per arm, nothing fancier. */
+export function importedStudySummary() {
+  const imports = getImportedStudyBundles();
+  const byArm = { adaptive: 0, balanced: 0 };
+  const perParticipant = imports.map((b) => {
+    const arm = b.study?.arm || b.arm || null;
+    if (arm in byArm) byArm[arm] += 1;
+    return {
+      participantId: b.participantId,
+      arm,
+      enrolledAt: b.study?.enrolledAt || null,
+      outcomes: Array.isArray(b.outcomes) ? b.outcomes.length : 0,
+    };
+  });
+  return { participants: imports.length, byArm, perParticipant };
 }
 
 // ---- pronunciation intelligibility benchmark (human-labelled samples) ----
