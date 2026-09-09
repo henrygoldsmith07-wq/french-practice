@@ -18,28 +18,55 @@ async function boot(page) {
   await expect(page.locator('h1').first()).toBeVisible({ timeout: 30_000 });
 }
 
-test('enrolment happens on Today; participant id + arm persist across reload', async ({ page }) => {
+test('enrolment requires explicit consent; participant id + arm persist across reload', async ({ page }) => {
   await boot(page);
+  // NO consent yet: opening Today must create nothing.
   await page.getByRole('button', { name: 'Speak today' }).click();
   await expect(page.getByText(/Aujourd'hui/i).first()).toBeVisible({ timeout: 10_000 });
-  const before = await page.evaluate(() => JSON.parse(localStorage.getItem('fp.study.state.v1') || 'null'));
-  expect(before).toBeTruthy();
-  expect(before.participantId).toMatch(/^participant-/);
-  expect(['adaptive', 'balanced']).toContain(before.arm);
-  expect(before.status).toBe('active');
-  // Close the session and reload: arm and participant must not flip.
   await page.getByRole('button', { name: "End today's session" }).click();
   await page.reload();
+  expect(await page.evaluate(() => localStorage.getItem('fp.study.state.v1'))).toBeNull();
+  // Give consent via the study panel, then enrol through Today.
+  await page.getByRole('button', { name: 'Progress', exact: true }).click();
+  await page.getByRole('button', { name: /Analytics/i }).first().click();
+  await expect(page.getByText(/Evidence study/i).first()).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByTestId('study-status')).toContainText(/Not enrolled/i, { timeout: 10_000 });
+  await page.getByRole('button', { name: /Join the study/i }).click();
+  await expect(page.getByTestId('study-status')).toContainText(/No data yet/i, { timeout: 10_000 });
+  const created = await page.evaluate(() => JSON.parse(localStorage.getItem('fp.study.state.v1')));
+  expect(created).toBeTruthy();
+  expect(created.participantId).toMatch(/^participant-/);
+  expect(['adaptive', 'balanced']).toContain(created.arm);
+  // Reload: arm and participant must not flip.
+  await page.reload();
   const after = await page.evaluate(() => JSON.parse(localStorage.getItem('fp.study.state.v1')));
-  expect(after.participantId).toBe(before.participantId);
-  expect(after.arm).toBe(before.arm);
+  expect(after.participantId).toBe(created.participantId);
+  expect(after.arm).toBe(created.arm);
+});
+
+test('declining consent never enrols and Today keeps working', async ({ page }) => {
+  await boot(page);
+  await page.getByRole('button', { name: 'Progress', exact: true }).click();
+  await page.getByRole('button', { name: /Analytics/i }).first().click();
+  await expect(page.getByText(/Evidence study/i).first()).toBeVisible({ timeout: 10_000 });
+  await page.getByRole('button', { name: /Not now/i }).click();
+  await expect(page.getByText(/You declined/i).first()).toBeVisible({ timeout: 10_000 });
+  expect(await page.evaluate(() => localStorage.getItem('fp.study.state.v1'))).toBeNull();
+  // Today works fine without the study (close the Analytics overlay first).
+  await page.getByRole('button', { name: /Close analytics/i }).click();
+  await page.getByRole('button', { name: 'Today', exact: true }).click();
+  await page.getByRole('button', { name: 'Speak today' }).click();
+  await expect(page.getByText(/Aujourd'hui/i).first()).toBeVisible({ timeout: 10_000 });
+  expect(await page.evaluate(() => localStorage.getItem('fp.study.state.v1'))).toBeNull();
 });
 
 test('the dashboard never reveals the arm and gates the comparison', async ({ page }) => {
   await boot(page);
-  await page.getByRole('button', { name: 'Speak today' }).click();
-  await expect(page.getByText(/Aujourd'hui/i).first()).toBeVisible({ timeout: 10_000 });
-  await page.getByRole('button', { name: "End today's session" }).click();
+  await page.getByRole('button', { name: 'Progress', exact: true }).click();
+  await page.getByRole('button', { name: /Analytics/i }).first().click();
+  await expect(page.getByText(/Evidence study/i).first()).toBeVisible({ timeout: 10_000 });
+  await page.getByRole('button', { name: /Join the study/i }).click();
+  await expect(page.getByTestId('study-status')).toBeVisible({ timeout: 10_000 });
   const stored = await page.evaluate(() => JSON.parse(localStorage.getItem('fp.study.state.v1')));
   await page.reload();
   // Progress → Analytics shows the study panel.
@@ -50,7 +77,7 @@ test('the dashboard never reveals the arm and gates the comparison', async ({ pa
   const body = await page.evaluate(() => document.body.innerText);
   expect(body).not.toContain(`Arm: ${stored.arm}`);
   expect(body).not.toMatch(/assigned to (adaptive|balanced)/i);
-  // Honesty: status prints Provisional with a small n, comparison message gates.
+  // Honesty: status prints Provisional/No data, comparison message gates.
   await expect(page.getByTestId('study-status')).toContainText(/Provisional|No data yet/);
   await expect(page.getByTestId('study-comparison')).toContainText(/needs at least/i);
 });
@@ -103,13 +130,11 @@ test('held-out check rides the session on a check day and scores measurement-onl
 
 test('export bundle carries anonymised study streams', async ({ page }) => {
   await boot(page);
-  await page.getByRole('button', { name: 'Speak today' }).click();
-  await expect(page.getByText(/Aujourd'hui/i).first()).toBeVisible({ timeout: 10_000 });
-  await page.getByRole('button', { name: "End today's session" }).click();
-  await page.reload();
   await page.getByRole('button', { name: 'Progress', exact: true }).click();
   await page.getByRole('button', { name: /Analytics/i }).first().click();
   await expect(page.getByText(/Evidence study/i).first()).toBeVisible({ timeout: 10_000 });
+  await page.getByRole('button', { name: /Join the study/i }).click();
+  await expect(page.getByTestId('study-status')).toBeVisible({ timeout: 10_000 });
   const download = page.waitForEvent('download');
   await page.getByRole('button', { name: /Export study bundle/i }).click();
   const dl = await download;
@@ -126,13 +151,11 @@ test('export bundle carries anonymised study streams', async ({ page }) => {
 test('withdrawal deletes study data and preserves practice history', async ({ page }) => {
   await boot(page);
   await page.evaluate(() => localStorage.setItem('fp.xp', '250'));
-  await page.getByRole('button', { name: 'Speak today' }).click();
-  await expect(page.getByText(/Aujourd'hui/i).first()).toBeVisible({ timeout: 10_000 });
-  await page.getByRole('button', { name: "End today's session" }).click();
-  await page.reload();
   await page.getByRole('button', { name: 'Progress', exact: true }).click();
   await page.getByRole('button', { name: /Analytics/i }).first().click();
   await expect(page.getByText(/Evidence study/i).first()).toBeVisible({ timeout: 10_000 });
+  await page.getByRole('button', { name: /Join the study/i }).click();
+  await expect(page.getByTestId('study-status')).toBeVisible({ timeout: 10_000 });
   await page.getByRole('button', { name: /Withdraw & delete study data/i }).click();
   const after = await page.evaluate(() => ({
     state: JSON.parse(localStorage.getItem('fp.study.state.v1') || 'null'),

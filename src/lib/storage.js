@@ -106,10 +106,12 @@ const KEYS = {
   mistakeGraph: 'fp.mistakeGraph.v1', // structural mistakes with mastery lifecycle (mistakeGraph.js)
   selectionTrial: 'fp.selectionTrial.v1', // frozen per-session target-selection records (P1 analysis)
   studyState: 'fp.study.state.v1', // Evidence Study enrolment (anonymous participant, locked arm)
+  studyConsent: 'fp.study.consent.v1', // explicit consent record, SEPARATE from outcomes
   studyChecks: 'fp.study.checks.v1', // held-out transfer check records (measurement-only)
   studyOutcomes: 'fp.study.outcomes.v1', // per-selection longitudinal outcome rows
   studyArmOverride: 'fp.study.armOverride.v1', // study operators only; never set in the UI
   studyImported: 'fp.study.imported.v1', // imported researcher bundles (aggregation only, never local truth)
+  learnerRegistry: 'fp.learnerRegistry.v1', // per-learner namespace registry + migration marker
   languageModel: 'fp.languageModel.v1', // explicit grammar transfer stages
   fieldNotes: 'fp.fieldNotes.v1', // learner-captured real-world phrases and transfer evidence
 };
@@ -141,7 +143,8 @@ export const storageFullWarning = () => storageFull;
 // kept, older entries are dropped rather than losing fresh progress.
 const PRUNEABLE_KEYS = [KEYS.reviewEvents, KEYS.studyEvents, KEYS.pulseHistory];
 
-function read(key, fallback) {
+/** Raw read: no learner routing. The only reader that touches localStorage. */
+function readRaw(key, fallback) {
   try {
     const raw = localStorage.getItem(key);
     if (raw == null) return fallback;
@@ -154,7 +157,125 @@ function read(key, fallback) {
   }
 }
 
-function write(key, value) {
+// ---- per-learner namespaces (household isolation) ---------------------------
+//
+// LEARNER_KEYS are the keys that belong to ONE learner. With a household
+// active, they are re-keyed to `fp.learner.<memberId>.<suffix>` so every
+// member gets an independent SRS, mistake graph, notebook, grammar progress,
+// proficiency, sessions, calibration and study state.
+//
+// MIGRATION (safe, one-shot): the registry records whether the original
+// shared fp.* values have been claimed. The FIRST member created on an
+// install inherits the pre-household single-user data (never orphaned, never
+// duplicated); members created afterwards start empty.
+//
+// The physical re-key is LAZY: reads fall back to the legacy key until the
+// value has been claimed, so a user who never opens a second-member session
+// keeps byte-identical data in place, and export/import keeps working.
+
+const LEARNER_KEY_VALUES = [
+  KEYS.srs, KEYS.notebook, KEYS.grammar, KEYS.mistakeGraph, KEYS.selectionTrial,
+  KEYS.sessionHistory, KEYS.sessionHistoryMeta, KEYS.studyEvents, KEYS.reviewEvents,
+  KEYS.reviewLog, KEYS.evidenceLedger, KEYS.learnerErrors, KEYS.metrics,
+  KEYS.grammarErrors, KEYS.weaknessMemory, KEYS.languageModel, KEYS.fieldNotes,
+  KEYS.studyState, KEYS.studyConsent, KEYS.studyChecks, KEYS.studyOutcomes,
+  KEYS.lastPlacement, KEYS.errorNotebook, KEYS.starred,
+  KEYS.xp, KEYS.xpDay, KEYS.xpLog, KEYS.timeLog, KEYS.activeSession,
+];
+
+const LEARNER_KEY_SET = new Set(LEARNER_KEY_VALUES);
+
+export const isLearnerKey = (key) => LEARNER_KEY_SET.has(key);
+
+const learnerKey = (key, memberId) => `fp.learner.${memberId}.${key}`;
+
+function learnerRegistry() {
+  return read(KEYS.learnerRegistry, { claims: {} });
+}
+
+function saveLearnerRegistry(reg) {
+  write(KEYS.learnerRegistry, reg);
+  return reg;
+}
+
+/**
+ * Claim the legacy shared value for `memberId` exactly once. The FIRST
+ * member on an install inherits the pre-household single-user data (never
+ * orphaned, never duplicated); members created afterwards start empty. The
+ * legacy value stays on disk but is never read again once the claim exists.
+ */
+function claimLegacyFor(key, memberId) {
+  if (!LEARNER_KEY_SET.has(key)) return;
+  const reg = learnerRegistry();
+  if (!reg.claims || typeof reg.claims !== 'object') reg.claims = {};
+  if (reg.claims[key]) return;
+  reg.claims[key] = memberId;
+  let raw = null;
+  try { raw = localStorage.getItem(key); } catch { raw = null; }
+  if (raw != null) {
+    try { localStorage.setItem(learnerKey(key, memberId), raw); } catch { /* quota */ }
+  }
+  saveLearnerRegistry(reg);
+}
+
+/** The active learner id for namespacing (null = no household in play).
+ *  Reads the household registry DIRECTLY — routing through read() here would
+ *  recurse (read → learnerRead → activeLearnerId → getHousehold → read). */
+export const activeLearnerId = () => {
+  try {
+    const h = cleanHousehold(read(KEYS.household, null));
+    return h.activeId || null;
+  } catch {
+    return null;
+  }
+};
+
+/** Namespaced read: the active learner's value, with legacy fallback. */
+function learnerRead(key, fallback) {
+  const memberId = activeLearnerId();
+  if (!memberId) return readRaw(key, fallback);
+  claimLegacyFor(key, memberId);
+  return readRaw(learnerKey(key, memberId), fallback);
+}
+
+function learnerWrite(key, value) {
+  const memberId = activeLearnerId();
+  if (!memberId) { writeRaw(key, value); return; }
+  claimLegacyFor(key, memberId);
+  writeRaw(learnerKey(key, memberId), value);
+}
+
+/** The one public read: learner-aware for learner-owned keys. */
+function read(key, fallback) {
+  if (LEARNER_KEY_SET.has(key)) return learnerRead(key, fallback);
+  return readRaw(key, fallback);
+}
+
+/** Read a SPECIFIC learner's namespaced value (household switching UIs). */
+export function readLearnerValue(memberId, key, fallback = null) {
+  if (!memberId) return read(key, fallback);
+  return read(learnerKey(key, memberId), fallback);
+}
+
+/** Delete every namespaced value for a member (GDPR-style member removal). */
+export function purgeLearnerData(memberId) {
+  if (!memberId) return 0;
+  let purged = 0;
+  try {
+    const doomed = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && k.startsWith(`fp.learner.${memberId}.`)) doomed.push(k);
+    }
+    for (const k of doomed) {
+      try { localStorage.removeItem(k); purged += 1; } catch { /* unavailable */ }
+    }
+  } catch { /* unavailable */ }
+  return purged;
+}
+
+/** Raw write: no learner routing. */
+function writeRaw(key, value) {
   try {
     localStorage.setItem(key, JSON.stringify(value));
   } catch {
@@ -164,7 +285,7 @@ function write(key, value) {
     if (!storageFull) storageFull = true;
     if (PRUNEABLE_KEYS.includes(key)) {
       try {
-        const half = read(key, null);
+        const half = readRaw(key, null);
         if (Array.isArray(half) && half.length > 8) {
           localStorage.setItem(key, JSON.stringify(half.slice(-Math.floor(half.length / 2))));
           return;
@@ -174,7 +295,7 @@ function write(key, value) {
     for (const k of PRUNEABLE_KEYS) {
       if (k === key) continue;
       try {
-        const arr = read(k, null);
+        const arr = readRaw(k, null);
         if (Array.isArray(arr) && arr.length > 16) {
           localStorage.setItem(k, JSON.stringify(arr.slice(-Math.floor(arr.length / 2))));
           try { localStorage.setItem(key, JSON.stringify(value)); return; } catch { /* still full */ }
@@ -182,6 +303,12 @@ function write(key, value) {
       } catch { /* keep pruning */ }
     }
   }
+}
+
+/** The one public write: learner-aware for learner-owned keys. */
+function write(key, value) {
+  if (LEARNER_KEY_SET.has(key)) { learnerWrite(key, value); return; }
+  writeRaw(key, value);
 }
 
 // Key resolution: a key saved in Settings wins; otherwise a build-time env
@@ -286,7 +413,24 @@ export function exportProgress() {
     const raw = localStorage.getItem(key);
     if (raw != null) data[key] = raw;
   }
-  return { app: 'le-studio', version: 2, exportedAt: new Date().toISOString(), data };
+  // Learner namespaces: every household member's namespaced state travels
+  // under `learners`, so import restores each member's ownership intact.
+  const learners = {};
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      const m = k && k.match(/^fp\.learner\.([^]+)\.(.+)$/);
+      if (!m) continue;
+      const memberId = m[1];
+      const rest = m[2];
+      learners[memberId] = learners[memberId] || {};
+      learners[memberId][rest] = localStorage.getItem(k);
+    }
+  } catch { /* unavailable */ }
+  return {
+    app: 'le-studio', version: 3, exportedAt: new Date().toISOString(), data,
+    learners,
+  };
 }
 
 export function importProgress(payload) {
@@ -302,6 +446,20 @@ export function importProgress(payload) {
       localStorage.setItem(key, raw);
       restored += 1;
     } catch { /* skip malformed entry */ }
+  }
+  // v3+: restore each member's namespaced values with ownership preserved.
+  if (payload.learners && typeof payload.learners === 'object') {
+    for (const [memberId, entries] of Object.entries(payload.learners)) {
+      if (!memberId || typeof entries !== 'object') continue;
+      for (const [rest, raw] of Object.entries(entries)) {
+        if (typeof raw !== 'string') continue;
+        try {
+          JSON.parse(raw);
+          localStorage.setItem(`fp.learner.${memberId}.${rest}`, raw);
+          restored += 1;
+        } catch { /* skip malformed */ }
+      }
+    }
   }
   return restored;
 }
@@ -2470,6 +2628,16 @@ export const getStudyState = () => read(KEYS.studyState, null);
 export function saveStudyState(state) {
   write(KEYS.studyState, state || null);
   return state;
+}
+
+// Consent lives in its OWN store, never inside the study record: withdrawing
+// or deleting study data must not erase the fact that consent was asked and
+// what was agreed to (and a declined learner must never be auto-enrolled).
+export const getStudyConsent = () => read(KEYS.studyConsent, null);
+
+export function saveStudyConsent(record) {
+  write(KEYS.studyConsent, record || null);
+  return record;
 }
 
 export const getStudyChecks = () => {

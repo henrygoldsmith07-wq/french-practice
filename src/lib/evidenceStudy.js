@@ -129,20 +129,27 @@ export function isCheckDay(participantId, day, { first = FIRST_CHECK_DAY, every 
  * from the SRS map; listening: tracks at the level never played. Selection
  * is deterministic per (participant, day) so reloads cannot reshuffle.
  */
+/**
+ * The held-out pool for a check day, built ONLY from the dedicated verified
+ * assessment bank (heldOutBank.js) — never from practice vocabulary. Every
+ * returned item is CEFR-matched (own band or tightly adjacent), verified,
+ * unseen by this participant, and carries level/skill/difficulty/provenance.
+ * Unverified bank items and untagged practice words are excluded by design.
+ * Deterministic per (participant, day) so reloads cannot reshuffle.
+ */
 export function buildHeldOutPool({ participantId, day, level = 'B1', vocabEntries = [], srsMap = {}, listeningTracks = [], limit = 6 } = {}) {
+  void vocabEntries; void srsMap; void listeningTracks; // practice content is never held-out material
   if (!participantId) return { words: [], track: null };
-  const seen = new Set(Object.keys(srsMap || {}));
-  const bandedIds = new Set((vocabEntries || []).filter((e) => e.cefr != null).map((e) => e.id));
-  const unbanded = (vocabEntries || []).filter((e) => !bandedIds.has(e.id) && !seen.has(e.id));
-  const phase = Math.floor(hash01(`${participantId}|day-phase`) * 7);
-  const offset = Math.floor(hash01(`${participantId}|check|${day}`) * Math.max(1, unbanded.length)) || 0;
-  const start = unbanded.length ? (offset + phase) % unbanded.length : 0;
-  const words = unbanded.slice(start).slice(0, limit);
-  const unplayed = (listeningTracks || []).filter((t) => !seen.has(`track:${t.id}`));  const track = unplayed.length
-    ? unplayed[Math.floor(hash01(`${participantId}|check|${day}|track`) * unplayed.length) % unplayed.length]
-    : null;
-  return { words, track };
+  const { selectHeldOutItems } = requireBank();
+  const words = selectHeldOutItems({ participantId, day, level, limit });
+  return { words, track: null };
 }
+
+function requireBank() {
+  // eslint-disable-next-line import/no-cycle
+  return { selectHeldOutItems: __selectHeldOutItems };
+}
+import { selectHeldOutItems as __selectHeldOutItems } from './heldOutBank.js';
 
 /**
  * A check record, frozen the moment the check renders. Mastery/FSRS state
@@ -307,6 +314,53 @@ export function studyAggregates(outcomes, { now = Date.now() } = {}) {
       message: comparable
         ? 'Both arms reached the minimum sample — rates below are descriptive only, not significance claims.'
         : `Comparing arms needs at least ${MIN_N_PER_ARM} scored delayed outcomes per arm (adaptive ${a.delayedShort.n}, balanced ${b.delayedShort.n}).`,
+    },
+  };
+}
+
+/**
+ * Delivery/reporting health per arm: how many sessions were actually
+ * delivered, how many outcomes are still missing their delayed window, and
+ * (when enrolment day counts are supplied) dropout. These numbers are
+ * descriptive — they exist so empty percentages can't masquerade as
+ * findings, and so a researcher can see the data's shape before believing
+ * any rate above.
+ */
+export function studyDeliveryStats(outcomes, { enrolledDays = null } = {}) {
+  const armStats = (rows) => {
+    const sessions = rows.length;
+    const delivered = rows.filter((o) => Array.isArray(o.delivered) || Number.isFinite(o.timeSpent)).length;
+    const completedKnown = rows.filter((o) => typeof o.completed === 'boolean');
+    const completed = completedKnown.filter((o) => o.completed).length;
+    const missingShort = rows.filter((o) => o.delayedShort == null && (o.day == null || (enrolledDays == null || enrolledDays - o.day >= 3))).length;
+    const missingLong = rows.filter((o) => o.delayedLong == null && (o.day == null || (enrolledDays == null || enrolledDays - o.day >= 7))).length;
+    return {
+      sessions,
+      delivered,
+      completed,
+      completedKnown: completedKnown.length,
+      missingShort,
+      missingLong,
+      missingShortRate: sessions ? Math.round((missingShort / sessions) * 100) : null,
+      missingLongRate: sessions ? Math.round((missingLong / sessions) * 100) : null,
+    };
+  };
+  const enrolledDaysOf = (enrolledDays) => (enrolledDays && typeof enrolledDays === 'object' ? enrolledDays : null);
+  const dayMap = enrolledDaysOf(enrolledDays) || {};
+  const adaptive = armStats(rowsFor(outcomes, 'adaptive'));
+  const balanced = armStats(rowsFor(outcomes, 'balanced'));
+  return {
+    adaptive,
+    balanced,
+    dropout: {
+      // dropout needs cohort day counts per arm; absent them, it is null —
+      // never a guessed percentage.
+      adaptive: dayMap.adaptive != null && dayMap.adaptive.total > 0
+        ? Math.round(((dayMap.adaptive.total - (dayMap.adaptive.active ?? dayMap.adaptive.total)) / dayMap.adaptive.total) * 100)
+        : null,
+      balanced: dayMap.balanced != null && dayMap.balanced.total > 0
+        ? Math.round(((dayMap.balanced.total - (dayMap.balanced.active ?? dayMap.balanced.total)) / dayMap.balanced.total) * 100)
+        : null,
     },
   };
 }

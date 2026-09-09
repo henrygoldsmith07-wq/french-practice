@@ -21,12 +21,45 @@ async function fresh() {
   return { studyFlow, storage, evidenceStudy };
 }
 
+/** Consent, then enrol — the only legitimate path to a participant record. */
+async function consentAndEnrol(f, opts = {}) {
+  const { studyFlow } = f;
+  const consent = studyFlow.recordStudyConsent('accepted', { enrol: opts });
+  const state = studyFlow.enrolStudyState(opts);
+  return { consent, state };
+}
+
 // ── enrolment through the real storage layer ───────────────────────────────
+
+test('no enrolment without explicit consent; refusal is sticky', async () => {
+  const f = await fresh();
+  const { studyFlow, storage } = f;
+  // Opening Today (indirectly: enrolStudyState) WITHOUT consent creates nothing.
+  const none = studyFlow.enrolStudyState({ startLevel: 'B1' });
+  assert.equal(none, null, 'no participant record without consent');
+  assert.equal(storage.getStudyState(), null);
+  assert.equal(storage.getStudyConsent(), null);
+  // Declining records the refusal and STILL enrols nobody.
+  studyFlow.recordStudyConsent('declined');
+  assert.equal(storage.getStudyConsent().decision, 'declined');
+  assert.equal(storage.getStudyState(), null);
+  const afterDecline = studyFlow.enrolStudyState({});
+  assert.equal(afterDecline, null, 'a declined learner is never auto-enrolled');
+});
+
+test('consent can be withdrawn only by the learner action; acceptance precedes enrolment', async () => {
+  const f = await fresh();
+  const { studyFlow } = f;
+  const { consent, state } = await consentAndEnrol(f, { startLevel: 'B1' });
+  assert.equal(consent.decision, 'accepted');
+  assert.ok(state, 'consent gates enrolment');
+  assert.ok(consent.at, 'consent timestamped separately from outcomes');
+});
 
 test('enrolStudyState creates, persists, and is idempotent across reloads', async () => {
   const f = await fresh();
   const { studyFlow, storage } = f;
-  const s1 = studyFlow.enrolStudyState({ startLevel: 'B1' });
+  const { state: s1 } = await consentAndEnrol(f, { startLevel: 'B1' });
   assert.ok(s1, 'enrolment returns state');
   assert.ok(s1.participantId.startsWith('participant-'), 'anonymous id shape');
   assert.equal(s1.startLevel, 'B1');
@@ -35,18 +68,20 @@ test('enrolStudyState creates, persists, and is idempotent across reloads', asyn
   const raw = JSON.parse(localStorage.getItem('fp.study.state.v1'));
   assert.equal(raw.participantId, s1.participantId);
   assert.equal(raw.arm, s1.arm);
+  studyFlow.recordStudyConsent('accepted'); // consent-first
   const s2 = studyFlow.enrolStudyState({ startLevel: 'C1' });
   assert.equal(s2.participantId, s1.participantId, 'no re-fork on second call');
   assert.equal(s2.startLevel, 'B1', 'starting level stays frozen');
-  void storage;
 });
 
 test('arm persistence: the arm survives reload and never flips', async () => {
   const f = await fresh();
   const { studyFlow, storage } = f;
+  studyFlow.recordStudyConsent('accepted'); // consent-first
   const s1 = studyFlow.enrolStudyState({});
   const arm = storage.getStudyState().arm;
   // Simulate a reload by re-reading storage (fresh enrol must not rewrite).
+  studyFlow.recordStudyConsent('accepted'); // consent-first
   const s2 = studyFlow.enrolStudyState({});
   assert.equal(s2.arm, arm);
   assert.equal(s2.participantId, s1.participantId);
@@ -60,6 +95,7 @@ test('operator arm override changes assignment deterministically (and only pre-e
   const f = await fresh();
   const { studyFlow, storage, evidenceStudy } = f;
   storage.setStudyArmOverride('balanced');
+  studyFlow.recordStudyConsent('accepted'); // consent-first
   const s1 = studyFlow.enrolStudyState({});
   assert.equal(s1.arm, 'balanced');
   assert.equal(evidenceStudy.assignArm(s1.participantId, 'anything').source, 'saved-override');
@@ -75,6 +111,7 @@ test('operator arm override changes assignment deterministically (and only pre-e
 test('held-out checks never touch the mistake graph or SRS state', async () => {
   const f = await fresh();
   const { studyFlow, storage } = f;
+  studyFlow.recordStudyConsent('accepted'); // consent-first
   const s = studyFlow.enrolStudyState({ startLevel: 'B1' });
   // Record a finished check.
   const chk = studyFlow.saveCheckRecord(storageRequire(f).makeCheckRecord({
@@ -102,6 +139,7 @@ function storageRequire(f) {
 test('outcomes join retests but immediate retries never reach retention windows', async () => {
   const f = await fresh();
   const { studyFlow, storage, evidenceStudy } = f;
+  studyFlow.recordStudyConsent('accepted'); // consent-first
   const s = studyFlow.enrolStudyState({});
   const DAY = 86400000;
   const t0 = Date.now();
@@ -144,6 +182,7 @@ test('outcomes join retests but immediate retries never reach retention windows'
 test('bundle v2 carries anonymised study streams and re-imports without forking local state', async () => {
   const f = await fresh();
   const { studyFlow, storage } = f;
+  studyFlow.recordStudyConsent('accepted'); // consent-first
   const s = studyFlow.enrolStudyState({ startLevel: 'A2' });
   const trial = {
     at: new Date().toISOString(), activity: 'authored-drill', variant: s.arm,
@@ -194,6 +233,7 @@ test('withdraw stops collection and deletes study data, preserving practice hist
   const f = await fresh();
   const { studyFlow, storage } = f;
   storage.addXp(120);
+  studyFlow.recordStudyConsent('accepted'); // consent-first
   studyFlow.enrolStudyState({});
   studyFlow.saveCheckRecord({
     id: 'chk-x', participantId: 'p', day: 2, level: 'B1', at: new Date().toISOString(),
@@ -211,6 +251,7 @@ test('withdraw stops collection and deletes study data, preserving practice hist
   assert.deepEqual(storage.getStudyOutcomes(), []);
   assert.equal(storage.getXp(), 120, 'practice history preserved');
   // Post-withdrawal: enrolStudyState must NOT silently re-enrol a withdrawn record.
+  studyFlow.recordStudyConsent('accepted'); // consent-first
   const s = studyFlow.enrolStudyState({});
   assert.equal(s.status, 'withdrawn');
 });

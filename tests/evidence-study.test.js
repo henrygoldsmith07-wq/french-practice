@@ -77,24 +77,24 @@ test('check days are deterministic, periodic, and never in the warm-up', () => {
   assert.deepEqual(days, Array.from({ length: 30 }, (_, d) => isCheckDay(pid, d)), 'stable across calls');
 });
 
-test('held-out pool only contains unseen vocabulary at the learner level', () => {
-  const vocabEntries = [
-    { id: 'a1-1', cefr: 'A1', fr: 'bonjour' },
-    { id: 'b1-1', cefr: 'B1', fr: 'toutefois' },
-    { id: 'free-1', fr: 'grincer' },
-    { id: 'free-2', fr: 'affleurer' },
-    { id: 'seen-1', fr: 'déjà-vu' },
+test('held-out pool draws ONLY from the verified bank — never practice content', () => {
+  // Practice vocab (even banded or unseen) must never become held-out material.
+  const practiceEntries = [
+    { id: 'c-b1-toutefois', cefr: 'B1', fr: 'toutefois' },
+    { id: 'unseen-unbanded', fr: 'grincer' },
   ];
   const pool = buildHeldOutPool({
-    participantId: 'p1', day: 3, level: 'B1', vocabEntries,
-    srsMap: { 'free-2': { interval: 3 }, 'seen-1': { interval: 1 } },
-    listeningTracks: [],
+    participantId: 'p1', day: 3, level: 'B1', vocabEntries: practiceEntries,
+    srsMap: {}, listeningTracks: [{ id: 'tr-1', cefr: 'B1' }],
   });
   const ids = pool.words.map((w) => w.id);
-  assert.ok(!ids.includes('seen-1'), 'already-seen words excluded');
-  assert.ok(!ids.includes('free-2'), 'srs entries excluded');
-  assert.ok(!ids.includes('b1-1'), 'banded level words are curriculum, not held-out');
-  assert.ok(ids.includes('free-1'), 'unseen unbanded words included');
+  assert.ok(ids.length > 0, 'bank has verified B1 items');
+  for (const id of ids) {
+    assert.ok(id.startsWith('chk-'), `bank item ${id} namespaced`);
+    assert.ok(!ids.includes('c-b1-toutefois'), 'practice vocab excluded');
+    assert.ok(!ids.includes('unseen-unbanded'), 'untagged vocab is not CEFR-matched');
+  }
+  assert.equal(pool.track, null, 'listening tracks are level-filtered separately, never pooled raw');
 });
 
 test('pool selection is stable per (participant, day) — reload cannot reshuffle', () => {
@@ -107,17 +107,15 @@ test('pool selection is stable per (participant, day) — reload cannot reshuffl
 });
 
 test('check records are measurement-only and score correctly', () => {
-  const vocabEntries = Array.from({ length: 12 }, (_, i) => ({ id: `x${i}`, fr: `mot${i}` }));
-  const pool = buildHeldOutPool({ participantId: 'p1', day: 2, vocabEntries, listeningTracks: [{ id: 'tr1' }] });
-  assert.ok(pool.words.length >= 2, 'fixture sanity: pool has words');
-  let chk = makeCheckRecord({ participantId: 'p1', day: 2, pool, now: T0 });
+  const pool = buildHeldOutPool({ participantId: 'p1', day: 2, level: 'B1' });
+  assert.ok(pool.words.length >= 2, 'fixture sanity: bank has verified B1 items');
+  let chk = makeCheckRecord({ participantId: 'p1', day: 2, level: 'B1', pool, now: T0 });
   assert.equal(chk.results, null, 'results start empty');
   assert.equal(checkScore(chk), null);
-  chk = recordCheckResult(chk, { correct: 4, total: 5, secondsSpent: 90 });
-  assert.equal(checkScore(chk), 80);
+  chk = recordCheckResult(chk, { correct: 3, total: 4, secondsSpent: 90 });
+  assert.equal(checkScore(chk), 75);
   assert.equal(chk.results.secondsSpent, 90);
   assert.equal(chk.wordIds.length, pool.words.length, 'word ids frozen');
-  assert.equal(chk.trackId, 'tr1');
   const bad = recordCheckResult(chk, { correct: -3, total: 'x' });
   assert.equal(bad.results.total, 0, 'malformed input clamps, never fabricates');
 });

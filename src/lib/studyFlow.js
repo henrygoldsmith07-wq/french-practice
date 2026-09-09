@@ -11,19 +11,25 @@ import {
   makeCheckRecord, recordCheckResult, makeOutcomeRecord, withdrawStudy,
   applyRetestToOutcome, applyRecurrenceToOutcome,
 } from './evidenceStudy.js';
-
-// Re-exports for components: the study glue is the single study surface.
-export { buildHeldOutPool, makeCheckRecord } from './evidenceStudy.js';
+import { mayEnrol, hasDeclined, makeConsentRecord } from './studyConsent.js';
 import {
-  getStudyState, saveStudyState, getStudyChecks, saveStudyChecks,
+  getStudyState, saveStudyState, getStudyConsent, saveStudyConsent,
+  getStudyChecks, saveStudyChecks,
   getStudyOutcomes, saveStudyOutcomes, getSyncId, getLastPlacement,
 } from './storage.js';
 
-/** Enrol (idempotently) using the placement result as the starting band. */
+// Re-exports for components: the study glue is the single study surface.
+export { buildHeldOutPool, makeCheckRecord } from './evidenceStudy.js';
+
+/** Enrol (idempotently) using the placement result as the starting band.
+ *  REQUIRES EXPLICIT CONSENT: without an accepted consent record nothing is
+ *  created — no participant id, no arm, no study rows. Refusal is sticky. */
 export function enrolStudyState({ startLevel = null, now = Date.now() } = {}) {
   try {
     const current = getStudyState();
-    if (isEnrolled(current)) return current;
+    if (current?.status === 'active') return current;
+    const consent = getStudyConsent();
+    if (!mayEnrol(consent, current)) return current; // never asked, or declined
     const placement = getLastPlacement();
     const band = startLevel || placement?.level || null;
     const next = enrolStudy(current, {
@@ -34,6 +40,34 @@ export function enrolStudyState({ startLevel = null, now = Date.now() } = {}) {
     });
     saveStudyState(next);
     return next;
+  } catch {
+    return null;
+  }
+}
+
+/** The learner's consent state for the UI: 'accepted' | 'declined' | null. */
+export function studyConsentState() {
+  try {
+    const c = getStudyConsent();
+    return c?.decision || null;
+  } catch {
+    return null;
+  }
+}
+
+export const learnerHasDeclined = () => {
+  try { return hasDeclined(getStudyConsent()); } catch { return false; }
+};
+
+/** Record an explicit consent decision (the only path that sets one). */
+export function recordStudyConsent(decision, { now = Date.now(), enrol = {} } = {}) {
+  try {
+    const record = makeConsentRecord({ decision, now });
+    if (!record) return null;
+    saveStudyConsent(record);
+    // Accepting consent may immediately enrol; declining never does.
+    if (decision === 'accepted') enrolStudyState({ ...enrol, now });
+    return record;
   } catch {
     return null;
   }
