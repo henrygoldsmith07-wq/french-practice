@@ -265,13 +265,15 @@ export function AdaptivePracticeEvidence() {
           sub={`n=${data.completed.length}`} />
       </div>
       <div className="border-t border-line pt-2 space-y-1.5">
-        <p className="text-[10px] font-bold uppercase tracking-wider text-ink3">Adaptive vs balanced (rates print at n≥{MIN_VARIANT_N} per arm)</p>
+        <p className="text-[10px] font-bold uppercase tracking-wider text-ink3">
+          Adaptive vs balanced — per-learner row history (single participant; arm comparisons live in the Evidence Study, gated on participants)
+        </p>
         {variantRow('Adaptive', data.variants.adaptive)}
         {variantRow('Balanced', data.variants.balanced)}
         <p className="text-[10px] text-ink3">
           {data.variants.adaptive.n < MIN_VARIANT_N || data.variants.balanced.n < MIN_VARIANT_N
-            ? 'Sample too small to compare arms — keep practicing; nothing is claimed below the floor.'
-            : 'Same time budget both arms; only content targeting differs.'}
+            ? 'Sample too small to summarise this participant\'s per-arm history — nothing is claimed below the floor.'
+            : 'Same time budget both arms; only content targeting differs. Rows are one participant\'s sessions, not independent observations.'}
         </p>
       </div>
       <div className="border-t border-line pt-2">

@@ -7,7 +7,7 @@
 //   · imported rows NEVER touch learner practice stores (read-only pooling);
 //   · every pooled rate keeps its sample gate.
 
-import { studyAggregates } from './evidenceStudy.js';
+import { participantSummaries, armComparison, studyDeliveryStats } from './evidenceStudy.js';
 
 export const POOL_SCHEMA_VERSION = 2;
 const OUTCOME_SCHEMA_VERSION = 1;
@@ -125,12 +125,18 @@ export function poolStudyData({ localStudy = null, localOutcomes = [], imports =
     pooledOutcomes.push(...p.outcomes);
   }
 
+  // PARTICIPANT-level analysis: rows → participant summaries → arm gates on
+  // participants. Session rows never inflate n.
+  const summaries = participantSummaries(pooledOutcomes);
+
   return {
     participants: participants.size,
     participantsByArm,
     outcomes: pooledOutcomes,
+    summaries,
     rejected,
-    aggregates: studyAggregates(pooledOutcomes),
+    comparison: armComparison(summaries),
+    delivery: studyDeliveryStats(pooledOutcomes),
   };
 }
 

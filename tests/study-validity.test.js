@@ -219,26 +219,40 @@ test('pooled aggregation: dedupe, schema validation, malformed rejection', async
     delayedLong: null, transfer: null, recurred: null,
   });
   const local = { participantId: 'participant-local', arm: 'adaptive', startLevel: 'B1', enrolledAt: '2026-09-01T09:00:00Z', status: 'active' };
-  const imports = [
-    mkBundle('participant-p1', 'balanced', { outcomes: Array.from({ length: 9 }, (_, i) => goodOutcome(i, 'balanced')) }),
-    mkBundle('participant-p2', 'adaptive', { outcomes: Array.from({ length: 9 }, (_, i) => goodOutcome(100 + i, 'adaptive')) }),
-  ];
+  // 8 adaptive + 8 balanced participants (multi-session each) — powered pool.
+  const armBundle = (pid, arm) => mkBundle(pid, arm, {
+    outcomes: Array.from({ length: 9 }, (_, i) => goodOutcome(`${pid}-${i}`, arm)),
+  });
+  const imports = [];
+  for (let p = 1; p <= 7; p++) imports.push(armBundle(`participant-a${p}`, 'adaptive'));
+  for (let p = 1; p <= 8; p++) imports.push(armBundle(`participant-b${p}`, 'balanced'));
   const pool = aggregation.poolStudyData({
     localStudy: local,
-    localOutcomes: Array.from({ length: 9 }, (_, i) => goodOutcome(200 + i, 'adaptive')),
+    localOutcomes: Array.from({ length: 9 }, (_, i) => goodOutcome(`local-${i}`, 'adaptive')),
     imports,
   });
-  assert.equal(pool.participants, 3, 'local + 2 imported, deduped');
-  assert.equal(pool.participantsByArm.adaptive, 2);
-  assert.equal(pool.participantsByArm.balanced, 1);
-  assert.equal(pool.outcomes.length, 27);
-  assert.equal(pool.aggregates.comparison.comparable, true, 'both arms clear the floor on pooled data');
+  assert.equal(pool.participants, 16, 'local + 8 imported adaptive + 8 balanced (1 adaptive imported duplicates local? no — distinct ids)');
+  assert.equal(pool.participantsByArm.adaptive, 8);
+  assert.equal(pool.participantsByArm.balanced, 8);
+  assert.equal(pool.outcomes.length, 16 * 9);
+  // Participant-level gates: comparable requires participants per arm, not rows.
+  assert.equal(pool.comparison.comparison.comparable, true, 'both arms clear the participant floor');
+  assert.equal(pool.comparison.adaptive.participants, 8);
+  assert.equal(pool.comparison.balanced.participants, 8);
+  // One learner with many sessions must NOT inflate the participant count.
+  const oneBusy = aggregation.poolStudyData({
+    localStudy: null, localOutcomes: [],
+    imports: [armBundle('participant-solo', 'adaptive')],
+  });
+  assert.equal(oneBusy.comparison.adaptive.participants, 1, 'many sessions, ONE participant');
+  assert.equal(oneBusy.comparison.adaptive.sessions, 9, 'sessions counted separately');
   // Identical re-import dedupes; conflicting arm is rejected.
+  const balancedImports = imports.filter((b) => b.study.arm === 'balanced');
   const pool2 = aggregation.poolStudyData({
     localStudy: null, localOutcomes: [],
-    imports: [...imports, mkBundle('participant-p1', 'balanced', { outcomes: [] }), mkBundle('participant-p1', 'adaptive', { outcomes: [] })],
+    imports: [...balancedImports, armBundle('participant-b1', 'balanced'), mkBundle('participant-b1', 'adaptive', { outcomes: [] })],
   });
-  assert.equal(pool2.participants, 2, 'no duplicate participants');
+  assert.equal(pool2.participants, 8, 'no duplicate participants');
   assert.equal(pool2.rejected.length, 1, 'conflicting duplicate rejected');
   assert.match(pool2.rejected[0].errors[0], /conflicting/);
 });

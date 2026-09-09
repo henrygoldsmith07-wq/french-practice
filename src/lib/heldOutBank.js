@@ -1,23 +1,35 @@
-// Held-out assessment bank (Evidence Study, measurement-only).
+// Held-out assessment banks (Evidence Study, measurement-only).
 //
-// A DEDICATED bank, separate from practice content: every item is authored
-// or reviewed against a CEFR band and carries the fields a real assessment
-// needs — level, skill, difficulty, provenance, unique id, review status.
-// Unverified items are excluded from selection until reviewStatus is
+// A DEDICATED set of banks, separate from practice content: every item is
+// authored or reviewed against a CEFR band and carries the fields a real
+// assessment needs — level, skill, difficulty, provenance, unique id, review
+// status. Unverified items are excluded from selection until reviewStatus is
 // 'verified'; practice vocabulary is NEVER treated as held-out material
 // (untagged words are not CEFR-matched, full stop).
 //
+// SKILLS, reported SEPARATELY (never merged into an overall transfer score
+// while each bank is small):
+//   vocabulary        recognition (en → fr), the current default
+//   vocabulary-prod   productive vocabulary (en prompt → fr produced)
+//   grammar           grammar production (choose/produce the form)
+//   listening         listening comprehension (audio → meaning)
+//   reading           reading comprehension (text → meaning)
+//   speaking          spoken production (prompt → speech, scored later)
+//
 // ISOLATION CONTRACT (tested): bank ids are namespaced `chk-` so they can
-// never collide with SRS cards, and selection reads ONLY from this bank.
+// never collide with SRS cards, and selection reads ONLY from these banks.
 
-export const HELDOUT_BANK_VERSION = 1;
+export const HELDOUT_BANK_VERSION = 2;
 
 // reviewStatus: 'draft' | 'in-review' | 'verified'
 // Only 'verified' items are ever selected.
 // provenance: who authored/reviewed the item, for the audit trail.
 // difficulty: 1–5 within-band ordering (1 easiest in band).
 
+export const HELDOUT_SKILLS = ['vocabulary', 'vocabulary-prod', 'grammar', 'listening', 'reading', 'speaking'];
+
 export const HELDOUT_BANK = [
+  // ------------------------------------------------- vocabulary (recognition)
   // ---------------------------------------------------------------- A1 ----
   { id: 'chk-a1-001', cefr: 'A1', skill: 'vocabulary', difficulty: 1, reviewStatus: 'verified', provenance: 'authored core, reviewed 2026-09', fr: 'une pomme', en: 'an apple' },
   { id: 'chk-a1-002', cefr: 'A1', skill: 'vocabulary', difficulty: 2, reviewStatus: 'verified', provenance: 'authored core, reviewed 2026-09', fr: 'la maison', en: 'the house' },
@@ -62,11 +74,48 @@ export const HELDOUT_BANK = [
   { id: 'chk-c1-003', cefr: 'C1', skill: 'vocabulary', difficulty: 4, reviewStatus: 'verified', provenance: 'authored core, reviewed 2026-09', fr: 'l\'abstention', en: 'abstention' },
   { id: 'chk-c1-004', cefr: 'C1', skill: 'vocabulary', difficulty: 5, reviewStatus: 'verified', provenance: 'authored core, reviewed 2026-09', fr: 'un parrainage', en: 'sponsorship / godparenthood' },
 
+  // ------------------------------------------------------- productive vocab
+  // En prompt → the learner must PRODUCE the French word (typed or spoken).
+  { id: 'chk-prod-a2-001', cefr: 'A2', skill: 'vocabulary-prod', difficulty: 2, reviewStatus: 'verified', provenance: 'authored core, reviewed 2026-09', en: 'a neighbour', accept: ['un voisin', 'une voisine'] },
+  { id: 'chk-prod-b1-001', cefr: 'B1', skill: 'vocabulary-prod', difficulty: 2, reviewStatus: 'verified', provenance: 'authored core, reviewed 2026-09', en: 'the journey', accept: ['le trajet', 'le voyage'] },
+  { id: 'chk-prod-b1-002', cefr: 'B1', skill: 'vocabulary-prod', difficulty: 3, reviewStatus: 'verified', provenance: 'authored core, reviewed 2026-09', en: 'the harvest', accept: ['la moisson', 'la récolte'] },
+  { id: 'chk-prod-b2-001', cefr: 'B2', skill: 'vocabulary-prod', difficulty: 3, reviewStatus: 'verified', provenance: 'authored core, reviewed 2026-09', en: 'remorse', accept: ['le remords'] },
+  { id: 'chk-prod-a1-001', cefr: 'A1', skill: 'vocabulary-prod', difficulty: 1, reviewStatus: 'verified', provenance: 'authored core, reviewed 2026-09', en: 'water', accept: ['l\'eau', 'de l\'eau'] },
+
+  // ---------------------------------------------------------------- grammar
+  // Choose/produce the controlled form; `accept` lists correct answers.
+  { id: 'chk-gr-a2-001', cefr: 'A2', skill: 'grammar', difficulty: 2, reviewStatus: 'verified', provenance: 'authored core, reviewed 2026-09', prompt: 'Hier, nous ___ au cinéma. (aller)', accept: ['sommes allés', 'sommes allees'] },
+  { id: 'chk-gr-b1-001', cefr: 'B1', skill: 'grammar', difficulty: 2, reviewStatus: 'verified', provenance: 'authored core, reviewed 2026-09', prompt: 'Il faut que tu ___ à l\'heure. (être)', accept: ['sois'] },
+  { id: 'chk-gr-b1-002', cefr: 'B1', skill: 'grammar', difficulty: 3, reviewStatus: 'verified', provenance: 'authored core, reviewed 2026-09', prompt: 'Si j\'avais le temps, je ___ plus. (voyager)', accept: ['voyagerais'] },
+  { id: 'chk-gr-b2-001', cefr: 'B2', skill: 'grammar', difficulty: 4, reviewStatus: 'verified', provenance: 'authored core, reviewed 2026-09', prompt: 'C\'est le livre ___ je t\'ai parlé. (que / dont)', accept: ['dont'] },
+  { id: 'chk-gr-a1-001', cefr: 'A1', skill: 'grammar', difficulty: 1, reviewStatus: 'verified', provenance: 'authored core, reviewed 2026-09', prompt: 'Elle ___ vingt ans. (avoir)', accept: ['a'] },
+
+  // -------------------------------------------------------------- listening
+  // Audio (TTS-rendered at check time) → pick the meaning. `audio` is the
+  // spoken text; `en` is the correct comprehension gloss.
+  { id: 'chk-ls-a2-001', cefr: 'A2', skill: 'listening', difficulty: 2, reviewStatus: 'verified', provenance: 'authored core, reviewed 2026-09', audio: 'Le train de huit heures est annulé, le suivant part à neuf heures.', en: 'The 8 o\'clock train is cancelled; the next leaves at 9.' },
+  { id: 'chk-ls-b1-001', cefr: 'B1', skill: 'listening', difficulty: 3, reviewStatus: 'verified', provenance: 'authored core, reviewed 2026-09', audio: 'Je vous rappelle dès que la livraison est passée, normalement d\'ici jeudi.', en: 'I\'ll call you back once the delivery has been, normally by Thursday.' },
+  { id: 'chk-ls-b1-002', cefr: 'B1', skill: 'listening', difficulty: 2, reviewStatus: 'verified', provenance: 'authored core, reviewed 2026-09', audio: 'Il faudra répéter la présentation avant de la présenter au client.', en: 'The presentation must be rehearsed before showing it to the client.' },
+  { id: 'chk-ls-a1-001', cefr: 'A1', skill: 'listening', difficulty: 1, reviewStatus: 'verified', provenance: 'authored core, reviewed 2026-09', audio: 'Le magasin ferme à dix-neuf heures.', en: 'The shop closes at 7 pm.' },
+
+  // ---------------------------------------------------------------- reading
+  // Short text → pick the meaning or answer a comprehension question.
+  { id: 'chk-rd-b1-001', cefr: 'B1', skill: 'reading', difficulty: 2, reviewStatus: 'verified', provenance: 'authored core, reviewed 2026-09', text: 'Chers voisins, le syndic a fixé l\'assemblée générale au 14 mars à 18h dans la salle commune.', en: 'The building\'s annual meeting is on 14 March at 6 pm.' },
+  { id: 'chk-rd-a2-001', cefr: 'A2', skill: 'reading', difficulty: 1, reviewStatus: 'verified', provenance: 'authored core, reviewed 2026-09', text: 'Fermeture exceptionnelle le lundi matin pour inventaire.', en: 'Closed Monday morning for stocktaking.' },
+  { id: 'chk-rd-b2-001', cefr: 'B2', skill: 'reading', difficulty: 4, reviewStatus: 'verified', provenance: 'authored core, reviewed 2026-09', text: 'Sous réserve d\'accord du conseil, les travaux débuteront à l\'issue de la trêve hivernale.', en: 'Works start after the winter truce, subject to the board\'s approval.' },
+
+  // --------------------------------------------------------------- speaking
+  // Prompt → spoken response; scored by the existing speaking pipeline but
+  // recorded as MEASUREMENT (never mastery, never selection input).
+  { id: 'chk-sp-b1-001', cefr: 'B1', skill: 'speaking', difficulty: 3, reviewStatus: 'verified', provenance: 'authored core, reviewed 2026-09', prompt: 'Décrivez votre dernier week-end en trois phrases.', scoring: 'speaking-pipeline' },
+  { id: 'chk-sp-a2-001', cefr: 'A2', skill: 'speaking', difficulty: 2, reviewStatus: 'verified', provenance: 'authored core, reviewed 2026-09', prompt: 'Présentez-vous en quelques phrases.', scoring: 'speaking-pipeline' },
+
   // --------------------------------------------------------- draft items ----
   // Deliberately NOT verified: these must never be selected (the gates are
   // tested). Reviewing them is what promotes them, not their presence here.
   { id: 'chk-a2-d01', cefr: 'A2', skill: 'vocabulary', difficulty: 2, reviewStatus: 'draft', provenance: 'draft awaiting review', fr: 'un mot en draft', en: 'a draft word' },
   { id: 'chk-b1-d01', cefr: 'B1', skill: 'vocabulary', difficulty: 3, reviewStatus: 'in-review', provenance: 'second review pending', fr: 'un mot en relecture', en: 'a word under review' },
+  { id: 'chk-gr-b1-d01', cefr: 'B1', skill: 'grammar', difficulty: 3, reviewStatus: 'draft', provenance: 'draft awaiting review', prompt: 'draft', accept: ['draft'] },
 ];
 
 const BANK_BY_ID = new Map(HELDOUT_BANK.map((i) => [i.id, i]));
@@ -79,10 +128,17 @@ export function validateBank() {
     if (!item.id || ids.has(item.id)) errors.push(`${item.id || '(no id)'}: missing/duplicate id`);
     ids.add(item.id);
     if (!['A1', 'A2', 'B1', 'B2', 'C1', 'C2'].includes(item.cefr)) errors.push(`${item.id}: bad cefr`);
-    if (!['vocabulary', 'listening', 'grammar', 'reading'].includes(item.skill)) errors.push(`${item.id}: bad skill`);
+    if (!HELDOUT_SKILLS.includes(item.skill)) errors.push(`${item.id}: bad skill`);
     if (!Number.isInteger(item.difficulty) || item.difficulty < 1 || item.difficulty > 5) errors.push(`${item.id}: bad difficulty`);
     if (!['draft', 'in-review', 'verified'].includes(item.reviewStatus)) errors.push(`${item.id}: bad reviewStatus`);
     if (!item.provenance) errors.push(`${item.id}: missing provenance`);
+    // Skill-specific payload sanity.
+    if (item.skill === 'vocabulary' && !(item.fr && item.en)) errors.push(`${item.id}: vocab needs fr+en`);
+    if (item.skill === 'vocabulary-prod' && !(item.en && Array.isArray(item.accept) && item.accept.length)) errors.push(`${item.id}: prod-vocab needs en+accept`);
+    if (item.skill === 'grammar' && !(item.prompt && Array.isArray(item.accept) && item.accept.length)) errors.push(`${item.id}: grammar needs prompt+accept`);
+    if (item.skill === 'listening' && !(item.audio && item.en)) errors.push(`${item.id}: listening needs audio+en`);
+    if (item.skill === 'reading' && !(item.text && item.en)) errors.push(`${item.id}: reading needs text+en`);
+    if (item.skill === 'speaking' && !item.prompt) errors.push(`${item.id}: speaking needs prompt`);
   }
   return { ok: errors.length === 0, errors, n: HELDOUT_BANK.length };
 }
@@ -93,24 +149,33 @@ export function validateBank() {
  * B1, never two bands away), verified only, unseen by this participant.
  * Deterministic per (participant, day).
  */
-export function selectHeldOutItems({ participantId, day, level = 'B1', seenIds = new Set(), limit = 4, bank = HELDOUT_BANK } = {}) {
+export function selectHeldOutItems({ participantId, day, level = 'B1', seenIds = new Set(), limit = 4, skills = ['vocabulary'], bank = HELDOUT_BANK } = {}) {
   if (!participantId) return [];
   const levels = ['A1', 'A2', 'B1', 'B2', 'C1', 'C2'];
   const idx = levels.indexOf(level);
   if (idx < 0) return [];
-  const verified = bank.filter((i) => i.reviewStatus === 'verified');
+  const wanted = Array.isArray(skills) && skills.length ? skills : ['vocabulary'];
+  const verified = bank.filter((i) => i.reviewStatus === 'verified' && wanted.includes(i.skill));
   const own = verified.filter((i) => i.cefr === level && !seenIds.has(i.id));
   // Tight adjacency: only ONE band down or up, never further.
   const adjacent = [levels[idx - 1], levels[idx + 1]].filter(Boolean);
   const near = verified.filter((i) => adjacent.includes(i.cefr) && !seenIds.has(i.id));
-  // Prefer own-band, harder-first within band for ceiling, then adjacent.
-  const pool = [
-    ...own.sort((a, b) => b.difficulty - a.difficulty),
-    ...near.sort((a, b) => b.difficulty - a.difficulty),
-  ];
-  const phase = Math.abs(hashStr(`${participantId}|heldout|${day}`)) % Math.max(1, pool.length);
-  const rotated = pool.length ? [...pool.slice(phase), ...pool.slice(0, phase)] : [];
-  return rotated.slice(0, limit);
+  // Interleave skills so a multi-skill check samples across them; within a
+  // skill prefer harder-first for ceiling measurement.
+  const bySkill = new Map();
+  for (const i of [...own, ...near]) {
+    if (!bySkill.has(i.skill)) bySkill.set(i.skill, []);
+    bySkill.get(i.skill).push(i);
+  }
+  const lanes = [...bySkill.values()].map((rows) => rows.sort((a, b) => b.difficulty - a.difficulty));
+  const interleaved = [];
+  while (interleaved.length < limit && lanes.some((l) => l.length)) {
+    for (const lane of lanes) {
+      if (lane.length && interleaved.length < limit) interleaved.push(lane.shift());
+    }
+  }
+  const phase = Math.abs(hashStr(`${participantId}|heldout|${day}`)) % Math.max(1, interleaved.length);
+  return interleaved.length ? [...interleaved.slice(phase), ...interleaved.slice(0, phase)] : [];
 }
 
 function hashStr(s) {

@@ -1,15 +1,18 @@
-// Practice assignment — the adaptive-vs-balanced study (P1).
+// Practice assignment — ONE authoritative treatment assignment.
 //
-// Every installation is deterministically assigned to one variant from its
-// sync id, so the split is stable and needs no account system:
+//   Not enrolled            → adaptive (the best product experience)
+//   Study arm adaptive      → adaptive
+//   Study arm balanced      → balanced
 //
-//   adaptive  — Today's curriculum targets the learner's mistake graph
-//   balanced  — identical time/modality budget, generic rotating content
+// Balanced exists ONLY as the control condition for consented study
+// participants — declining or ignoring the study can never reduce
+// personalisation. Every consumer (curriculum, calibration, trials,
+// outcomes, exports, analytics) must read the same effectiveVariant, so
+// assigned arm = delivered curriculum = outcome label = exported record.
 //
-// The variant only changes CONTENT SELECTION. Segment structure, minutes
-// and recorders are identical, so time-on-task is comparable by design.
-// Assignment is a study control, not a feature gate: both variants are
-// first-class experiences.
+// `getPracticeAssignment` remains only as a LEGACY OPERATOR OVERRIDE input
+// (study ops pinning an arm pre-enrolment); it no longer decides anything
+// on its own.
 
 const KEY = 'fp.practiceAssignment';
 
@@ -33,6 +36,42 @@ export function setPracticeAssignment(variant) {
   if (!VARIANTS.includes(variant)) return null;
   try { localStorage.setItem(KEY, variant); } catch { /* unavailable */ }
   return variant;
+}
+
+/**
+ * THE authoritative treatment: one function every consumer reads.
+ *
+ *   effectiveVariant({ study }) → 'adaptive' | 'balanced'
+ *
+ *   Not enrolled (no study, declined, withdrawn)  → 'adaptive'
+ *   Enrolled, arm adaptive                        → 'adaptive'
+ *   Enrolled, arm balanced                        → 'balanced'
+ *
+ * `legacyOverride` is the pre-enrolment operator pin (getPracticeAssignment's
+ * value): it seeds the arm at enrolment time via studyFlow, never here.
+ */
+export function effectiveVariant({ study = null } = {}) {
+  if (study
+    && study.status === 'active'
+    && (study.arm === 'adaptive' || study.arm === 'balanced')) {
+    return study.arm;
+  }
+  return 'adaptive';
+}
+
+/**
+ * Validity invariant: does the actually-delivered treatment match the
+ * study arm it would be labelled with? Returns a verdict the caller must
+ * honour — flag (or reject) mismatched records rather than silently
+ * relabelling them.
+ */
+export function verifyTreatmentConsistency({ deliveredVariant = null, study = null } = {}) {
+  const expected = effectiveVariant({ study });
+  if (deliveredVariant == null) return { ok: false, expected, reason: 'no delivery label' };
+  if (deliveredVariant !== expected) {
+    return { ok: false, expected, reason: `delivered '${deliveredVariant}' but study arm implies '${expected}'` };
+  }
+  return { ok: true, expected, reason: null };
 }
 
 // Balanced rotation: generic grammar topics, same drill modality without

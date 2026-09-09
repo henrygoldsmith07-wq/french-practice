@@ -4,7 +4,7 @@ import {
   studyConsentState, recordStudyConsent,
 } from '../lib/studyFlow';
 import {
-  personalOutcomes, studyAggregates, studyDeliveryStats, checkScore,
+  personalOutcomes, checkScore,
   MIN_N_PER_ARM,
 } from '../lib/evidenceStudy';
 import { poolStudyData } from '../lib/researchAggregation';
@@ -58,11 +58,9 @@ export default function StudyPanel() {
       day,
       consent: studyConsentState(),
       personal: personalOutcomes(outcomes),
-      aggregates: studyAggregates(outcomes),
-      delivery: studyDeliveryStats(outcomes),
-      pool,
       checks: checks.map((c) => ({ id: c.id, day: c.day, score: checkScore(c), total: c.results?.total ?? 0 })),
       nParticipants: imports.length,
+      pool,
     };
   }, [busy]);
 
@@ -123,28 +121,28 @@ export default function StudyPanel() {
   }
 
   const { state, day, personal, checks } = data;
-  const aggregates = data.pool.aggregates;
-  const delivery = data.delivery;
+  const comparison = data.pool.comparison;
   const statusLabel = personal.n === 0
     ? 'No data yet'
     : personal.n < MIN_N_PER_ARM
       ? `Provisional · n=${personal.n}`
       : `Collecting · n=${personal.n}`;
-  const armRow = (label, arm, deliveryArm) => (
+  const armRow = (label, arm) => (
     <div className="flex items-baseline gap-2">
       <span className="w-20 shrink-0 text-xs text-ink font-semibold">{label}</span>
-      <span className="w-12 shrink-0 text-[11px] text-ink3 tabular-nums">n={arm.n}</span>
+      <span className="w-16 shrink-0 text-[11px] text-ink3 tabular-nums" title="Participants (sessions never count as participants)">
+        n={arm.participants}
+      </span>
       <span className="text-[11px] text-ink3">
         1–3d {pct(arm.delayedShort.rate == null ? null : Math.round(arm.delayedShort.rate * 100))}
         {' · '}7d+ {pct(arm.delayedLong.rate == null ? null : Math.round(arm.delayedLong.rate * 100))}
         {' · '}transfer {pct(arm.transfer.rate == null ? null : Math.round(arm.transfer.rate * 100))}
         {' · '}recurrence {pct(arm.recurrence.rate == null ? null : Math.round(arm.recurrence.rate * 100))}
+        {' · '}completion {pct(arm.completion.rate == null ? null : Math.round(arm.completion.rate * 100))}
       </span>
-      {deliveryArm && (
-        <span className="text-[10px] text-ink3 tabular-nums shrink-0" title="Delivered sessions · completed · missing 1–3d outcomes">
-          ({deliveryArm.delivered}/{deliveryArm.sessions} delivered · {deliveryArm.completed} complete · {deliveryArm.missingShortRate == null ? '—' : `${deliveryArm.missingShortRate}%`} missing 1–3d)
-        </span>
-      )}
+      <span className="text-[10px] text-ink3 tabular-nums shrink-0" title="Delivered sessions (pooled) · missing 1–3d outcomes">
+        ({arm.sessions} sessions · {arm.missingShort} missing 1–3d)
+      </span>
     </div>
   );
 
@@ -156,7 +154,7 @@ export default function StudyPanel() {
       </div>
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2" data-testid="study-metrics">
         <Metric label="Delayed retention" value={pct(personal.delayedShort)} sub="1–3 days" />
-        <Metric label="New-context transfer" value={pct(personal.transfer)} sub="held-out checks" />
+        <Metric label="Held-out vocabulary transfer" value={pct(personal.transfer)} sub="measurement-only checks" />
         <Metric label="Recurrence" value={pct(personal.recurrence)} sub="after delayed success" />
         <Metric label="Long-term recall" value={pct(personal.delayedLong)} sub="7+ days" />
       </div>
@@ -172,12 +170,9 @@ export default function StudyPanel() {
         <p className="text-[10px] font-bold uppercase tracking-wider text-ink3">
           Adaptive vs balanced — pooled dataset ({data.pool.participants} participant{data.pool.participants === 1 ? '' : 's'}: {data.pool.participantsByArm.adaptive || 0} adaptive · {data.pool.participantsByArm.balanced || 0} balanced)
         </p>
-        {armRow('Adaptive', aggregates.adaptive, delivery.adaptive)}
-        {armRow('Balanced', aggregates.balanced, delivery.balanced)}
-        <p className="text-[10px] text-ink3" data-testid="study-comparison">{aggregates.comparison.message}</p>
-        <p className="text-[10px] text-ink3">
-          Dropout: {pct(delivery.dropout.adaptive)} adaptive · {pct(delivery.dropout.balanced)} balanced (reported only with cohort day counts; never guessed).
-        </p>
+        {armRow('Adaptive', comparison.adaptive)}
+        {armRow('Balanced', comparison.balanced)}
+        <p className="text-[10px] text-ink3" data-testid="study-comparison">{comparison.comparison.message}</p>
       </div>
 
       {data.nParticipants > 0 && (

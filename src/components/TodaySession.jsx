@@ -11,10 +11,11 @@ import {
   probeCapabilities, nextFallback, resolvePlanCapabilities,
 } from '../lib/todayCapabilities';
 import {
-  enrolStudyState, enrolArm, studyStatus, daySinceEnrolment, isCheckScheduled,
+  enrolStudyState, studyStatus, daySinceEnrolment, isCheckScheduled,
   buildHeldOutPool, makeCheckRecord, saveCheckRecord, recordCheckOutcome,
   startOutcomeRecord, linkRetestToOutcomes, markOutcomeRecurrence,
   updateOutcomeDelivery, attachTransferToOutcomes,
+  effectiveVariant, verifyTreatmentConsistency,
 } from '../lib/studyFlow';
 import { getPracticeAssignment, balancedDrillTopic } from '../lib/assignment';
 import { recordSelectionTrial, getSelectionTrial, saveSelectionTrial } from '../lib/storage';
@@ -49,13 +50,13 @@ import { ChevronRight, X } from './icons';
 export default function TodaySession({ open, onClose, minutes = 20, apiKey, mockMode, level, ttsRate, onTurn, onXp, onActivity }) {
   const plan = useMemo(() => {
     if (!open) return null;
-    const variant = getPracticeAssignment(getSyncId());
-    const balanced = variant === 'balanced';
     const graph = getMistakeGraph();
-    // Evidence Study: keep enrolment fresh (idempotent) and record which arm
-    // owns this session. The arm itself is never shown to the learner.
+    // Evidence Study: keep enrolment fresh (idempotent, consent-gated).
     const study = enrolStudyState({ startLevel: level || null });
-    const arm = enrolArm(study, variant);
+    // ONE authoritative treatment: study arm when enrolled+active, else
+    // adaptive. Nonparticipants always get the fully personalised product.
+    const variant = effectiveVariant({ study });
+    const balanced = variant === 'balanced';
     // P2 calibration: join past selection trials with their delayed retest
     // outcomes and derive conservative per-type weights. Below the sample
     // floor this is a no-op — selection stays the urgency order.
@@ -152,7 +153,10 @@ export default function TodaySession({ open, onClose, minutes = 20, apiKey, mock
         calibrationReady: Boolean(calibration.ready),
       });
       // Longitudinal outcome skeleton for this selection (study only).
-      startOutcomeRecord({ trial, graph, arm, day: sDay });
+      // Validity invariant: the label recorded MUST equal the delivered
+      // treatment; a mismatch is flagged, never silently relabelled.
+      const consistency = verifyTreatmentConsistency({ deliveredVariant: variant, study });
+      startOutcomeRecord({ trial, graph, arm: variant, day: sDay, consistency });
     } catch { /* trial logging must never break the session */ }
     return { ...planResolved, study, heldOut, studyDay: sDay };
   }, [open, minutes, apiKey, mockMode, level]);

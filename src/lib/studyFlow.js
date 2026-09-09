@@ -12,18 +12,23 @@ import {
   applyRetestToOutcome, applyRecurrenceToOutcome,
 } from './evidenceStudy.js';
 import { mayEnrol, hasDeclined, makeConsentRecord } from './studyConsent.js';
+import { getPracticeAssignment } from './assignment.js';
 import {
   getStudyState, saveStudyState, getStudyConsent, saveStudyConsent,
   getStudyChecks, saveStudyChecks,
   getStudyOutcomes, saveStudyOutcomes, getSyncId, getLastPlacement,
+  setStudyArmOverride, getStudyArmOverride,
 } from './storage.js';
 
 // Re-exports for components: the study glue is the single study surface.
 export { buildHeldOutPool, makeCheckRecord } from './evidenceStudy.js';
+export { effectiveVariant, verifyTreatmentConsistency } from './assignment.js';
 
 /** Enrol (idempotently) using the placement result as the starting band.
  *  REQUIRES EXPLICIT CONSENT: without an accepted consent record nothing is
- *  created — no participant id, no arm, no study rows. Refusal is sticky. */
+ *  created — no participant id, no arm, no study rows. Refusal is sticky.
+ *  The operator override (getPracticeAssignment's legacy pin) seeds the arm
+ *  at enrolment time ONLY — effectiveVariant reads the study arm alone. */
 export function enrolStudyState({ startLevel = null, now = Date.now() } = {}) {
   try {
     const current = getStudyState();
@@ -32,6 +37,9 @@ export function enrolStudyState({ startLevel = null, now = Date.now() } = {}) {
     if (!mayEnrol(consent, current)) return current; // never asked, or declined
     const placement = getLastPlacement();
     const band = startLevel || placement?.level || null;
+    // Operator pin (if any) seeds the participant's arm at enrolment. An
+    // existing pin wins — seeding never overwrites an operator decision.
+    if (!getStudyArmOverride()) setStudyArmOverride(getPracticeAssignment(getSyncId()));
     const next = enrolStudy(current, {
       syncId: getSyncId(),
       startLevel: band,
@@ -73,7 +81,9 @@ export function recordStudyConsent(decision, { now = Date.now(), enrol = {} } = 
   }
 }
 
-/** The arm that owns this session — study-locked when enrolled, else default. */
+/** The arm that owns this session — study-locked when enrolled, else 'adaptive'.
+ *  SUPERSEDED by effectiveVariant (assignment.js): kept only for callers that
+ *  predate the single-source refactor. */
 export function enrolArm(study, fallbackVariant) {
   try {
     if (isEnrolled(study) && (study.arm === 'adaptive' || study.arm === 'balanced')) {
@@ -162,13 +172,17 @@ export function recordCheckOutcome(checkId, finished) {
 }
 
 /** Start (or refresh) the longitudinal outcome row for a selection trial. */
-export function startOutcomeRecord({ trial, graph = [], arm, day = null }) {
+export function startOutcomeRecord({ trial, graph = [], arm, day = null, consistency = null }) {
   try {
     const list = getStudyOutcomes();
     const node = trial?.selectedId ? graph.find((m) => m.id === trial.selectedId) : null;
     const record = makeOutcomeRecord({ trial, graphNode: node });
     record.variant = arm || trial?.variant || null;
     record.day = Number.isFinite(day) ? day : null;
+    // Validity audit trail: what the study arm implied vs what was delivered.
+    record.treatmentConsistency = consistency
+      ? { ok: Boolean(consistency.ok), expected: consistency.expected ?? null, reason: consistency.reason ?? null }
+      : null;
     const existing = list.findIndex((o) => o.id === record.id);
     if (existing >= 0) list[existing] = record;
     else list.push(record);

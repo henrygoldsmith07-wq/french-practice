@@ -137,12 +137,12 @@ export function isCheckDay(participantId, day, { first = FIRST_CHECK_DAY, every 
  * Unverified bank items and untagged practice words are excluded by design.
  * Deterministic per (participant, day) so reloads cannot reshuffle.
  */
-export function buildHeldOutPool({ participantId, day, level = 'B1', vocabEntries = [], srsMap = {}, listeningTracks = [], limit = 6 } = {}) {
+export function buildHeldOutPool({ participantId, day, level = 'B1', vocabEntries = [], srsMap = {}, listeningTracks = [], limit = 6, skills = ['vocabulary'] } = {}) {
   void vocabEntries; void srsMap; void listeningTracks; // practice content is never held-out material
   if (!participantId) return { words: [], track: null };
   const { selectHeldOutItems } = requireBank();
-  const words = selectHeldOutItems({ participantId, day, level, limit });
-  return { words, track: null };
+  const words = selectHeldOutItems({ participantId, day, level, limit, skills });
+  return { words, track: null, skills: [...new Set(words.map((w) => w.skill))] };
 }
 
 function requireBank() {
@@ -163,6 +163,10 @@ export function makeCheckRecord({ participantId, day, level = 'B1', pool = { wor
     level,
     at: new Date(now).toISOString(),
     wordIds: (pool.words || []).map((w) => w.id),
+    // Per-skill accounting: which banks were sampled, so results can be
+    // reported per skill (vocabulary / vocabulary-prod / grammar / listening
+    // / reading / speaking) and never merged into an overall score.
+    skills: pool.skills || [...new Set((pool.words || []).map((w) => w.skill).filter(Boolean))],
     trackId: pool.track?.id || null,
     results: null,          // filled by recordCheckResult
     engineVersion: STUDY_ENGINE_VERSION,
@@ -287,16 +291,17 @@ function recurrenceRate(rows) {
 }
 
 /**
- * The study dashboard's numbers. Every rate is null below its floor; the
- * comparison object carries `comparable` only when BOTH arms clear MIN_N.
- * No significance tests, no confidence intervals — n is shown instead.
+ * ROW-LEVEL aggregate (convenience for the single-participant dashboard).
+ * Research comparisons must use participantSummaries + armComparison instead:
+ * this function treats each row as an observation of ONE participant, which
+ * is exactly right for the local panel and exactly wrong for arm comparisons.
  */
 export function studyAggregates(outcomes, { now = Date.now() } = {}) {
   void now;
   const adaptive = rowsFor(outcomes, 'adaptive');
   const balanced = rowsFor(outcomes, 'balanced');
   const arm = (rows) => ({
-    n: rows.length,
+    n: rows.length, // ROWS, not participants — do not use for arm gates
     delayedShort: delayedRate(rows, 'delayedShort'),
     delayedLong: delayedRate(rows, 'delayedLong'),
     transfer: transferRate(rows),
@@ -312,8 +317,135 @@ export function studyAggregates(outcomes, { now = Date.now() } = {}) {
     comparison: {
       comparable,
       message: comparable
-        ? 'Both arms reached the minimum sample — rates below are descriptive only, not significance claims.'
+        ? 'Rates below are descriptive only, not significance claims.'
         : `Comparing arms needs at least ${MIN_N_PER_ARM} scored delayed outcomes per arm (adaptive ${a.delayedShort.n}, balanced ${b.delayedShort.n}).`,
+    },
+  };
+}
+
+/**
+ * PARTICIPANT-LEVEL ANALYSIS — the unit of the experiment is the
+ * participant, never the session row.
+ *
+ *   raw outcome rows → group by participantId → participant summary → arm comparison
+ *
+ * Repeated sessions improve a participant's own estimate (weighted means by
+ * scored observations) but must never inflate the participant count. Arm
+ * gates therefore use PARTICIPANTS PER ARM.
+ */
+export function participantSummaries(outcomes) {
+  const byId = new Map();
+  for (const o of Array.isArray(outcomes) ? outcomes : []) {
+    if (!o || typeof o !== 'object') continue;
+    const pid = o.participantId || null;
+    if (!pid) continue; // rows without a participant can't enter the analysis
+    if (!byId.has(pid)) byId.set(pid, []);
+    byId.get(pid).push(o);
+  }
+  const summaries = [];
+  for (const [participantId, rows] of [...byId.entries()].sort()) {
+    const arm = rows.find((r) => r.variant === 'adaptive' || r.variant === 'balanced')?.variant || null;
+    if (!arm) continue; // unlabelled rows cannot be analysed
+    const sessions = rows.length;
+    const completedKnown = rows.filter((o) => typeof o.completed === 'boolean');
+    const days = rows.map((o) => o.day).filter(Number.isFinite);
+    const ats = rows.map((o) => Date.parse(o.at)).filter(Number.isFinite);
+    const summary = {
+      participantId,
+      arm,
+      sessions,
+      completion: rate(rows, (o) => (typeof o.completed === 'boolean' ? o.completed : null)),
+      delayedShort: rate(rows, (o) => (o.delayedShort && typeof o.delayedShort.correct === 'boolean' ? o.delayedShort.correct : null)),
+      delayedLong: rate(rows, (o) => (o.delayedLong && typeof o.delayedLong.correct === 'boolean' ? o.delayedLong.correct : null)),
+      transfer: mean(rows, (o) => (o.transfer && typeof o.transfer.score === 'number' ? o.transfer.score : null)),
+      recurrence: rate(rows, (o) => (typeof o.recurred === 'boolean' ? o.recurred : null)),
+      missingShort: rows.filter((o) => o.delayedShort == null).length,
+      missingLong: rows.filter((o) => o.delayedLong == null).length,
+      missingRate: sessions ? Math.round((rows.filter((o) => o.delayedShort == null && o.delayedLong == null).length / sessions) * 100) : null,
+      firstDay: days.length ? Math.min(...days) : null,
+      lastDay: days.length ? Math.max(...days) : null,
+      durationDays: days.length ? Math.max(...days) - Math.min(...days) : null,
+      firstAt: ats.length ? Math.min(...ats) : null,
+      lastAt: ats.length ? Math.max(...ats) : null,
+      // Research-honesty flags: withdrawn participants stop contributing new
+      // rows, but their existing rows stay analysable unless excluded upstream.
+      completedKnown: completedKnown.length,
+    };
+    summaries.push(summary);
+  }
+  return summaries;
+}
+
+/** Observation-weighted rate for one participant (null below the floor). */
+function rate(rows, pick, floor = 1) {
+  const vals = rows.map(pick).filter((v) => typeof v === 'boolean');
+  if (vals.length < floor) return { rate: null, n: vals.length };
+  return { rate: vals.filter(Boolean).length / vals.length, n: vals.length };
+}
+
+function mean(rows, pick, floor = 1) {
+  const vals = rows.map(pick).filter((v) => typeof v === 'number');
+  if (vals.length < floor) return { mean: null, n: vals.length };
+  return { mean: vals.reduce((a, v) => a + v, 0) / vals.length, n: vals.length };
+}
+
+/**
+ * Arm-level comparison over PARTICIPANT SUMMARIES. n = participants; the
+ * comparison gate is participants per arm, and every rate averages the
+ * participants' own estimates (weighted by each participant's observation
+ * count in the message copy as "scored outcomes", never sessions).
+ */
+export function armComparison(summaries, { minPerArm = MIN_N_PER_ARM } = {}) {
+  const armStats = (arm) => {
+    const rows = summaries.filter((s) => s.arm === arm);
+    const participants = rows.length;
+    // Pool each participant's boolean observations for arm-level rates, but
+    // report n as PARTICIPANTS.
+    const obs = (pick) => {
+      let ok = 0; let n = 0;
+      for (const s of rows) {
+        const v = pick(s);
+        if (v == null) continue;
+        ok += v.ok; n += v.n;
+      }
+      return n >= minPerArm ? { rate: ok / n, n: participants } : { rate: null, n: participants };
+    };
+    const transferObs = () => {
+      let sum = 0; let n = 0;
+      for (const s of rows) {
+        if (s.transfer.mean == null) continue;
+        sum += s.transfer.mean * s.transfer.n;
+        n += s.transfer.n;
+      }
+      return n >= MIN_TRANSFER_N ? { rate: sum / n / 100, n: participants } : { rate: null, n: participants };
+    };
+    return {
+      participants,
+      delayedShort: obs((s) => (s.delayedShort.rate == null ? null : { ok: s.delayedShort.rate * s.delayedShort.n, n: s.delayedShort.n })),
+      delayedLong: obs((s) => (s.delayedLong.rate == null ? null : { ok: s.delayedLong.rate * s.delayedLong.n, n: s.delayedLong.n })),
+      transfer: transferObs(),
+      recurrence: obs((s) => (s.recurrence.rate == null ? null : { ok: s.recurrence.rate * s.recurrence.n, n: s.recurrence.n })),
+      completion: obs((s) => (s.completion.rate == null ? null : { ok: s.completion.rate * s.completion.n, n: s.completion.n })),
+      sessions: rows.reduce((a, s) => a + s.sessions, 0),
+      missingShort: rows.reduce((a, s) => a + s.missingShort, 0),
+      missingLong: rows.reduce((a, s) => a + s.missingLong, 0),
+    };
+  };
+  const adaptive = armStats('adaptive');
+  const balanced = armStats('balanced');
+  const comparable = adaptive.participants >= minPerArm
+    && balanced.participants >= minPerArm
+    && adaptive.delayedShort.rate != null
+    && balanced.delayedShort.rate != null;
+  return {
+    adaptive,
+    balanced,
+    comparison: {
+      comparable,
+      minPerArm,
+      message: comparable
+        ? `Both arms reached ${minPerArm}+ participants — rates below are descriptive only, not significance claims.`
+        : `Comparing arms needs at least ${minPerArm} PARTICIPANTS per arm (adaptive ${adaptive.participants}, balanced ${balanced.participants}); sessions never count as participants.`,
     },
   };
 }
