@@ -8,13 +8,20 @@
 // starting CEFR estimate, a locked arm (never revealed in the UI), and a
 // deterministic per-participant schedule of held-out transfer checks.
 //
+// PROTOCOL INTEGRITY: methodology constants live in studyProtocol.js (frozen,
+// versioned). This module imports them — the numbers here are references to
+// the protocol, not independent definitions.
+//
 // PRIVACY / LOCAL-FIRST: everything lives in localStorage under fp.studyKeys
 // below. Nothing leaves the device except through the existing opt-in
 // validation-bundle export (now v2), which carries only the anonymised
 // participant id, the CEFR band, and outcome rows — never transcripts, names
 // or raw conversation content.
 
+import { PROTOCOL_VERSION } from './studyProtocol.js';
+
 export const STUDY_ENGINE_VERSION = 1;
+export { PROTOCOL_VERSION } from './studyProtocol.js';
 
 // ── schedule knobs (deterministic, versioned) ──────────────────────────────
 export const CHECK_EVERY_DAYS = 3;      // a held-out check every 3rd study day
@@ -68,6 +75,7 @@ export function enrolStudy(prev, { syncId = '', startLevel = null, startTheta = 
   return {
     schemaVersion: 1,
     engineVersion: STUDY_ENGINE_VERSION,
+    protocolVersion: PROTOCOL_VERSION,
     participantId: pid,
     arm: assignment.arm,             // LOCKED; the dashboard never prints it
     armSource: assignment.source,    // 'saved-override' | 'sync-id-hash'

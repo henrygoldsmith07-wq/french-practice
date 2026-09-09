@@ -32,7 +32,7 @@ test('enrolment requires explicit consent; participant id + arm persist across r
   await expect(page.getByText(/Evidence study/i).first()).toBeVisible({ timeout: 10_000 });
   await expect(page.getByTestId('study-status')).toContainText(/Not enrolled/i, { timeout: 10_000 });
   await page.getByRole('button', { name: /Join the study/i }).click();
-  await expect(page.getByTestId('study-status')).toContainText(/No data yet/i, { timeout: 10_000 });
+  await expect(page.getByTestId('study-status')).toContainText(/Not enough evidence yet/i, { timeout: 10_000 });
   const created = await page.evaluate(() => JSON.parse(localStorage.getItem('fp.study.state.v1')));
   expect(created).toBeTruthy();
   expect(created.participantId).toMatch(/^participant-/);
@@ -78,7 +78,7 @@ test('the dashboard never reveals the arm and gates the comparison', async ({ pa
   expect(body).not.toContain(`Arm: ${stored.arm}`);
   expect(body).not.toMatch(/assigned to (adaptive|balanced)/i);
   // Honesty: status prints Provisional/No data, comparison message gates.
-  await expect(page.getByTestId('study-status')).toContainText(/Provisional|No data yet/);
+  await expect(page.getByTestId('study-status')).toContainText(/Provisional|Not enough evidence yet/);
   await expect(page.getByTestId('study-comparison')).toContainText(/needs at least/i);
 });
 

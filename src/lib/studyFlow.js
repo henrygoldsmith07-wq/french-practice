@@ -10,8 +10,9 @@ import {
   enrolStudy, isEnrolled, studyDay, isCheckDay, buildHeldOutPool,
   makeCheckRecord, recordCheckResult, makeOutcomeRecord, withdrawStudy,
   applyRetestToOutcome, applyRecurrenceToOutcome, cleanBaseline,
+  PROTOCOL_VERSION,
 } from './evidenceStudy.js';
-import { mayEnrol, hasDeclined, makeConsentRecord, consentGuardOk } from './studyConsent.js';
+import { mayEnrol, hasDeclined, makeConsentRecord, consentGuardOk, protocolVersionOk } from './studyConsent.js';
 import { getPracticeAssignment } from './assignment.js';
 import {
   getStudyState, saveStudyState, getStudyConsent, saveStudyConsent,
@@ -59,11 +60,16 @@ export function enrolStudyState({ startLevel = null, now = Date.now() } = {}) {
 function captureBaseline() {
   try {
     const sessions = getSessions();
-    const recent = sessions.slice(-6);
-    const avg = recent.length
-      ? recent.reduce((a, s) => a + (s.report?.average_scores?.overall ?? 0), 0) / recent.length
+    // Average ONLY over sessions that actually carry the metric — a session
+    // without a report contributes nothing (never zero).
+    const scored = sessions
+      .slice(-6)
+      .map((s) => s?.report?.average_scores?.overall)
+      .filter((v) => v != null && Number.isFinite(Number(v)));
+    const avg = scored.length
+      ? scored.reduce((a, v) => a + Number(v), 0) / scored.length
       : null;
-    return cleanBaseline({ speakingAverage: Number.isFinite(avg) ? Math.round(avg) : null });
+    return cleanBaseline({ speakingAverage: avg != null ? Math.round(avg) : null });
   } catch {
     return cleanBaseline(null);
   }
@@ -96,6 +102,17 @@ export const learnerHasDeclined = () => {
 export function canRecordStudyData() {
   try {
     return consentGuardOk(getStudyConsent(), getStudyState());
+  } catch {
+    return false;
+  }
+}
+
+/** Protocol-aware guard: the study record must be consented AND collected
+ *  under a protocol version this build understands. Future/unknown
+ *  protocols pause collection rather than mixing methodologies. */
+function canRecordUnderProtocol() {
+  try {
+    return protocolVersionOk(getStudyState(), PROTOCOL_VERSION);
   } catch {
     return false;
   }
@@ -175,7 +192,7 @@ export const isCheckScheduled = (study, day) => {
 /** Build AND persist the frozen check record for today (idempotent by id). */
 export function saveCheckRecord(check) {
   // Research-write guard: no consent/active study, no fp.study.* write.
-  if (!canRecordStudyData()) return null;
+  if (!canRecordStudyData() || !canRecordUnderProtocol()) return null;
   try {
     const list = getStudyChecks();
     if (list.some((c) => c.id === check.id)) return list.find((c) => c.id === check.id);
@@ -190,7 +207,7 @@ export function saveCheckRecord(check) {
 /** Fold finished check results in (measurement-only, never mastery). */
 export function recordCheckOutcome(checkId, finished) {
   // Research-write guard: no consent/active study, no fp.study.* write.
-  if (!canRecordStudyData()) return null;
+  if (!canRecordStudyData() || !canRecordUnderProtocol()) return null;
   try {
     if (!finished) return null;
     const list = getStudyChecks();
@@ -212,7 +229,7 @@ export function recordCheckOutcome(checkId, finished) {
 /** Start (or refresh) the longitudinal outcome row for a selection trial. */
 export function startOutcomeRecord({ trial, graph = [], arm, day = null, consistency = null }) {
   // Research-write guard: no consent/active study, no fp.study.* write.
-  if (!canRecordStudyData()) return null;
+  if (!canRecordStudyData() || !canRecordUnderProtocol()) return null;
   try {
     const list = getStudyOutcomes();
     const node = trial?.selectedId ? graph.find((m) => m.id === trial.selectedId) : null;
@@ -241,7 +258,7 @@ export function startOutcomeRecord({ trial, graph = [], arm, day = null, consist
  */
 export function linkRetestToOutcomes({ mistakeId, retest, trialAt = null }) {
   // Research-write guard: no consent/active study, no fp.study.* write.
-  if (!canRecordStudyData()) return;
+  if (!canRecordStudyData() || !canRecordUnderProtocol()) return;
   try {
     if (!mistakeId || !retest) return;
     const list = getStudyOutcomes();
@@ -262,7 +279,7 @@ export function linkRetestToOutcomes({ mistakeId, retest, trialAt = null }) {
 /** Recurrence: fresh occurrence after a delayed success, per outcome row. */
 export function markOutcomeRecurrence({ mistakeId, trialAt = null, recurred = true }) {
   // Research-write guard: no consent/active study, no fp.study.* write.
-  if (!canRecordStudyData()) return;
+  if (!canRecordStudyData() || !canRecordUnderProtocol()) return;
   try {
     const list = getStudyOutcomes();
     let touched = false;
@@ -279,7 +296,7 @@ export function markOutcomeRecurrence({ mistakeId, trialAt = null, recurred = tr
 /** Delivery facts recorded when the Today session finishes. */
 export function updateOutcomeDelivery({ trialAt, timeSpent, completed, delivered }) {
   // Research-write guard: no consent/active study, no fp.study.* write.
-  if (!canRecordStudyData()) return;
+  if (!canRecordStudyData() || !canRecordUnderProtocol()) return;
   try {
     if (!trialAt) return;
     const list = getStudyOutcomes();
@@ -295,7 +312,7 @@ export function updateOutcomeDelivery({ trialAt, timeSpent, completed, delivered
 /** Held-out check accuracy folded onto outcome rows of the same study day. */
 export function attachTransferToOutcomes({ day, score }) {
   // Research-write guard: no consent/active study, no fp.study.* write.
-  if (!canRecordStudyData()) return;
+  if (!canRecordStudyData() || !canRecordUnderProtocol()) return;
   try {
     if (!Number.isFinite(score)) return;
     const list = getStudyOutcomes();

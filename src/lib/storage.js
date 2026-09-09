@@ -38,6 +38,7 @@ import {
   setArmOverrideReader,
 } from './evidenceStudy.js';
 import { consentGuardOk } from './studyConsent.js';
+import { protocolRecord } from './studyProtocol.js';
 // Thin localStorage wrapper — the app's only persistence layer (no backend).
 
 const KEYS = {
@@ -2454,6 +2455,8 @@ export function buildStudyBundle({ includeStudy = true } = {}) {
   }
   bundle.version = 2;
   bundle.study = study ? {
+    // ── participant dataset contract: the minimum metadata needed for
+    // reproducible analysis. No transcripts, no names, no raw sentences.
     participantId: study.participantId,
     arm: study.arm,                       // researchers need the arm; UI never shows it
     armSource: study.armSource,
@@ -2461,9 +2464,14 @@ export function buildStudyBundle({ includeStudy = true } = {}) {
     startTheta: null,                     // deliberately stripped: not needed for analysis
     enrolledAt: study.enrolledAt,
     weeks: study.weeks ?? null,
-    status: study.status,
+    status: study.status,                 // active | withdrawn (completion in outcomes)
+    withdrawnAt: study.withdrawnAt ?? null,
     engineVersion: study.engineVersion ?? null,
+    schemaVersion: study.schemaVersion ?? null,
+    protocolVersion: study.protocolVersion ?? null,
+    baseline: study.baseline ?? null,     // study-start measures with capturedAt (nulls preserved)
   } : null;
+  bundle.protocol = protocolRecord();     // frozen methodology in force
   bundle.studyOutcomes = getStudyOutcomes().map((o) => ({
     id: o.id,
     at: o.at,
@@ -2481,15 +2489,19 @@ export function buildStudyBundle({ includeStudy = true } = {}) {
     hintsUsed: o.hintsUsed ?? null,
     timeSpent: o.timeSpent ?? null,
     completed: o.completed ?? null,
+    delivered: Array.isArray(o.delivered) ? o.delivered.map((d) => ({ id: d.id, seconds: d.seconds ?? null, skipped: Boolean(d.skipped) })) : null,
+    treatmentConsistency: o.treatmentConsistency ?? null,
   }));
   bundle.studyChecks = getStudyChecks().map((c) => ({
     id: c.id,
     day: c.day,
     level: c.level,
     at: c.at,
+    skills: c.skills ?? null,             // per-skill accounting; transfer stays per-skill
     trackId: c.trackId ?? null,
     results: c.results ?? null,
     engineVersion: c.engineVersion ?? null,
+    protocolVersion: c.protocolVersion ?? null,
   }));
   return bundle;
 }

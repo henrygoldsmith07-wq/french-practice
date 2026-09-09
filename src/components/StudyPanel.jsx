@@ -71,7 +71,7 @@ export default function StudyPanel() {
       <section className="bg-surface border border-line rounded-2xl p-5 space-y-3">
         <h3 className="text-[11px] font-bold uppercase tracking-wider text-ink2">Evidence study</h3>
         <p className="text-[10px] font-bold uppercase tracking-wider text-ink3" data-testid="study-status">
-          {withdrawn ? 'Withdrawn' : declined ? 'Not participating' : 'Evidence status: Not enrolled (no consent yet)'}
+          {withdrawn ? 'Withdrawn' : declined ? 'Not participating' : 'Not enough evidence yet (not enrolled)'}
         </p>
         {withdrawn && (
           <p className="text-xs text-ink2">You have withdrawn. Study data was deleted; practice history is untouched.</p>
@@ -123,10 +123,10 @@ export default function StudyPanel() {
   const { state, day, personal, checks } = data;
   const comparison = data.pool.comparison;
   const statusLabel = personal.n === 0
-    ? 'No data yet'
+    ? 'Not enough evidence yet'
     : personal.n < MIN_N_PER_ARM
-      ? `Provisional · n=${personal.n}`
-      : `Collecting · n=${personal.n}`;
+      ? `Not enough evidence yet · collecting (n=${personal.n})`
+      : `Collecting · n=${personal.n} — outcomes not yet comparable`;
   const p = (v) => (v == null ? '—' : `${Math.round(v * 100)}%`);
   const armBlock = (label, arm) => (
     <div className="space-y-1" data-testid={`arm-${label.toLowerCase()}`}>

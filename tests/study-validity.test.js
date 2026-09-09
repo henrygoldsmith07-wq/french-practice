@@ -203,8 +203,8 @@ function mkBundle(pid, arm, { outcomes = [], version = 2, corruptOutcome = null,
     exportedAt: new Date().toISOString(),
     stores: {},
     study: wrongArm
-      ? { participantId: pid, arm: wrongArm, startLevel: 'B1', enrolledAt: '2026-09-01T09:00:00Z', status: 'active' }
-      : { participantId: pid, arm, startLevel: 'B1', enrolledAt: '2026-09-01T09:00:00Z', status: 'active' },
+      ? { participantId: pid, arm: wrongArm, startLevel: 'B1', enrolledAt: '2026-09-01T09:00:00Z', status: 'active', protocolVersion: 1 }
+      : { participantId: pid, arm, startLevel: 'B1', enrolledAt: '2026-09-01T09:00:00Z', status: 'active', protocolVersion: 1 },
     studyOutcomes: corruptOutcome ? [corruptOutcome] : outcomes,
     studyChecks: [],
   };
@@ -218,7 +218,7 @@ test('pooled aggregation: dedupe, schema validation, malformed rejection', async
     immediate: null, delayedShort: { correct: true, at: new Date().toISOString(), delayDays: 2 },
     delayedLong: null, transfer: null, recurred: null,
   });
-  const local = { participantId: 'participant-local', arm: 'adaptive', startLevel: 'B1', enrolledAt: '2026-09-01T09:00:00Z', status: 'active' };
+  const local = { participantId: 'participant-local', arm: 'adaptive', startLevel: 'B1', enrolledAt: '2026-09-01T09:00:00Z', status: 'active', protocolVersion: 1 };
   // 8 adaptive + 8 balanced participants (multi-session each) — powered pool.
   const armBundle = (pid, arm) => mkBundle(pid, arm, {
     outcomes: Array.from({ length: 9 }, (_, i) => goodOutcome(`${pid}-${i}`, arm)),

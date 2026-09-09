@@ -7,7 +7,8 @@
 //   · imported rows NEVER touch learner practice stores (read-only pooling);
 //   · every pooled rate keeps its sample gate.
 
-import { participantSummaries, armComparison, studyDeliveryStats } from './evidenceStudy.js';
+import { participantSummaries, armComparison, studyDeliveryStats, changeFromBaseline } from './evidenceStudy.js';
+import { PROTOCOL_VERSION } from './studyProtocol.js';
 
 export const POOL_SCHEMA_VERSION = 2;
 const OUTCOME_SCHEMA_VERSION = 1;
@@ -20,6 +21,11 @@ function isValidStudyRecord(study) {
   if (typeof study.enrolledAt !== 'string' || Number.isNaN(Date.parse(study.enrolledAt))) return false;
   if (study.startLevel != null && !['A1', 'A2', 'B1', 'B2', 'C1', 'C2'].includes(study.startLevel)) return false;
   if (study.startTheta != null) return false; // theta must be stripped at export
+  // Protocol integrity: reject records from protocols this build cannot
+  // interpret (missing version, or NEWER than this build's frozen protocol).
+  // Older-but-known versions stay analysable and are tagged for the researcher.
+  if (!Number.isInteger(study.protocolVersion)) return false;
+  if (study.protocolVersion > PROTOCOL_VERSION) return false;
   return true;
 }
 
@@ -105,7 +111,19 @@ export function poolStudyData({ localStudy = null, localOutcomes = [], imports =
   }
 
   const rejected = [];
-  for (const imp of imports) {
+  for (const raw of imports) {
+    // Accept BOTH shapes: raw exported bundles and the stored import records
+    // storage.getImportedStudyBundles() returns ({participantId, study,
+    // outcomes, checks, importedAt}). Normalise to a bundle for validation.
+    const imp = (raw && raw.study && !raw.format)
+      ? {
+          format: 'le-studio.validation-study',
+          version: 2,
+          study: raw.study,
+          studyOutcomes: raw.outcomes || [],
+          studyChecks: raw.checks || [],
+        }
+      : raw;
     const v = validateImportedBundle(imp);
     if (!v.ok) { rejected.push({ participantId: imp?.study?.participantId || '(unknown)', errors: v.errors }); continue; }
     const existing = participants.get(v.study.participantId);
@@ -126,14 +144,21 @@ export function poolStudyData({ localStudy = null, localOutcomes = [], imports =
   }
 
   // PARTICIPANT-level analysis: rows → participant summaries → arm gates on
-  // participants. Session rows never inflate n.
+  // participants. Session rows never inflate n. Baselines travel with each
+  // participant record for change-from-baseline reporting.
+  const studiesById = {};
+  for (const p of participants.values()) {
+    studiesById[p.participantId] = p;
+  }
   const summaries = participantSummaries(pooledOutcomes);
+  const baselineChanges = changeFromBaseline(summaries, { studiesById });
 
   return {
     participants: participants.size,
     participantsByArm,
     outcomes: pooledOutcomes,
     summaries,
+    baselineChanges,
     rejected,
     comparison: armComparison(summaries),
     delivery: studyDeliveryStats(pooledOutcomes),

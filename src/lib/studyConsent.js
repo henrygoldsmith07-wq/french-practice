@@ -61,3 +61,18 @@ export function consentGuardOk(consent, study) {
     return false;
   }
 }
+
+/**
+ * Protocol-integrity check for a study record: the record must carry a
+ * known protocol version no newer than this build's. Unknown or future
+ * protocols must not silently mix into this build's data.
+ */
+export function protocolVersionOk(study, currentProtocolVersion) {
+  try {
+    const v = study?.protocolVersion;
+    if (!Number.isInteger(v)) return false;
+    return v <= currentProtocolVersion;
+  } catch {
+    return false;
+  }
+}

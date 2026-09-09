@@ -139,12 +139,12 @@ test('pooled delivery stats come from the pooled dataset and count sessions sepa
   const { aggregation } = f;
   const mk = (pid, arm) => ({
     format: 'le-studio.validation-study', version: 2, stores: {},
-    study: { participantId: pid, arm, enrolledAt: '2026-09-01T09:00:00Z', status: 'active' },
+    study: { participantId: pid, arm, protocolVersion: 1, enrolledAt: '2026-09-01T09:00:00Z', status: 'active', protocolVersion: 1 },
     studyOutcomes: mkRows(pid, arm, 5),
     studyChecks: [],
   });
   const pool = aggregation.poolStudyData({
-    localStudy: { participantId: 'participant-local', arm: 'adaptive', enrolledAt: '2026-09-01T09:00:00Z', status: 'active' },
+    localStudy: { participantId: 'participant-local', arm: 'adaptive', protocolVersion: 1, enrolledAt: '2026-09-01T09:00:00Z', status: 'active', protocolVersion: 1 },
     localOutcomes: mkRows('participant-local', 'adaptive', 5),
     imports: [mk('participant-i1', 'balanced'), mk('participant-i2', 'balanced')],
   });
