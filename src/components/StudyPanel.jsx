@@ -127,22 +127,45 @@ export default function StudyPanel() {
     : personal.n < MIN_N_PER_ARM
       ? `Provisional · n=${personal.n}`
       : `Collecting · n=${personal.n}`;
-  const armRow = (label, arm) => (
-    <div className="flex items-baseline gap-2">
-      <span className="w-20 shrink-0 text-xs text-ink font-semibold">{label}</span>
-      <span className="w-16 shrink-0 text-[11px] text-ink3 tabular-nums" title="Participants (sessions never count as participants)">
-        n={arm.participants}
-      </span>
-      <span className="text-[11px] text-ink3">
-        1–3d {pct(arm.delayedShort.rate == null ? null : Math.round(arm.delayedShort.rate * 100))}
-        {' · '}7d+ {pct(arm.delayedLong.rate == null ? null : Math.round(arm.delayedLong.rate * 100))}
-        {' · '}transfer {pct(arm.transfer.rate == null ? null : Math.round(arm.transfer.rate * 100))}
-        {' · '}recurrence {pct(arm.recurrence.rate == null ? null : Math.round(arm.recurrence.rate * 100))}
-        {' · '}completion {pct(arm.completion.rate == null ? null : Math.round(arm.completion.rate * 100))}
-      </span>
-      <span className="text-[10px] text-ink3 tabular-nums shrink-0" title="Delivered sessions (pooled) · missing 1–3d outcomes">
-        ({arm.sessions} sessions · {arm.missingShort} missing 1–3d)
-      </span>
+  const p = (v) => (v == null ? '—' : `${Math.round(v * 100)}%`);
+  const armBlock = (label, arm) => (
+    <div className="space-y-1" data-testid={`arm-${label.toLowerCase()}`}>
+      <div className="flex items-baseline gap-2">
+        <span className="w-20 shrink-0 text-xs text-ink font-semibold">{label}</span>
+        <span className="text-[11px] text-ink3 tabular-nums">
+          Enrolled: {arm.participants} · Eligible: {arm.eligibleParticipants} · Sessions: {arm.sessions}
+        </span>
+      </div>
+      <div className="flex items-baseline gap-2">
+        <span className="w-20 shrink-0 text-[11px] text-ink3">1–3d evidence:</span>
+        <span className="text-[11px] text-ink tabular-nums">
+          {arm.delayedShort.mean == null ? '—' : `${Math.round(arm.delayedShort.mean * 100)}% (median ${Math.round(arm.delayedShort.median * 100)}%)`} from {arm.delayedShort.scoredParticipants} scored participants
+        </span>
+      </div>
+      <div className="flex items-baseline gap-2">
+        <span className="w-20 shrink-0 text-[11px] text-ink3">7d+ evidence:</span>
+        <span className="text-[11px] text-ink tabular-nums">
+          {arm.delayedLong.mean == null ? '—' : `${Math.round(arm.delayedLong.mean * 100)}%`} from {arm.delayedLong.scoredParticipants} scored participants
+        </span>
+      </div>
+      <div className="flex items-baseline gap-2">
+        <span className="w-20 shrink-0 text-[11px] text-ink3">Transfer (vocab):</span>
+        <span className="text-[11px] text-ink tabular-nums">
+          {arm.transfer.mean == null ? '—' : `${Math.round(arm.transfer.mean * 100)}%`} from {arm.transfer.scoredParticipants} scored participants
+        </span>
+      </div>
+      <div className="flex items-baseline gap-2">
+        <span className="w-20 shrink-0 text-[11px] text-ink3">Recurrence:</span>
+        <span className="text-[11px] text-ink tabular-nums">
+          {arm.recurrence.mean == null ? '—' : `${Math.round(arm.recurrence.mean * 100)}%`} from {arm.recurrence.scoredParticipants} scored participants
+        </span>
+      </div>
+      <div className="flex items-baseline gap-2">
+        <span className="w-20 shrink-0 text-[11px] text-ink3">Completion:</span>
+        <span className="text-[11px] text-ink tabular-nums">
+          {arm.completion.mean == null ? '—' : `${Math.round(arm.completion.mean * 100)}%`} from {arm.completion.scoredParticipants} scored participants
+        </span>
+      </div>
     </div>
   );
 
@@ -166,13 +189,17 @@ export default function StudyPanel() {
         {checks.length ? ` ${checks.length} check${checks.length === 1 ? '' : 's'} so far.` : ''}
       </p>
 
-      <div className="border-t border-line pt-2 space-y-1.5">
+      <div className="border-t border-line pt-2 space-y-2">
         <p className="text-[10px] font-bold uppercase tracking-wider text-ink3">
-          Adaptive vs balanced — pooled dataset ({data.pool.participants} participant{data.pool.participants === 1 ? '' : 's'}: {data.pool.participantsByArm.adaptive || 0} adaptive · {data.pool.participantsByArm.balanced || 0} balanced)
+          Adaptive vs balanced — pooled, participant-weighted ({data.pool.participants} participant{data.pool.participants === 1 ? '' : 's'}: {data.pool.participantsByArm.adaptive || 0} adaptive · {data.pool.participantsByArm.balanced || 0} balanced)
         </p>
-        {armRow('Adaptive', comparison.adaptive)}
-        {armRow('Balanced', comparison.balanced)}
+        {armBlock('Adaptive', comparison.adaptive)}
+        {armBlock('Balanced', comparison.balanced)}
         <p className="text-[10px] text-ink3" data-testid="study-comparison">{comparison.comparison.message}</p>
+        <p className="text-[10px] text-ink3">
+          Each metric prints only when its own scored-participant floor is met. Participant-weighted:
+          one contribution per participant per metric — heavy practice never outweighs a quiet learner.
+        </p>
       </div>
 
       {data.nParticipants > 0 && (

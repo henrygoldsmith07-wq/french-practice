@@ -36,3 +36,28 @@ export function mayEnrol(consent, studyState) {
 export function hasDeclined(consent) {
   return consent?.decision === 'declined';
 }
+
+/**
+ * THE central research-write guard — pure, dependency-free core so both
+ * studyFlow.js and storage.js can enforce it (storage cannot import
+ * studyFlow without a cycle).
+ *
+ * True only when ALL hold:
+ *   · consent decision is 'accepted';
+ *   · study status is 'active';
+ *   · a participant id exists;
+ *   · the study arm is valid.
+ * A failing guard means "return without touching any fp.study.* data" —
+ * normal adaptive practice is never affected either way.
+ */
+export function consentGuardOk(consent, study) {
+  try {
+    if (consent?.decision !== 'accepted') return false;
+    if (!study || study.status !== 'active') return false;
+    if (typeof study.participantId !== 'string' || !study.participantId.startsWith('participant-')) return false;
+    if (study.arm !== 'adaptive' && study.arm !== 'balanced') return false;
+    return true;
+  } catch {
+    return false;
+  }
+}

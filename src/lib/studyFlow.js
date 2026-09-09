@@ -9,15 +9,15 @@
 import {
   enrolStudy, isEnrolled, studyDay, isCheckDay, buildHeldOutPool,
   makeCheckRecord, recordCheckResult, makeOutcomeRecord, withdrawStudy,
-  applyRetestToOutcome, applyRecurrenceToOutcome,
+  applyRetestToOutcome, applyRecurrenceToOutcome, cleanBaseline,
 } from './evidenceStudy.js';
-import { mayEnrol, hasDeclined, makeConsentRecord } from './studyConsent.js';
+import { mayEnrol, hasDeclined, makeConsentRecord, consentGuardOk } from './studyConsent.js';
 import { getPracticeAssignment } from './assignment.js';
 import {
   getStudyState, saveStudyState, getStudyConsent, saveStudyConsent,
   getStudyChecks, saveStudyChecks,
   getStudyOutcomes, saveStudyOutcomes, getSyncId, getLastPlacement,
-  setStudyArmOverride, getStudyArmOverride,
+  setStudyArmOverride, getStudyArmOverride, getSessions,
 } from './storage.js';
 
 // Re-exports for components: the study glue is the single study surface.
@@ -44,12 +44,28 @@ export function enrolStudyState({ startLevel = null, now = Date.now() } = {}) {
       syncId: getSyncId(),
       startLevel: band,
       startTheta: placement?.theta ?? null,
+      baseline: captureBaseline(),
       now,
     });
     saveStudyState(next);
     return next;
   } catch {
     return null;
+  }
+}
+
+/** Baseline capture at enrolment: from the learner's real, existing
+ *  data only — never generated, never zero-filled. Nulls mean unmeasured. */
+function captureBaseline() {
+  try {
+    const sessions = getSessions();
+    const recent = sessions.slice(-6);
+    const avg = recent.length
+      ? recent.reduce((a, s) => a + (s.report?.average_scores?.overall ?? 0), 0) / recent.length
+      : null;
+    return cleanBaseline({ speakingAverage: Number.isFinite(avg) ? Math.round(avg) : null });
+  } catch {
+    return cleanBaseline(null);
   }
 }
 
@@ -66,6 +82,24 @@ export function studyConsentState() {
 export const learnerHasDeclined = () => {
   try { return hasDeclined(getStudyConsent()); } catch { return false; }
 };
+
+/**
+ * THE central research-write guard: every write into fp.study.* must pass
+ * through here. True only when ALL hold:
+ *   · consent decision is 'accepted';
+ *   · study status is 'active';
+ *   · a participant id exists;
+ *   · the study arm is valid.
+ * A failing guard means "return without touching any study data" — normal
+ * adaptive practice is never affected either way.
+ */
+export function canRecordStudyData() {
+  try {
+    return consentGuardOk(getStudyConsent(), getStudyState());
+  } catch {
+    return false;
+  }
+}
 
 /** Record an explicit consent decision (the only path that sets one). */
 export function recordStudyConsent(decision, { now = Date.now(), enrol = {} } = {}) {
@@ -140,6 +174,8 @@ export const isCheckScheduled = (study, day) => {
 
 /** Build AND persist the frozen check record for today (idempotent by id). */
 export function saveCheckRecord(check) {
+  // Research-write guard: no consent/active study, no fp.study.* write.
+  if (!canRecordStudyData()) return null;
   try {
     const list = getStudyChecks();
     if (list.some((c) => c.id === check.id)) return list.find((c) => c.id === check.id);
@@ -153,6 +189,8 @@ export function saveCheckRecord(check) {
 
 /** Fold finished check results in (measurement-only, never mastery). */
 export function recordCheckOutcome(checkId, finished) {
+  // Research-write guard: no consent/active study, no fp.study.* write.
+  if (!canRecordStudyData()) return null;
   try {
     if (!finished) return null;
     const list = getStudyChecks();
@@ -173,6 +211,8 @@ export function recordCheckOutcome(checkId, finished) {
 
 /** Start (or refresh) the longitudinal outcome row for a selection trial. */
 export function startOutcomeRecord({ trial, graph = [], arm, day = null, consistency = null }) {
+  // Research-write guard: no consent/active study, no fp.study.* write.
+  if (!canRecordStudyData()) return null;
   try {
     const list = getStudyOutcomes();
     const node = trial?.selectedId ? graph.find((m) => m.id === trial.selectedId) : null;
@@ -200,6 +240,8 @@ export function startOutcomeRecord({ trial, graph = [], arm, day = null, consist
  * never reach the retention windows.
  */
 export function linkRetestToOutcomes({ mistakeId, retest, trialAt = null }) {
+  // Research-write guard: no consent/active study, no fp.study.* write.
+  if (!canRecordStudyData()) return;
   try {
     if (!mistakeId || !retest) return;
     const list = getStudyOutcomes();
@@ -219,6 +261,8 @@ export function linkRetestToOutcomes({ mistakeId, retest, trialAt = null }) {
 
 /** Recurrence: fresh occurrence after a delayed success, per outcome row. */
 export function markOutcomeRecurrence({ mistakeId, trialAt = null, recurred = true }) {
+  // Research-write guard: no consent/active study, no fp.study.* write.
+  if (!canRecordStudyData()) return;
   try {
     const list = getStudyOutcomes();
     let touched = false;
@@ -234,6 +278,8 @@ export function markOutcomeRecurrence({ mistakeId, trialAt = null, recurred = tr
 
 /** Delivery facts recorded when the Today session finishes. */
 export function updateOutcomeDelivery({ trialAt, timeSpent, completed, delivered }) {
+  // Research-write guard: no consent/active study, no fp.study.* write.
+  if (!canRecordStudyData()) return;
   try {
     if (!trialAt) return;
     const list = getStudyOutcomes();
@@ -248,6 +294,8 @@ export function updateOutcomeDelivery({ trialAt, timeSpent, completed, delivered
 
 /** Held-out check accuracy folded onto outcome rows of the same study day. */
 export function attachTransferToOutcomes({ day, score }) {
+  // Research-write guard: no consent/active study, no fp.study.* write.
+  if (!canRecordStudyData()) return;
   try {
     if (!Number.isFinite(score)) return;
     const list = getStudyOutcomes();

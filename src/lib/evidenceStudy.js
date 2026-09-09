@@ -60,7 +60,7 @@ function randomId(prefix) {
  * never fork a participant, and a withdrawal cannot be silently undone.
  * Rejoining after withdrawal is explicit: clear the record, then enrol.
  */
-export function enrolStudy(prev, { syncId = '', startLevel = null, startTheta = null, weeks = STUDY_WEEKS_DEFAULT, seed = null, now = Date.now() } = {}) {
+export function enrolStudy(prev, { syncId = '', startLevel = null, startTheta = null, weeks = STUDY_WEEKS_DEFAULT, seed = null, baseline = null, now = Date.now() } = {}) {
   if (prev?.status === 'active' || prev?.status === 'withdrawn') return prev;
   const pid = seed ? `${seed}` : randomId('participant');
   const band = ['A1', 'A2', 'B1', 'B2', 'C1', 'C2'].includes(startLevel) ? startLevel : null;
@@ -75,8 +75,52 @@ export function enrolStudy(prev, { syncId = '', startLevel = null, startTheta = 
     startLevel: band,
     startTheta: Number.isFinite(Number(startTheta)) ? Number(startTheta) : null,
     weeks: Math.max(4, Math.min(26, Math.round(weeks))),
+    // BASELINE (study-start state, for change-from-baseline reporting):
+    // whatever the caller measured at enrolment — retention proxy, speaking
+    // average, transfer probe score, proficiency. Nulls mean "not measured",
+    // never zero.
+    baseline: cleanBaseline(baseline),
     status: 'active',
   };
+}
+
+/** Baseline shape: numeric-or-null on every key, stamped when captured. */
+export function cleanBaseline(baseline, now = Date.now()) {
+  const b = baseline && typeof baseline === 'object' ? baseline : {};
+  const num = (v) => (v != null && Number.isFinite(Number(v)) ? Number(v) : null);
+  return {
+    capturedAt: b.capturedAt || new Date(now).toISOString(),
+    delayedShortRecall: num(b.delayedShortRecall),   // % correct on recent 1–3d retests
+    transferScore: num(b.transferScore),             // held-out probe score 0–100
+    speakingAverage: num(b.speakingAverage),         // session-report overall avg
+    recurrenceRate: num(b.recurrenceRate),           // % recurring after delayed success
+    proficiency: num(b.proficiency),                 // proficiency score if present
+  };
+}
+
+/**
+ * Change-from-baseline: per-participant, per-metric deltas (post − baseline).
+ * DESCRIPTIVE ONLY — raw post-study percentages alone never claim causal
+ * superiority, and neither do these deltas; they exist so a researcher can
+ * see movement within arms before any cross-arm comparison.
+ */
+export function changeFromBaseline(summaries, { studiesById = {} } = {}) {
+  return summaries.map((s) => {
+    const study = studiesById[s.participantId] || null;
+    const b = study?.baseline || null;
+    const delta = (post, pre) => (post == null || pre == null ? null : Math.round((post - pre) * 1000) / 1000);
+    return {
+      participantId: s.participantId,
+      arm: s.arm,
+      baseline: b,
+      delta: {
+        delayedShort: delta(s.delayedShort.rate, b?.delayedShortRecall != null ? b.delayedShortRecall / 100 : null),
+        transfer: delta(s.transfer.mean, b?.transferScore),
+        speaking: delta(s.speakingAverage ?? null, b?.speakingAverage),
+        recurrence: delta(s.recurrence.rate, b?.recurrenceRate != null ? b.recurrenceRate / 100 : null),
+      },
+    };
+  });
 }
 
 /** Deterministic arm from participant id (override wins — study operators only). */
@@ -390,42 +434,65 @@ function mean(rows, pick, floor = 1) {
 }
 
 /**
- * Arm-level comparison over PARTICIPANT SUMMARIES. n = participants; the
- * comparison gate is participants per arm, and every rate averages the
- * participants' own estimates (weighted by each participant's observation
- * count in the message copy as "scored outcomes", never sessions).
+ * Arm-level comparison over PARTICIPANT SUMMARIES — participant-weighted.
+ *
+ *   raw observations → participant metric → ONE contribution per participant
+ *   → arm aggregate (mean, median, spread)
+ *
+ * A participant with 50 sessions contributes exactly one 1–3d retention
+ * estimate to the arm, same as a participant with one. Pooled observation-
+ * level rates are deliberately NOT reconstructed. Each metric keeps its own
+ * scored-participant count and stays hidden until its own floor is met.
  */
-export function armComparison(summaries, { minPerArm = MIN_N_PER_ARM } = {}) {
+export function armComparison(summaries, { minPerArm = MIN_N_PER_ARM, minScoredPerMetric = MIN_TRANSFER_N } = {}) {
+  const spread = (vals) => {
+    if (vals.length < 2) return { iqr: null, range: null };
+    const s = [...vals].sort((a, b) => a - b);
+    const q = (p) => {
+      const i = (s.length - 1) * p;
+      const lo = Math.floor(i); const hi = Math.ceil(i);
+      return s[lo] + (s[hi] - s[lo]) * (i - lo);
+    };
+    return { iqr: Math.round((q(0.75) - q(0.25)) * 1000) / 1000, range: Math.round((s[s.length - 1] - s[0]) * 1000) / 1000 };
+  };
+  const median = (vals) => {
+    if (!vals.length) return null;
+    const s = [...vals].sort((a, b) => a - b);
+    const mid = Math.floor(s.length / 2);
+    return s.length % 2 ? s[mid] : (s[mid - 1] + s[mid]) / 2;
+  };
   const armStats = (arm) => {
     const rows = summaries.filter((s) => s.arm === arm);
     const participants = rows.length;
-    // Pool each participant's boolean observations for arm-level rates, but
-    // report n as PARTICIPANTS.
-    const obs = (pick) => {
-      let ok = 0; let n = 0;
-      for (const s of rows) {
-        const v = pick(s);
-        if (v == null) continue;
-        ok += v.ok; n += v.n;
+    // One contribution per participant per metric.
+    const contrib = (pick) => rows.map(pick).filter((v) => v != null);
+    const metric = (vals) => {
+      const scored = vals.length;
+      if (participants < minPerArm || scored < minScoredPerMetric) {
+        return { mean: null, median: null, spread: spread([]), scoredParticipants: scored, rate: null, n: participants };
       }
-      return n >= minPerArm ? { rate: ok / n, n: participants } : { rate: null, n: participants };
+      const m = vals.reduce((a, v) => a + v, 0) / scored;
+      return {
+        mean: Math.round(m * 1000) / 1000,
+        median: Math.round(median(vals) * 1000) / 1000,
+        spread: spread(vals),
+        scoredParticipants: scored,
+        rate: Math.round(m * 100) / 100,   // legacy 0..1 alias
+        n: participants,                   // participants, always
+      };
     };
-    const transferObs = () => {
-      let sum = 0; let n = 0;
-      for (const s of rows) {
-        if (s.transfer.mean == null) continue;
-        sum += s.transfer.mean * s.transfer.n;
-        n += s.transfer.n;
-      }
-      return n >= MIN_TRANSFER_N ? { rate: sum / n / 100, n: participants } : { rate: null, n: participants };
-    };
+    const pRate = (pick) => pick.rate == null ? null : pick.rate;
     return {
       participants,
-      delayedShort: obs((s) => (s.delayedShort.rate == null ? null : { ok: s.delayedShort.rate * s.delayedShort.n, n: s.delayedShort.n })),
-      delayedLong: obs((s) => (s.delayedLong.rate == null ? null : { ok: s.delayedLong.rate * s.delayedLong.n, n: s.delayedLong.n })),
-      transfer: transferObs(),
-      recurrence: obs((s) => (s.recurrence.rate == null ? null : { ok: s.recurrence.rate * s.recurrence.n, n: s.recurrence.n })),
-      completion: obs((s) => (s.completion.rate == null ? null : { ok: s.completion.rate * s.completion.n, n: s.completion.n })),
+      eligibleParticipants: rows.filter((s) => s.sessions > 0).length,
+      evidenceShort: rows.filter((s) => s.delayedShort.rate != null).length,
+      evidenceLong: rows.filter((s) => s.delayedLong.rate != null).length,
+      evidenceTransfer: rows.filter((s) => s.transfer.mean != null).length,
+      delayedShort: metric(contrib((s) => pRate(s.delayedShort))),
+      delayedLong: metric(contrib((s) => pRate(s.delayedLong))),
+      transfer: metric(contrib((s) => (s.transfer.mean == null ? null : s.transfer.mean / 100))),
+      recurrence: metric(contrib((s) => pRate(s.recurrence))),
+      completion: metric(contrib((s) => pRate(s.completion))),
       sessions: rows.reduce((a, s) => a + s.sessions, 0),
       missingShort: rows.reduce((a, s) => a + s.missingShort, 0),
       missingLong: rows.reduce((a, s) => a + s.missingLong, 0),
@@ -435,19 +502,55 @@ export function armComparison(summaries, { minPerArm = MIN_N_PER_ARM } = {}) {
   const balanced = armStats('balanced');
   const comparable = adaptive.participants >= minPerArm
     && balanced.participants >= minPerArm
-    && adaptive.delayedShort.rate != null
-    && balanced.delayedShort.rate != null;
+    && adaptive.delayedShort.mean != null
+    && balanced.delayedShort.mean != null;
   return {
     adaptive,
     balanced,
+    weighting: 'participant',
     comparison: {
       comparable,
       minPerArm,
+      minScoredPerMetric,
       message: comparable
-        ? `Both arms reached ${minPerArm}+ participants — rates below are descriptive only, not significance claims.`
-        : `Comparing arms needs at least ${minPerArm} PARTICIPANTS per arm (adaptive ${adaptive.participants}, balanced ${balanced.participants}); sessions never count as participants.`,
+        ? `Both arms reached ${minPerArm}+ participants — participant-weighted means/medians are descriptive only, not significance claims.`
+        : `Comparing arms needs at least ${minPerArm} PARTICIPANTS per arm (adaptive ${adaptive.participants}, balanced ${balanced.participants}); sessions never count as participants, and each metric needs ${minScoredPerMetric}+ scored participants.`,
     },
   };
+}
+
+/**
+ * Attrition by arm, derived from STUDY RECORDS (status + last activity),
+ * never from missing outcome rows — absence of data is not withdrawal.
+ *   active      enrolment record still active with recent sessions
+ *   completed   reached the study's target weeks with activity
+ *   withdrawn   explicit withdrawal recorded
+ *   inactive    active but no sessions in the last `inactiveAfterDays`
+ */
+export function attritionByArm(studyRecords, { now = Date.now(), weeks = null, inactiveAfterDays = 14 } = {}) {
+  const weekMs = (weeks || STUDY_WEEKS_DEFAULT) * 7 * 86400000;
+  const byArm = {
+    adaptive: { enrolled: 0, active: 0, completed: 0, withdrawn: 0, inactive: 0 },
+    balanced: { enrolled: 0, active: 0, completed: 0, withdrawn: 0, inactive: 0 },
+  };
+  for (const rec of Array.isArray(studyRecords) ? studyRecords : []) {
+    if (!rec || (rec.arm !== 'adaptive' && rec.arm !== 'balanced')) continue;
+    const arm = byArm[rec.arm];
+    arm.enrolled += 1;
+    if (rec.status === 'withdrawn') { arm.withdrawn += 1; continue; }
+    const enrolledAt = Date.parse(rec.enrolledAt || 0);
+    // No activity record yet: a recent enrolment is active (absence of data
+    // is not withdrawal), an old enrolment with nothing ever logged is
+    // inactive.
+    const lastAt = rec.lastActivityAt != null ? Date.parse(rec.lastActivityAt)
+      : (rec.lastAt != null ? Date.parse(rec.lastAt) : (Number.isFinite(enrolledAt) ? enrolledAt : null));
+    const finished = Number.isFinite(enrolledAt) && (now - enrolledAt) >= weekMs && Number.isFinite(lastAt) && (lastAt - enrolledAt) >= weekMs * 0.75;
+    if (finished) { arm.completed += 1; continue; }
+    const quiet = !Number.isFinite(lastAt) || (now - lastAt) > inactiveAfterDays * 86400000;
+    if (quiet) arm.inactive += 1;
+    else arm.active += 1;
+  }
+  return byArm;
 }
 
 /**

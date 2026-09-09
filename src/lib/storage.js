@@ -37,6 +37,7 @@ import {
 import {
   setArmOverrideReader,
 } from './evidenceStudy.js';
+import { consentGuardOk } from './studyConsent.js';
 // Thin localStorage wrapper — the app's only persistence layer (no backend).
 
 const KEYS = {
@@ -2441,6 +2442,16 @@ export function buildStudyBundle({ includeStudy = true } = {}) {
   const bundle = buildValidationBundle();
   if (!includeStudy) return bundle;
   const study = getStudyState();
+  // Study export requires the same consent guard as any research write: no
+  // active consented participation, no study streams leave the device.
+  if (!consentGuardOk(getStudyConsent(), study)) {
+    bundle.version = 2;
+    bundle.study = null;
+    bundle.studyOutcomes = [];
+    bundle.studyChecks = [];
+    bundle.studyExportNote = 'Study streams withheld: no active consented participation.';
+    return bundle;
+  }
   bundle.version = 2;
   bundle.study = study ? {
     participantId: study.participantId,
