@@ -18,27 +18,33 @@
 // participant id, the CEFR band, and outcome rows — never transcripts, names
 // or raw conversation content.
 
-import { PROTOCOL_VERSION } from './studyProtocol.js';
+import { PROTOCOL_VERSION, PROTOCOL } from './studyProtocol.js';
 
 export const STUDY_ENGINE_VERSION = 1;
 export { PROTOCOL_VERSION } from './studyProtocol.js';
 
-// ── schedule knobs (deterministic, versioned) ──────────────────────────────
-export const CHECK_EVERY_DAYS = 3;      // a held-out check every 3rd study day
-export const FIRST_CHECK_DAY = 2;       // skip day 0-1: let the loop warm up
-export const MIN_MINUTES = 10;          // sessions below this don't freeze records
+// ── schedule knobs ──────────────────────────────────────────────────────────
+// SINGLE SOURCE OF TRUTH: these are DERIVED from the frozen protocol
+// (studyProtocol.js) — no methodology number is defined here. The legacy
+// names stay exported for compatibility, but they are protocol views, not
+// independent constants: change the protocol, and every one of them moves.
+
+export const CHECK_EVERY_DAYS = PROTOCOL.duration.checkEveryDays;      // a held-out check every Nth study day
+export const FIRST_CHECK_DAY = PROTOCOL.duration.firstCheckDay;        // skip the warm-up days
+export const MIN_MINUTES = PROTOCOL.duration.minSessionMinutes;        // sessions below this don't freeze records
 
 // Delayed-recall windows (days). Only outcomes from the graph's DELAYED
 // evidence classes can ever fall in them; immediate retries never qualify.
-export const SHORT_DELAY_DAYS = { min: 1, max: 3 };
-export const LONG_DELAY_DAYS = { min: 7, max: null };
+// Shapes: protocol uses minDays/maxDays; runtime legacy keys are min/max.
+export const SHORT_DELAY_DAYS = { min: PROTOCOL.delayedWindows.short.minDays, max: PROTOCOL.delayedWindows.short.maxDays };
+export const LONG_DELAY_DAYS = { min: PROTOCOL.delayedWindows.long.minDays, max: PROTOCOL.delayedWindows.long.maxDays };
 
 // ── aggregate reporting gates (mirroring the app's honesty rules) ──────────
-export const MIN_N_PER_ARM = 8;         // before an arm's rate prints at all
-export const MIN_TRANSFER_N = 5;        // before a new-context rate prints
+export const MIN_N_PER_ARM = PROTOCOL.minSamples.participantsPerArm;   // participants before an arm compares
+export const MIN_TRANSFER_N = PROTOCOL.minSamples.scoredParticipantsPerMetric; // scored participants before a metric prints
 
 const ARMS = ['adaptive', 'balanced'];
-const STUDY_WEEKS_DEFAULT = 8;
+const STUDY_WEEKS_DEFAULT = PROTOCOL.duration.defaultWeeks;
 
 function hash01(str) {
   let h = 0;
@@ -189,10 +195,12 @@ export function isCheckDay(participantId, day, { first = FIRST_CHECK_DAY, every 
  * Unverified bank items and untagged practice words are excluded by design.
  * Deterministic per (participant, day) so reloads cannot reshuffle.
  */
-export function buildHeldOutPool({ participantId, day, level = 'B1', vocabEntries = [], srsMap = {}, listeningTracks = [], limit = 6, skills = ['vocabulary'] } = {}) {
+export function buildHeldOutPool({ participantId, day, level = 'B1', vocabEntries = [], srsMap = {}, listeningTracks = [], limit = PROTOCOL.heldOut.itemsPerCheck, skills = PROTOCOL.transfer.reportedPerSkill } = {}) {
   void vocabEntries; void srsMap; void listeningTracks; // practice content is never held-out material
   if (!participantId) return { words: [], track: null };
   const { selectHeldOutItems } = requireBank();
+  // Protocol-driven skill coverage: every reported skill is sampled, and the
+  // item count per check comes from the frozen protocol.
   const words = selectHeldOutItems({ participantId, day, level, limit, skills });
   return { words, track: null, skills: [...new Set(words.map((w) => w.skill))] };
 }
@@ -375,6 +383,78 @@ export function studyAggregates(outcomes, { now = Date.now() } = {}) {
   };
 }
 
+// ── analysis inclusion: every row gets ONE explicit classification ─────────
+
+export const ANALYSIS_CLASSIFICATIONS = {
+  included: 'included',
+  excludedTreatmentMismatch: 'excluded-treatment-mismatch',
+  excludedMissingParticipant: 'excluded-missing-participant',
+  excludedInvalidProtocol: 'excluded-invalid-protocol',
+  excludedInvalidRow: 'excluded-invalid-row',
+  excludedAsrUncertain: 'excluded-asr-uncertain',
+  excludedWrongArmLabel: 'excluded-wrong-arm-label',
+};
+
+/**
+ * Pre-registered inclusion logic (protocol.analysis/exclusions) applied
+ * row-by-row. Arm comparisons consume ONLY 'included' rows; contaminated
+ * records are flagged with a reason — never repaired or relabelled.
+ *
+ * Classifications (mutually exclusive, first failure wins):
+ *   excluded-invalid-row            not an object / no id / no variant label
+ *   excluded-missing-participant    no participant id on the row
+ *   excluded-invalid-protocol       protocol version missing, unknown or future
+ *   excluded-treatment-mismatch     treatmentConsistency.ok === false
+ *   excluded-wrong-arm-label        variant label disagrees with the participant's arm
+ *   excluded-asr-uncertain          recognition, not language, likely failed
+ *   included                        eligible for arm comparison
+ */
+export function classifyOutcomeForAnalysis(row, { studiesById = {}, currentProtocolVersion = PROTOCOL_VERSION } = {}) {
+  const C = ANALYSIS_CLASSIFICATIONS;
+  if (!row || typeof row !== 'object' || typeof row.id !== 'string' || !row.id) {
+    return { classification: C.excludedInvalidRow, reason: 'row missing or has no id' };
+  }
+  if (row.variant !== 'adaptive' && row.variant !== 'balanced') {
+    return { classification: C.excludedInvalidRow, reason: `invalid variant label '${row.variant}'` };
+  }
+  const pid = typeof row.participantId === 'string' && row.participantId ? row.participantId : null;
+  if (!pid) return { classification: C.excludedMissingParticipant, reason: 'no participant id' };
+  const study = studiesById[pid] || null;
+  if (!study || !Number.isInteger(study.protocolVersion)) {
+    return { classification: C.excludedInvalidProtocol, reason: 'participant record has no protocol version' };
+  }
+  if (study.protocolVersion > currentProtocolVersion) {
+    return { classification: C.excludedInvalidProtocol, reason: `protocol v${study.protocolVersion} newer than analysis build (v${currentProtocolVersion})` };
+  }
+  if (row.treatmentConsistency && row.treatmentConsistency.ok === false) {
+    return { classification: C.excludedTreatmentMismatch, reason: row.treatmentConsistency.reason || 'delivered treatment disagrees with study arm' };
+  }
+  if (row.variant !== study.arm) {
+    return { classification: C.excludedWrongArmLabel, reason: `row variant '${row.variant}' vs participant arm '${study.arm}'` };
+  }
+  if (row.asrUncertain === true) {
+    return { classification: C.excludedAsrUncertain, reason: 'ASR uncertainty: recognition, not language, likely failed' };
+  }
+  return { classification: C.included, reason: null };
+}
+
+/** Classify a whole outcome set; returns included rows + per-class counts. */
+export function classifyOutcomesForAnalysis(outcomes, opts = {}) {
+  const included = [];
+  const counts = {};
+  const details = [];
+  for (const row of Array.isArray(outcomes) ? outcomes : []) {
+    const v = classifyOutcomeForAnalysis(row, opts);
+    counts[v.classification] = (counts[v.classification] || 0) + 1;
+    if (v.classification !== ANALYSIS_CLASSIFICATIONS.included) {
+      details.push({ id: row?.id ?? null, classification: v.classification, reason: v.reason });
+    } else {
+      included.push(row);
+    }
+  }
+  return { included, counts, details, total: Array.isArray(outcomes) ? outcomes.length : 0 };
+}
+
 /**
  * PARTICIPANT-LEVEL ANALYSIS — the unit of the experiment is the
  * participant, never the session row.
@@ -530,16 +610,19 @@ export function armComparison(summaries, { minPerArm = MIN_N_PER_ARM, minScoredP
 /**
  * Attrition by arm, derived from STUDY RECORDS (status + last activity),
  * never from missing outcome rows — absence of data is not withdrawal.
- *   active      enrolment record still active with recent sessions
- *   completed   reached the study's target weeks with activity
- *   withdrawn   explicit withdrawal recorded
- *   inactive    active but no sessions in the last `inactiveAfterDays`
+ *   active                  enrolment active with recent sessions
+ *   completed               reached the study's target weeks with activity
+ *   withdrawn               explicit withdrawal recorded
+ *   inactive                active but no sessions in the last `inactiveAfterDays`
+ *   insufficientFollowUp    enrolled too recently to expect activity yet
+ * The five categories partition the enrolled cohort.
  */
 export function attritionByArm(studyRecords, { now = Date.now(), weeks = null, inactiveAfterDays = 14 } = {}) {
   const weekMs = (weeks || STUDY_WEEKS_DEFAULT) * 7 * 86400000;
+  const followUpMs = 7 * 86400000; // less than a week enrolled: nothing expected yet
   const byArm = {
-    adaptive: { enrolled: 0, active: 0, completed: 0, withdrawn: 0, inactive: 0 },
-    balanced: { enrolled: 0, active: 0, completed: 0, withdrawn: 0, inactive: 0 },
+    adaptive: { enrolled: 0, active: 0, completed: 0, withdrawn: 0, inactive: 0, insufficientFollowUp: 0 },
+    balanced: { enrolled: 0, active: 0, completed: 0, withdrawn: 0, inactive: 0, insufficientFollowUp: 0 },
   };
   for (const rec of Array.isArray(studyRecords) ? studyRecords : []) {
     if (!rec || (rec.arm !== 'adaptive' && rec.arm !== 'balanced')) continue;
@@ -554,6 +637,7 @@ export function attritionByArm(studyRecords, { now = Date.now(), weeks = null, i
       : (rec.lastAt != null ? Date.parse(rec.lastAt) : (Number.isFinite(enrolledAt) ? enrolledAt : null));
     const finished = Number.isFinite(enrolledAt) && (now - enrolledAt) >= weekMs && Number.isFinite(lastAt) && (lastAt - enrolledAt) >= weekMs * 0.75;
     if (finished) { arm.completed += 1; continue; }
+    if (Number.isFinite(enrolledAt) && (now - enrolledAt) < followUpMs) { arm.insufficientFollowUp += 1; continue; }
     const quiet = !Number.isFinite(lastAt) || (now - lastAt) > inactiveAfterDays * 86400000;
     if (quiet) arm.inactive += 1;
     else arm.active += 1;

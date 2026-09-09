@@ -294,24 +294,26 @@ test('attritionByArm classifies active/completed/withdrawn/inactive from records
     ...(lastActivityDaysAgo != null ? { lastActivityAt: new Date(now - lastActivityDaysAgo * 86400000).toISOString() } : {}),
   });
   const records = [
-    rec('participant-act1', 'adaptive', 'active', 5, 1),      // active
-    rec('participant-act2', 'adaptive', 'active', 2),         // active (no activity yet, recent)
+    rec('participant-act1', 'adaptive', 'active', 10, 1),     // active: past follow-up, recent activity
+    rec('participant-act2', 'adaptive', 'active', 2),         // insufficient follow-up (2d enrolled)
     rec('participant-gone', 'adaptive', 'active', 60, 45),    // inactive: quiet 45d
     rec('participant-done', 'adaptive', 'active', 70, 5),     // completed: 10w elapsed, active through week 9
     rec('participant-wd', 'adaptive', 'withdrawn', 10, 3),    // withdrawn
-    rec('participant-b1', 'balanced', 'active', 3, 1),
+    rec('participant-b1', 'balanced', 'active', 3, 1),        // insufficient follow-up
     rec('participant-bwd', 'balanced', 'withdrawn', 8, 2),
   ];
   const byArm = evidenceStudy.attritionByArm(records, { now });
   assert.equal(byArm.adaptive.enrolled, 5);
-  assert.equal(byArm.adaptive.active, 2);
+  assert.equal(byArm.adaptive.active, 1, 'act1: 10d enrolled, 1d ago activity');
+  assert.equal(byArm.adaptive.insufficientFollowUp, 1, 'act2: enrolled 2d ago — nothing expected yet');
   assert.equal(byArm.adaptive.completed, 1);
   assert.equal(byArm.adaptive.inactive, 1);
   assert.equal(byArm.adaptive.withdrawn, 1);
   assert.equal(byArm.balanced.enrolled, 2);
+  assert.equal(byArm.balanced.insufficientFollowUp, 1, 'b1: enrolled 3d ago');
   assert.equal(byArm.balanced.withdrawn, 1);
-  // A learner with MANY missing outcome rows but recent activity is still active.
-  assert.equal(byArm.adaptive.active + byArm.adaptive.inactive + byArm.adaptive.withdrawn + byArm.adaptive.completed, byArm.adaptive.enrolled, 'categories partition the cohort');
+  // The five categories partition the enrolled cohort.
+  assert.equal(byArm.adaptive.active + byArm.adaptive.insufficientFollowUp + byArm.adaptive.inactive + byArm.adaptive.withdrawn + byArm.adaptive.completed, byArm.adaptive.enrolled, 'categories partition the cohort');
 });
 
 // ── held-out skill isolation persists ──────────────────────────────────────

@@ -78,6 +78,12 @@ export const PROTOCOL = {
     maxWeeks: 26,
     firstCheckDay: 2,
     checkEveryDays: 3,
+    minSessionMinutes: 10, // sessions below this don't freeze records
+  },
+
+  // Held-out checks: how many verified items a single check carries.
+  heldOut: {
+    itemsPerCheck: 3,
   },
 
   // Analysis method: participant is the independent unit.
@@ -116,10 +122,11 @@ export function protocolRecord() {
     minSamples: PROTOCOL.minSamples,
     transfer: { measurementOnly: PROTOCOL.transfer.measurementOnly, reportedPerSkill: PROTOCOL.transfer.reportedPerSkill, overallScoreAllowed: PROTOCOL.transfer.overallScoreAllowed },
     exclusions: PROTOCOL.exclusions,
-    durationWeeks: PROTOCOL.duration.defaultWeeks,
-    analysisUnit: PROTOCOL.analysis.unit,
-    heldOutBankVersion: PROTOCOL.heldOutBankVersion,
-    engineVersion: 3, // mistake-graph evidence engine version in force
-    frozen: true,
-  };
+  durationWeeks: PROTOCOL.duration.defaultWeeks,
+  analysisUnit: PROTOCOL.analysis.unit,
+  heldOutBankVersion: PROTOCOL.heldOutBankVersion,
+  heldOut: PROTOCOL.heldOut,
+  engineVersion: 3, // mistake-graph evidence engine version in force
+  frozen: true,
+};
 }

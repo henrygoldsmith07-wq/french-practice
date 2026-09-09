@@ -7,7 +7,7 @@
 //   · imported rows NEVER touch learner practice stores (read-only pooling);
 //   · every pooled rate keeps its sample gate.
 
-import { participantSummaries, armComparison, studyDeliveryStats, changeFromBaseline } from './evidenceStudy.js';
+import { participantSummaries, armComparison, studyDeliveryStats, changeFromBaseline, classifyOutcomesForAnalysis, attritionByArm } from './evidenceStudy.js';
 import { PROTOCOL_VERSION } from './studyProtocol.js';
 
 export const POOL_SCHEMA_VERSION = 2;
@@ -87,6 +87,12 @@ export function validateImportedBundle(bundle) {
       enrolledAt: study.enrolledAt,
       status: study.status || 'active',
       weeks: study.weeks ?? null,
+      protocolVersion: study.protocolVersion,
+      engineVersion: study.engineVersion ?? null,
+      schemaVersion: study.schemaVersion ?? null,
+      armSource: study.armSource ?? null,
+      withdrawnAt: study.withdrawnAt ?? null,
+      baseline: study.baseline ?? null,
     },
     checks: checks.map((c) => ({ ...c, participantId: study.participantId })),
   };
@@ -150,19 +156,55 @@ export function poolStudyData({ localStudy = null, localOutcomes = [], imports =
   for (const p of participants.values()) {
     studiesById[p.participantId] = p;
   }
-  const summaries = participantSummaries(pooledOutcomes);
+  // Pre-registered inclusion logic: arm comparisons consume ONLY rows the
+  // classifier marks 'included'; every exclusion keeps its reason.
+  const classification = classifyOutcomesForAnalysis(pooledOutcomes, { studiesById, currentProtocolVersion: PROTOCOL_VERSION });
+  const summaries = participantSummaries(classification.included);
   const baselineChanges = changeFromBaseline(summaries, { studiesById });
 
   return {
     participants: participants.size,
     participantsByArm,
     outcomes: pooledOutcomes,
+    analysisRows: classification.included,
+    exclusionCounts: classification.counts,
+    exclusionDetails: classification.details,
     summaries,
     baselineChanges,
     rejected,
     comparison: armComparison(summaries),
     delivery: studyDeliveryStats(pooledOutcomes),
+    // Attrition from study RECORDS (pooled cohort), never from missing rows.
+    attrition: attritionByArm([...participants.values()], { now: Date.now() }),
+    // Baseline availability per arm: usable / post / both.
+    baselineCoverage: baselineCoverage(summaries, studiesById),
   };
+}
+
+/**
+ * Baseline-analysis availability per arm — descriptive counts only:
+ *   withUsableBaseline  participant record carries a baseline with ≥1 measure
+ *   withPostMeasure     participant summary has ≥1 post measure
+ *   withBoth            both of the above (the honest change-from-baseline n)
+ */
+export function baselineCoverage(summaries, studiesById) {
+  const byArm = {
+    adaptive: { withUsableBaseline: 0, withPostMeasure: 0, withBoth: 0 },
+    balanced: { withUsableBaseline: 0, withPostMeasure: 0, withBoth: 0 },
+  };
+  const usable = (b) => Boolean(b) && Object.entries(b).some(([k, v]) => k !== 'capturedAt' && v != null);
+  for (const s of Array.isArray(summaries) ? summaries : []) {
+    if (!s || (s.arm !== 'adaptive' && s.arm !== 'balanced')) continue;
+    const arm = byArm[s.arm];
+    const b = studiesById?.[s.participantId]?.baseline || null;
+    const hasBaseline = usable(b);
+    const hasPost = s.delayedShort.rate != null || s.delayedLong.rate != null
+      || s.transfer.mean != null || s.recurrence.rate != null || s.completion.rate != null;
+    if (hasBaseline) arm.withUsableBaseline += 1;
+    if (hasPost) arm.withPostMeasure += 1;
+    if (hasBaseline && hasPost) arm.withBoth += 1;
+  }
+  return byArm;
 }
 
 export { OUTCOME_SCHEMA_VERSION, CHECK_SCHEMA_VERSION };

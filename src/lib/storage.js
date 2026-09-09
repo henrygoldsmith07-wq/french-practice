@@ -2466,6 +2466,8 @@ export function buildStudyBundle({ includeStudy = true } = {}) {
     weeks: study.weeks ?? null,
     status: study.status,                 // active | withdrawn (completion in outcomes)
     withdrawnAt: study.withdrawnAt ?? null,
+    completedAt: study.completedAt ?? null,
+    lastActivityAt: study.lastActivityAt ?? null, // attrition metadata (not inferred)
     engineVersion: study.engineVersion ?? null,
     schemaVersion: study.schemaVersion ?? null,
     protocolVersion: study.protocolVersion ?? null,
@@ -2474,6 +2476,7 @@ export function buildStudyBundle({ includeStudy = true } = {}) {
   bundle.protocol = protocolRecord();     // frozen methodology in force
   bundle.studyOutcomes = getStudyOutcomes().map((o) => ({
     id: o.id,
+    participantId: study.participantId,   // rows are labelled with their participant
     at: o.at,
     day: o.day ?? null,
     activity: o.activity ?? null,
