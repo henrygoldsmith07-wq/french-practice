@@ -156,7 +156,8 @@ function readArmOverride() {
 /** Withdraw: keeps the record (research value) but stops collection. */
 export function withdrawStudy(state, { now = Date.now() } = {}) {
   if (!state || state.status !== 'active') return state || null;
-  return { ...state, status: 'withdrawn', withdrawnAt: new Date(now).toISOString() };
+  const lastActivityAt = state.lastActivityAt || state.enrolledAt || null;
+  return { ...state, status: 'withdrawn', withdrawnAt: new Date(now).toISOString(), lastActivityAt };
 }
 
 export function isEnrolled(state) { return state?.status === 'active'; }
@@ -195,14 +196,33 @@ export function isCheckDay(participantId, day, { first = FIRST_CHECK_DAY, every 
  * Unverified bank items and untagged practice words are excluded by design.
  * Deterministic per (participant, day) so reloads cannot reshuffle.
  */
-export function buildHeldOutPool({ participantId, day, level = 'B1', vocabEntries = [], srsMap = {}, listeningTracks = [], limit = PROTOCOL.heldOut.itemsPerCheck, skills = PROTOCOL.transfer.reportedPerSkill } = {}) {
+/**
+ * The held-out pool for a check day, built ONLY from the dedicated verified
+ * assessment bank (heldOutBank.js) — never from practice content. The check
+ * day administers ONE protocol-scheduled skill (deterministic rotation over
+ * PROTOCOL.transfer.skillSchedule), so each skill is assessed with its own
+ * runner and never merged into a generic score. Every returned item is
+ * CEFR-matched (own band or tightly adjacent), verified, unseen by this
+ * participant, and carries level/skill/difficulty/provenance.
+ * Deterministic per (participant, day) so reloads cannot reshuffle.
+ */
+export function buildHeldOutPool({ participantId, day, level = 'B1', vocabEntries = [], srsMap = {}, listeningTracks = [], limit = PROTOCOL.heldOut.itemsPerCheck, skills = null } = {}) {
   void vocabEntries; void srsMap; void listeningTracks; // practice content is never held-out material
-  if (!participantId) return { words: [], track: null };
+  if (!participantId) return { words: [], track: null, skills: [] };
   const { selectHeldOutItems } = requireBank();
-  // Protocol-driven skill coverage: every reported skill is sampled, and the
-  // item count per check comes from the frozen protocol.
-  const words = selectHeldOutItems({ participantId, day, level, limit, skills });
-  return { words, track: null, skills: [...new Set(words.map((w) => w.skill))] };
+  // Protocol skill schedule: the check day's single skill (rotation index by
+  // check ordinal, not calendar day, so every scheduled skill gets assessed).
+  const schedule = PROTOCOL.transfer.skillSchedule;
+  const checkOrdinal = Math.floor((day - FIRST_CHECK_DAY) / CHECK_EVERY_DAYS);
+  const scheduledSkill = schedule[((checkOrdinal % schedule.length) + schedule.length) % schedule.length];
+  const wanted = skills || [scheduledSkill];
+  const words = selectHeldOutItems({ participantId, day, level, limit, skills: wanted });
+  return {
+    words,
+    track: null,
+    skills: [...new Set(words.map((w) => w.skill))],
+    scheduledSkill,
+  };
 }
 
 function requireBank() {
@@ -227,9 +247,11 @@ export function makeCheckRecord({ participantId, day, level = 'B1', pool = { wor
     // reported per skill (vocabulary / vocabulary-prod / grammar / listening
     // / reading / speaking) and never merged into an overall score.
     skills: pool.skills || [...new Set((pool.words || []).map((w) => w.skill).filter(Boolean))],
+    scheduledSkill: pool.scheduledSkill || null, // the protocol-scheduled skill for this check day
     trackId: pool.track?.id || null,
     results: null,          // filled by recordCheckResult
     engineVersion: STUDY_ENGINE_VERSION,
+    protocolVersion: PROTOCOL_VERSION,
   };
 }
 
@@ -489,7 +511,27 @@ export function participantSummaries(outcomes) {
       completion: rate(rows, (o) => (typeof o.completed === 'boolean' ? o.completed : null)),
       delayedShort: rate(rows, (o) => (o.delayedShort && typeof o.delayedShort.correct === 'boolean' ? o.delayedShort.correct : null)),
       delayedLong: rate(rows, (o) => (o.delayedLong && typeof o.delayedLong.correct === 'boolean' ? o.delayedLong.correct : null)),
-      transfer: mean(rows, (o) => (o.transfer && typeof o.transfer.score === 'number' ? o.transfer.score : null)),
+      // PER-SKILL transfer: one estimate per protocol-reported skill; domains
+      // are never merged (protocol.transfer.overallScoreAllowed === false).
+      // Legacy rows with a single scalar transfer.score read as 'vocabulary'.
+      transferBySkill: Object.fromEntries(PROTOCOL.transfer.reportedPerSkill.map((skill) => [
+        skill,
+        mean(rows, (o) => {
+          const t = o.transfer;
+          if (!t) return null;
+          if (t[skill] && typeof t[skill].score === 'number') return t[skill].score;
+          if (skill === 'vocabulary' && typeof t.score === 'number') return t.score; // legacy shape
+          return null;
+        }),
+      ])),
+      // Legacy aggregate view (vocabulary only) for existing consumers.
+      transfer: mean(rows, (o) => {
+        const t = o.transfer;
+        if (!t) return null;
+        if (t.vocabulary && typeof t.vocabulary.score === 'number') return t.vocabulary.score;
+        if (typeof t.score === 'number') return t.score;
+        return null;
+      }),
       recurrence: rate(rows, (o) => (typeof o.recurred === 'boolean' ? o.recurred : null)),
       missingShort: rows.filter((o) => o.delayedShort == null).length,
       missingLong: rows.filter((o) => o.delayedLong == null).length,
@@ -579,6 +621,15 @@ export function armComparison(summaries, { minPerArm = MIN_N_PER_ARM, minScoredP
       delayedShort: metric(contrib((s) => pRate(s.delayedShort))),
       delayedLong: metric(contrib((s) => pRate(s.delayedLong))),
       transfer: metric(contrib((s) => (s.transfer.mean == null ? null : s.transfer.mean / 100))),
+      // PER-SKILL arm metrics: each protocol skill keeps its own scored-
+      // participant count, mean, median and spread — domains never merge.
+      transferBySkill: Object.fromEntries(PROTOCOL.transfer.reportedPerSkill.map((skill) => [
+        skill,
+        metric(contrib((s) => {
+          const t = s.transferBySkill?.[skill];
+          return t && t.mean != null ? t.mean / 100 : null;
+        })),
+      ])),
       recurrence: metric(contrib((s) => pRate(s.recurrence))),
       completion: metric(contrib((s) => pRate(s.completion))),
       sessions: rows.reduce((a, s) => a + s.sessions, 0),
@@ -610,16 +661,18 @@ export function armComparison(summaries, { minPerArm = MIN_N_PER_ARM, minScoredP
 /**
  * Attrition by arm, derived from STUDY RECORDS (status + last activity),
  * never from missing outcome rows — absence of data is not withdrawal.
+ * Thresholds come from the frozen protocol (PROTOCOL.attrition).
  *   active                  enrolment active with recent sessions
  *   completed               reached the study's target weeks with activity
  *   withdrawn               explicit withdrawal recorded
  *   inactive                active but no sessions in the last `inactiveAfterDays`
- *   insufficientFollowUp    enrolled too recently to expect activity yet
+ *   insufficientFollowUp    enrolled less than this long → nothing expected yet
  * The five categories partition the enrolled cohort.
  */
-export function attritionByArm(studyRecords, { now = Date.now(), weeks = null, inactiveAfterDays = 14 } = {}) {
+export function attritionByArm(studyRecords, { now = Date.now(), weeks = null, inactiveAfterDays = null } = {}) {
   const weekMs = (weeks || STUDY_WEEKS_DEFAULT) * 7 * 86400000;
-  const followUpMs = 7 * 86400000; // less than a week enrolled: nothing expected yet
+  const inactiveMs = (inactiveAfterDays ?? PROTOCOL.attrition.inactiveAfterDays) * 86400000;
+  const followUpMs = PROTOCOL.attrition.insufficientFollowUpDays * 86400000;
   const byArm = {
     adaptive: { enrolled: 0, active: 0, completed: 0, withdrawn: 0, inactive: 0, insufficientFollowUp: 0 },
     balanced: { enrolled: 0, active: 0, completed: 0, withdrawn: 0, inactive: 0, insufficientFollowUp: 0 },
@@ -638,7 +691,7 @@ export function attritionByArm(studyRecords, { now = Date.now(), weeks = null, i
     const finished = Number.isFinite(enrolledAt) && (now - enrolledAt) >= weekMs && Number.isFinite(lastAt) && (lastAt - enrolledAt) >= weekMs * 0.75;
     if (finished) { arm.completed += 1; continue; }
     if (Number.isFinite(enrolledAt) && (now - enrolledAt) < followUpMs) { arm.insufficientFollowUp += 1; continue; }
-    const quiet = !Number.isFinite(lastAt) || (now - lastAt) > inactiveAfterDays * 86400000;
+    const quiet = !Number.isFinite(lastAt) || (now - lastAt) > inactiveMs;
     if (quiet) arm.inactive += 1;
     else arm.active += 1;
   }

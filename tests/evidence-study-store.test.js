@@ -167,10 +167,10 @@ test('outcomes join retests but immediate retries never reach retention windows'
   studyFlow.markOutcomeRecurrence({ mistakeId: 'mg-1', recurred: true });
   o = storage.getStudyOutcomes()[0];
   assert.equal(o.recurred, true);
-  // Transfer attach (measurement only).
+  // Transfer attach (measurement only) — per-skill storage, vocabulary default.
   studyFlow.attachTransferToOutcomes({ day: 0, score: 67 });
   o = storage.getStudyOutcomes()[0];
-  assert.equal(o.transfer.score, 67);
+  assert.equal(o.transfer.vocabulary.score, 67);
   // Aggregate sanity — single participant rows, no claims.
   const agg = evidenceStudy.studyAggregates(storage.getStudyOutcomes());
   assert.equal(agg.adaptive.n, 1);

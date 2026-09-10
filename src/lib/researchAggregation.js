@@ -164,6 +164,9 @@ export function poolStudyData({ localStudy = null, localOutcomes = [], imports =
 
   return {
     participants: participants.size,
+    protocolVersion: PROTOCOL_VERSION,
+    rowCount: pooledOutcomes.length,
+    includedRows: classification.included.length,
     participantsByArm,
     outcomes: pooledOutcomes,
     analysisRows: classification.included,

@@ -13,12 +13,11 @@ import {
   PROTOCOL_VERSION,
 } from './evidenceStudy.js';
 import { mayEnrol, hasDeclined, makeConsentRecord, consentGuardOk, protocolVersionOk } from './studyConsent.js';
-import { getPracticeAssignment } from './assignment.js';
 import {
   getStudyState, saveStudyState, getStudyConsent, saveStudyConsent,
   getStudyChecks, saveStudyChecks,
   getStudyOutcomes, saveStudyOutcomes, getSyncId, getLastPlacement,
-  setStudyArmOverride, getStudyArmOverride, getSessions,
+  getStudyArmOverride, getSessions,
 } from './storage.js';
 
 // Re-exports for components: the study glue is the single study surface.
@@ -28,8 +27,10 @@ export { effectiveVariant, verifyTreatmentConsistency } from './assignment.js';
 /** Enrol (idempotently) using the placement result as the starting band.
  *  REQUIRES EXPLICIT CONSENT: without an accepted consent record nothing is
  *  created — no participant id, no arm, no study rows. Refusal is sticky.
- *  The operator override (getPracticeAssignment's legacy pin) seeds the arm
- *  at enrolment time ONLY — effectiveVariant reads the study arm alone. */
+ *  ASSIGNMENT: ordinary participants go through PROTOCOL.assignment.algorithm
+ *  exactly (hash of participantId+syncId). Only a RESEARCHER-set override
+ *  (setStudyArmOverride, written by study tooling — never by the app UI)
+ *  replaces the drawn arm, and its source is recorded on the participant. */
 export function enrolStudyState({ startLevel = null, now = Date.now() } = {}) {
   try {
     const current = getStudyState();
@@ -38,9 +39,6 @@ export function enrolStudyState({ startLevel = null, now = Date.now() } = {}) {
     if (!mayEnrol(consent, current)) return current; // never asked, or declined
     const placement = getLastPlacement();
     const band = startLevel || placement?.level || null;
-    // Operator pin (if any) seeds the participant's arm at enrolment. An
-    // existing pin wins — seeding never overwrites an operator decision.
-    if (!getStudyArmOverride()) setStudyArmOverride(getPracticeAssignment(getSyncId()));
     const next = enrolStudy(current, {
       syncId: getSyncId(),
       startLevel: band,
@@ -208,6 +206,7 @@ export function saveCheckRecord(check) {
 export function recordCheckOutcome(checkId, finished) {
   // Research-write guard: no consent/active study, no fp.study.* write.
   if (!canRecordStudyData() || !canRecordUnderProtocol()) return null;
+  touchStudyActivity();
   try {
     if (!finished) return null;
     const list = getStudyChecks();
@@ -226,15 +225,29 @@ export function recordCheckOutcome(checkId, finished) {
   }
 }
 
+/** Touch the study record's lastActivityAt from GENUINE study activity
+ *  (eligible outcome rows, check records). Never from missing data. */
+function touchStudyActivity(now = Date.now()) {
+  try {
+    const current = getStudyState();
+    if (!current || current.status !== 'active') return;
+    saveStudyState({ ...current, lastActivityAt: new Date(now).toISOString() });
+  } catch { /* activity stamping must never break practice */ }
+}
+
 /** Start (or refresh) the longitudinal outcome row for a selection trial. */
 export function startOutcomeRecord({ trial, graph = [], arm, day = null, consistency = null }) {
   // Research-write guard: no consent/active study, no fp.study.* write.
   if (!canRecordStudyData() || !canRecordUnderProtocol()) return null;
   try {
+    const study = getStudyState();
+    touchStudyActivity();
     const list = getStudyOutcomes();
     const node = trial?.selectedId ? graph.find((m) => m.id === trial.selectedId) : null;
     const record = makeOutcomeRecord({ trial, graphNode: node });
     record.variant = arm || trial?.variant || null;
+    record.participantId = study?.participantId || null; // labelled at capture
+    record.protocolVersion = study?.protocolVersion ?? null;
     record.day = Number.isFinite(day) ? day : null;
     // Validity audit trail: what the study arm implied vs what was delivered.
     record.treatmentConsistency = consistency
@@ -265,10 +278,13 @@ export function linkRetestToOutcomes({ mistakeId, retest, trialAt = null }) {
     let touched = false;
     for (const o of list) {
       if (o.selectedId !== mistakeId) continue;
+      // ASR uncertainty propagates: a recognition failure is marked on the
+      // outcome row so the analysis classifier can exclude it — it never
+      // counts as a language failure.
+      if (retest.asrUncertain === true) o.asrUncertain = true;
       const before = JSON.stringify(o.delayedShort) + JSON.stringify(o.delayedLong) + JSON.stringify(o.immediate);
       applyRetestToOutcome(o, retest, { trialAt: trialAt || o.at });
       if (before !== JSON.stringify(o.delayedShort) + JSON.stringify(o.delayedLong) + JSON.stringify(o.immediate)) {
-        o.transferScored = o.transferScored || false;
         touched = true;
       }
     }
@@ -309,17 +325,22 @@ export function updateOutcomeDelivery({ trialAt, timeSpent, completed, delivered
   } catch { /* noop */ }
 }
 
-/** Held-out check accuracy folded onto outcome rows of the same study day. */
-export function attachTransferToOutcomes({ day, score }) {
+/** Held-out check accuracy folded onto outcome rows of the same study day,
+ *  stored PER SKILL (protocol: transfer is never merged across domains while
+ *  overallScoreAllowed === false). Legacy single-score calls are stored under
+ *  the 'vocabulary' key so old rows stay analysable. */
+export function attachTransferToOutcomes({ day, score, skill = null }) {
   // Research-write guard: no consent/active study, no fp.study.* write.
   if (!canRecordStudyData() || !canRecordUnderProtocol()) return;
   try {
     if (!Number.isFinite(score)) return;
     const list = getStudyOutcomes();
+    const key = skill || 'vocabulary';
     let touched = false;
     for (const o of list) {
-      if (o.day !== day || o.transfer) continue;
-      o.transfer = { score, source: 'held-out-check' };
+      o.transfer = o.transfer || {};
+      if (o.day !== day || o.transfer[key] != null) continue;
+      o.transfer[key] = { score, source: 'held-out-check' };
       touched = true;
     }
     if (touched) saveStudyOutcomes(list);

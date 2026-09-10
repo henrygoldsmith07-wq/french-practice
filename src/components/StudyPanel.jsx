@@ -30,6 +30,13 @@ import { CONSENT_POINTS } from '../lib/studyConsent';
 // Enrolment is strictly opt-in: this panel owns the consent flow.
 
 const pct = (v) => (v == null ? '—' : `${v}%`);
+const exclusionSummary = (counts) => {
+  const entries = Object.entries(counts || {}).filter(([k]) => k !== 'included');
+  return entries.length ? entries.map(([k, n]) => `${k}: ${n}`).join(' · ') : 'none';
+};
+const attritionLine = (a) => (a
+  ? `enrolled ${a.enrolled} · active ${a.active} · completed ${a.completed} · withdrawn ${a.withdrawn} · inactive ${a.inactive} · insufficient follow-up ${a.insufficientFollowUp}`
+  : '—');
 
 function downloadJson(name, data) {
   const url = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }));
@@ -207,6 +214,30 @@ export default function StudyPanel() {
           {data.nParticipants} imported participant bundle{data.nParticipants === 1 ? '' : 's'} pooled for research aggregation (read-only).
         </p>
       )}
+
+      {/* Research diagnostics — progressive disclosure for researchers; the
+          learner-facing surface above stays simple. */}
+      <details className="border-t border-line pt-2">
+        <summary className="text-[10px] font-bold uppercase tracking-wider text-ink3 cursor-pointer">Research diagnostics</summary>
+        <div className="mt-2 space-y-1 text-[10px] text-ink3">
+          <p>Protocol version: {data.pool.protocolVersion ?? 1} · included rows: {pool.includedRows} of {pool.rowCount}</p>
+          <p>Exclusions by reason: {exclusionSummary(data.pool.exclusionCounts)}</p>
+          <p>Rejected imports: {data.pool.rejected.length}{data.pool.rejected.length ? ` — first reason: ${data.pool.rejected[0].errors[0]}` : ''}</p>
+          {['adaptive', 'balanced'].map((arm) => (
+            <p key={arm}>
+              {arm}: transfer evidence per skill — {
+                Object.entries(data.pool.comparison[arm].transferBySkill || {})
+                  .map(([skill, m]) => `${skill}: ${m.scoredParticipants}`).join(' · ') || '—'
+              }
+            </p>
+          ))}
+          <p>Baseline coverage: adaptive {data.pool.baselineCoverage.adaptive.withBoth}/{data.pool.baselineCoverage.adaptive.withUsableBaseline} both · balanced {data.pool.baselineCoverage.balanced.withBoth}/{data.pool.baselineCoverage.balanced.withUsableBaseline}</p>
+          <p>
+            Attrition: adaptive {attritionLine(data.pool.attrition.adaptive)} · balanced {attritionLine(data.pool.balanced ? data.pool.attrition.balanced : data.pool.attrition.balanced)}
+          </p>
+          <p>Missing outcomes: adaptive {data.pool.comparison.adaptive.missingShort} · balanced {data.pool.comparison.balanced.missingShort} (1–3d window)</p>
+        </div>
+      </details>
 
       <div className="flex flex-wrap items-center gap-2 border-t border-line pt-3">
         <button

@@ -59,8 +59,11 @@ export const PROTOCOL = {
     measurementOnly: true,
     excludedFromMastery: true,
     excludedFromSelection: true,
-    reportedPerSkill: ['vocabulary', 'vocabulary-prod', 'grammar', 'listening', 'reading', 'speaking'],
+    reportedPerSkill: ['vocabulary', 'grammar', 'listening', 'vocabulary-prod', 'reading', 'speaking'],
     overallScoreAllowed: false,
+    // Deterministic schedule: each check day administers ONE skill, cycling
+    // through this list in order (day index → skill by rotation below).
+    skillSchedule: ['vocabulary', 'grammar', 'listening', 'vocabulary-prod', 'reading', 'speaking'],
   },
 
   // Exclusion rules (pre-registered so they cannot be tuned post hoc):
@@ -84,6 +87,12 @@ export const PROTOCOL = {
   // Held-out checks: how many verified items a single check carries.
   heldOut: {
     itemsPerCheck: 3,
+  },
+
+  // Attrition classification thresholds (days).
+  attrition: {
+    inactiveAfterDays: 14,      // no activity for this long → inactive
+    insufficientFollowUpDays: 7, // enrolled less than this long → nothing expected yet
   },
 
   // Analysis method: participant is the independent unit.
@@ -126,6 +135,8 @@ export function protocolRecord() {
   analysisUnit: PROTOCOL.analysis.unit,
   heldOutBankVersion: PROTOCOL.heldOutBankVersion,
   heldOut: PROTOCOL.heldOut,
+  skillSchedule: PROTOCOL.transfer.skillSchedule,
+  attrition: PROTOCOL.attrition,
   engineVersion: 3, // mistake-graph evidence engine version in force
   frozen: true,
 };

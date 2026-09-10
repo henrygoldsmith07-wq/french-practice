@@ -130,9 +130,10 @@ export default function TodaySession({ open, onClose, minutes = 20, apiKey, mock
         const saved = saveCheckRecord(makeCheckRecord({
           participantId: study.participantId, day: sDay, level: level || study.startLevel || 'B1', pool,
         }));
-        // The persisted record keeps ids only; the words ride on the in-memory
-        // plan so the check can render without re-reading the library.
-        heldOut = { ...saved, poolWords: pool.words };
+        // The persisted record keeps ids only; the bank-shaped items ride on
+        // the in-memory plan so the skill-specific runner can render without
+        // re-reading the bank.
+        heldOut = { ...saved, poolItems: pool.words, poolWords: pool.words };
       }
     }
     // P1 selection-trial record: frozen before any practice happens, with
@@ -303,12 +304,17 @@ function TodayBody({ plan, segIndex, setSegIndex, close, apiKey, mockMode, level
         check={plan.heldOut}
         onDone={(finished) => {
           recordCheckOutcome(plan.heldOut.id, finished);
-          // Transfer score attaches to this study day's outcome rows —
-          // measurement only; selection never sees these items.
+          // Transfer attaches PER SKILL (the check day's scheduled skill) —
+          // measurement only; selection never sees these items. Skills are
+          // never merged while the protocol forbids an overall score.
           const score = finished?.total
             ? Math.round((finished.correct / finished.total) * 100)
             : null;
-          attachTransferToOutcomes({ day: plan.studyDay, score });
+          attachTransferToOutcomes({
+            day: plan.studyDay,
+            score,
+            skill: plan.heldOut.scheduledSkill || plan.heldOut.skills?.[0] || null,
+          });
           advance();
         }}
       />
@@ -543,8 +549,9 @@ export function RecallRunner({ cardCap, onDone, onXp, onActivity }) {
           if (graph.some((m) => m.id === nb.mistakeId)) {
             const retest = { at: new Date().toISOString(), correct: rating !== 'again', context: 'srs-recall' };
             saveMistakeGraph(recordRetest(graph, { id: nb.mistakeId, ...retest }));
-            // Study: the SRS resurface IS the delayed retest.
-            linkRetestToOutcomes({ mistakeId: nb.mistakeId, retest });
+            // Study: the SRS resurface IS the delayed retest. ASR-sourced
+            // cards carry uncertainty so the analysis can exclude them.
+            linkRetestToOutcomes({ mistakeId: nb.mistakeId, retest: { ...retest, asrUncertain: Boolean(nb.asrUncertain) } });
           }
         }
       } catch { /* graph bookkeeping must never break recall */ }
