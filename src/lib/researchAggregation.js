@@ -7,7 +7,7 @@
 //   · imported rows NEVER touch learner practice stores (read-only pooling);
 //   · every pooled rate keeps its sample gate.
 
-import { participantSummaries, armComparison, studyDeliveryStats, changeFromBaseline, classifyOutcomesForAnalysis, attritionByArm } from './evidenceStudy.js';
+import { participantSummaries, armComparison, studyDeliveryStats, changeFromBaseline, classifyOutcomesForAnalysis, attritionByArm, validatePerItemEntry } from './evidenceStudy.js';
 import { PROTOCOL_VERSION } from './studyProtocol.js';
 
 export const POOL_SCHEMA_VERSION = 2;
@@ -74,8 +74,25 @@ function isValidCheckRecord(c) {
   if (!Number.isFinite(Number(c.day))) return false;
   if (c.results != null) {
     if (typeof c.results.correct !== 'number' || typeof c.results.total !== 'number') return false;
+    // Per-item evidence must pass the preregistered schema — never coerced.
+    if (!Array.isArray(c.results.perItem)) return false;
+    for (const entry of c.results.perItem) {
+      if (validatePerItemEntry(entry)) return false;
+    }
   }
   return true;
+}
+
+/** Attrition/identity fields carried verbatim through pooling. */
+const PARTICIPANT_FIELDS = [
+  'participantId', 'arm', 'armSource', 'startLevel', 'enrolledAt', 'status',
+  'weeks', 'protocolVersion', 'engineVersion', 'schemaVersion',
+  'withdrawnAt', 'completedAt', 'lastActivityAt', 'baseline',
+];
+function projectParticipant(study) {
+  const out = { startTheta: null }; // deliberately stripped — never pooled
+  for (const key of PARTICIPANT_FIELDS) out[key] = study[key] ?? null;
+  return out;
 }
 
 /**
@@ -106,20 +123,7 @@ export function validateImportedBundle(bundle) {
     ok: true,
     errors: [],
     rows,
-    study: {
-      participantId: study.participantId,
-      arm: study.arm,
-      startLevel: study.startLevel ?? null,
-      enrolledAt: study.enrolledAt,
-      status: study.status || 'active',
-      weeks: study.weeks ?? null,
-      protocolVersion: study.protocolVersion,
-      engineVersion: study.engineVersion ?? null,
-      schemaVersion: study.schemaVersion ?? null,
-      armSource: study.armSource ?? null,
-      withdrawnAt: study.withdrawnAt ?? null,
-      baseline: study.baseline ?? null,
-    },
+    study: projectParticipant(study),
     checks: checks.map((c) => ({ ...c, participantId: study.participantId })),
   };
 }

@@ -35,9 +35,9 @@ import {
   practiceFieldNote as _practiceFieldNote,
 } from './fieldNotes.js';
 import {
-  setArmOverrideReader,
+  setArmOverrideReader, validatePerItemEntry,
 } from './evidenceStudy.js';
-import { consentGuardOk } from './studyConsent.js';
+import { consentGuardOk, consentTrailOk } from './studyConsent.js';
 import { protocolRecord } from './studyProtocol.js';
 // Thin localStorage wrapper — the app's only persistence layer (no backend).
 
@@ -2443,14 +2443,16 @@ export function buildStudyBundle({ includeStudy = true } = {}) {
   const bundle = buildValidationBundle();
   if (!includeStudy) return bundle;
   const study = getStudyState();
-  // Study export requires the same consent guard as any research write: no
-  // active consented participation, no study streams leave the device.
-  if (!consentGuardOk(getStudyConsent(), study)) {
+  // Study export follows the CONSENT TRAIL (accepted, identity valid), not
+  // the live write guard: a withdrawn participant's identity/attrition record
+  // and any data collected before withdrawal stay exportable for honest
+  // attrition analysis — and nothing new can be written once withdrawn.
+  if (!consentTrailOk(getStudyConsent(), study)) {
     bundle.version = 2;
     bundle.study = null;
     bundle.studyOutcomes = [];
     bundle.studyChecks = [];
-    bundle.studyExportNote = 'Study streams withheld: no active consented participation.';
+    bundle.studyExportNote = 'Study streams withheld: no consented participation on this device.';
     return bundle;
   }
   bundle.version = 2;
@@ -2500,7 +2502,20 @@ export function buildStudyBundle({ includeStudy = true } = {}) {
     day: c.day,
     level: c.level,
     at: c.at,
+    // Frozen assessment payloads travel so held-out provenance and scoring
+    // stay reproducible off-device (ids + prompts + options only).
+    items: (c.items || []).map((it) => ({
+      assessmentId: it.assessmentId ?? null,
+      sourceItemId: it.sourceItemId ?? null,
+      skill: it.skill ?? null,
+      cefr: it.cefr ?? null,
+      content: it.content ?? null,
+      options: it.options ?? [],
+      correctOptionId: it.correctOptionId ?? null,
+      accept: it.accept ?? null,
+    })),
     skills: c.skills ?? null,             // per-skill accounting; transfer stays per-skill
+    scheduledSkill: c.scheduledSkill ?? null,
     trackId: c.trackId ?? null,
     results: c.results ?? null,
     engineVersion: c.engineVersion ?? null,
@@ -2558,6 +2573,17 @@ export function ingestValidationBundle(json, { dryRun = false } = {}) {
     const existing = getImportedStudyBundles();
     const dupe = existing.some((b) => `${b.participantId}|${b.enrolledAt || ''}` === key);
     report.attempted += 1;
+    // Preregistered schema first: malformed research records are rejected,
+    // never coerced or half-imported.
+    const badPerItem = (Array.isArray(bundle.studyChecks) ? bundle.studyChecks : [])
+      .flatMap((c) => (c && c.results && Array.isArray(c.results.perItem)) ? c.results.perItem : [])
+      .map((e) => validatePerItemEntry(e))
+      .filter(Boolean);
+    if (badPerItem.length) {
+      badPerItem.slice(0, 5).forEach((reason) => report.errors.push(`studyChecks: ${reason}`));
+      report.ok = false;
+      return report;
+    }
     if (dupe) {
       report.skipped += 1;
       report.added.studyAggregates = 0;

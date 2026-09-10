@@ -14,7 +14,7 @@ import {
   enrolStudyState, studyStatus, daySinceEnrolment, isCheckScheduled,
   buildHeldOutPool, makeCheckRecord, saveCheckRecord, recordCheckOutcome,
   startOutcomeRecord, linkRetestToOutcomes, markOutcomeRecurrence,
-  updateOutcomeDelivery, attachTransferToOutcomes,
+  updateOutcomeDelivery, attachTransferFromCheck,
   effectiveVariant, verifyTreatmentConsistency,
 } from '../lib/studyFlow';
 import { getPracticeAssignment, balancedDrillTopic } from '../lib/assignment';
@@ -137,16 +137,19 @@ export default function TodaySession({ open, onClose, minutes = 20, apiKey, mock
           listeningTracks: tracks,
           seenIds,
         });
-        if (pool.words.length || pool.track) {
-          const saved = saveCheckRecord(makeCheckRecord({
-            participantId: study.participantId, day: sDay, level: level || study.startLevel || 'B1', pool,
-          }));
-          if (saved) {
-            // The persisted record carries the frozen assessment payloads in
-            // .items — the skill-specific runner renders straight from those.
-            heldOut = saved;
-          }
-        }
+      // A completed measurement is never re-presented; a pending same-day
+      // check re-uses its frozen record (deterministic across re-renders and
+      // StrictMode double-invocation — never rebuild the pool for a day that
+      // already has a check).
+      const existing = getStudyChecks().find((c) => c.day === sDay && c.participantId === study.participantId);
+      if (existing) {
+        if (!existing.results) heldOut = existing;
+      } else if (pool.words.length || pool.track) {
+        const saved = saveCheckRecord(makeCheckRecord({
+          participantId: study.participantId, day: sDay, level: level || study.startLevel || 'B1', pool,
+        }));
+        if (saved && !saved.results) heldOut = saved;
+      }
       } catch { /* a broken check plan is no reason to lose the session */ }
     }
     // P1 selection-trial record: frozen before any practice happens, with
@@ -316,19 +319,11 @@ function TodayBody({ plan, segIndex, setSegIndex, close, apiKey, mockMode, level
       <HeldOutCheck
         check={plan.heldOut}
         onDone={(finished) => {
+          // Full per-item evidence is persisted first, then the check's
+          // per-skill summary (speaking from numeric scores, correctness
+          // domains from valid results only) attaches to today's outcomes.
           recordCheckOutcome(plan.heldOut.id, finished);
-          // Transfer attaches PER SKILL from objectively scored items only —
-          // unscored speaking attempts are excluded from the fraction, never
-          // counted as correct. Measurement only; selection never sees these.
-          const scored = (finished?.perItem || []).filter((r) => r.correct != null);
-          const score = scored.length
-            ? Math.round((scored.filter((r) => r.correct).length / scored.length) * 100)
-            : null;
-          attachTransferToOutcomes({
-            day: plan.studyDay,
-            score,
-            skill: plan.heldOut.scheduledSkill || plan.heldOut.skills?.[0] || null,
-          });
+          attachTransferFromCheck(plan.heldOut.id);
           advance();
         }}
       />

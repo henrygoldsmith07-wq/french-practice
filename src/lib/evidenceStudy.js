@@ -277,8 +277,12 @@ export function makeCheckRecord({ participantId, day, level = 'B1', pool = { wor
   };
 }
 
-/** Fold a finished check into its record. Pure. */
-export function recordCheckResult(check, { correct = 0, total = 0, quizScore = null, secondsSpent = null, now = Date.now() } = {}) {
+/**
+ * Fold a finished check into its record. Pure. `perItem` is the
+ * modality-specific evidence backbone: every item ends as exactly one of
+ * scored / unscored / unavailable — never a silent coercion between them.
+ */
+export function recordCheckResult(check, { correct = 0, total = 0, quizScore = null, secondsSpent = null, perItem = null, now = Date.now() } = {}) {
   if (!check) return null;
   return {
     ...check,
@@ -287,6 +291,7 @@ export function recordCheckResult(check, { correct = 0, total = 0, quizScore = n
       total: Math.max(0, Math.round(Number(total) || 0)),
       quizScore: quizScore != null && Number.isFinite(Number(quizScore)) ? Math.max(0, Math.min(100, Math.round(Number(quizScore)))) : null,
       secondsSpent: secondsSpent != null && Number.isFinite(Number(secondsSpent)) ? Math.max(0, Math.round(Number(secondsSpent))) : null,
+      perItem: Array.isArray(perItem) ? perItem.map((p) => sanitizePerItemEntry(p, now)) : [],
       at: new Date(now).toISOString(),
     },
   };
@@ -297,6 +302,88 @@ export const checkScore = (check) => {
   if (!r || !r.total) return null;
   return Math.round((r.correct / r.total) * 100);
 };
+
+// ── per-item evidence schema (modality-specific, validated not coerced) ───
+
+export const EVIDENCE_STATUSES = ['scored', 'unscored', 'unavailable'];
+export const ASR_CONFIDENCE_LEVELS = ['usable', 'low', 'none'];
+export const LEARNER_CONFIDENCE_LEVELS = ['managed', 'unsure', 'could-not'];
+// Skills whose evidence is correctness-shaped; speaking is score-shaped.
+export const CORRECTNESS_SKILLS = ['vocabulary', 'vocabulary-prod', 'grammar', 'listening', 'reading'];
+
+/** Clean one per-item entry: known fields only, null-preserving (never
+ *  invents 0 for missing numbers), reasons clamped, no coercion of status. */
+export function sanitizePerItemEntry(entry, now = Date.now()) {
+  const e = entry && typeof entry === 'object' ? entry : {};
+  const numOrNull = (v) => (v != null && Number.isFinite(Number(v)) ? Number(v) : null);
+  return {
+    sourceItemId: typeof e.sourceItemId === 'string' && e.sourceItemId ? e.sourceItemId : null,
+    skill: PROTOCOL.transfer.reportedPerSkill.includes(e.skill) ? e.skill : null,
+    cefr: e.cefr != null && ['A1', 'A2', 'B1', 'B2', 'C1', 'C2'].includes(e.cefr) ? e.cefr : null,
+    status: EVIDENCE_STATUSES.includes(e.status) ? e.status : 'unavailable',
+    correct: typeof e.correct === 'boolean' ? e.correct : null,
+    aiScore: e.aiScore != null && Number.isFinite(Number(e.aiScore)) ? Math.max(0, Math.min(100, Math.round(Number(e.aiScore)))) : null,
+    asrConfidence: ASR_CONFIDENCE_LEVELS.includes(e.asrConfidence) ? e.asrConfidence : null,
+    confidence: LEARNER_CONFIDENCE_LEVELS.includes(e.confidence) ? e.confidence : null,
+    reason: typeof e.reason === 'string' ? e.reason.slice(0, 240) : null,
+    matchedAccept: typeof e.matchedAccept === 'string' ? e.matchedAccept.slice(0, 120) : null,
+    at: typeof e.at === 'string' && Number.isFinite(Date.parse(e.at)) ? e.at : new Date(now).toISOString(),
+  };
+}
+
+/** Validate ONE per-item entry. Returns null when valid, a reason string
+ *  when the record must be rejected — never coerced into validity. */
+export function validatePerItemEntry(e) {
+  if (!e || typeof e !== 'object' || Array.isArray(e)) return 'entry is not an object';
+  if (typeof e.sourceItemId !== 'string' || !e.sourceItemId) return 'missing sourceItemId';
+  if (!PROTOCOL.transfer.reportedPerSkill.includes(e.skill)) return `unknown skill '${e.skill}'`;
+  if (!EVIDENCE_STATUSES.includes(e.status)) return `impossible status '${e.status}'`;
+  if (e.aiScore != null && (typeof e.aiScore !== 'number' || e.aiScore < 0 || e.aiScore > 100)) return 'aiScore outside 0-100';
+  if (e.correct != null && typeof e.correct !== 'boolean') return 'correct must be boolean or null';
+  if (e.asrConfidence != null && !ASR_CONFIDENCE_LEVELS.includes(e.asrConfidence)) return 'malformed ASR confidence';
+  if (e.confidence != null && !LEARNER_CONFIDENCE_LEVELS.includes(e.confidence)) return 'unknown learner confidence';
+  // Contradiction checks: unscored/unavailable may not carry an objective
+  // result; correctness skills may not carry a speaking score.
+  if (e.status === 'unscored' && (e.correct != null || e.aiScore != null)) return 'unscored carries an objective result';
+  if (e.status === 'unavailable' && (e.correct != null || e.aiScore != null)) return 'unavailable carries an objective result';
+  if (e.skill === 'speaking' && e.status === 'scored') {
+    if (typeof e.aiScore !== 'number') return 'speaking scored without numeric aiScore';
+    if (e.correct != null) return 'speaking must not claim boolean correctness';
+  }
+  if (CORRECTNESS_SKILLS.includes(e.skill) && e.aiScore != null) return 'correctness item carries aiScore';
+  // An unavailable item must say why (infrastructure honesty).
+  if (e.status === 'unavailable' && !e.reason) return 'unavailable without reason';
+  return null;
+}
+
+/** Summarize a check's per-item evidence for per-skill transfer. Returns
+ *  {score|null, scoredN, unscoredN, unavailableN} — never invents a score
+ *  from unscored/unavailable rows. */
+export function checkSkillSummary(check) {
+  const perItem = Array.isArray(check?.results?.perItem) ? check.results.perItem : [];
+  if (!perItem.length) return { score: null, scoredN: 0, unscoredN: 0, unavailableN: 0, skill: check?.scheduledSkill || null };
+  const skill = perItem[0].skill;
+  const scored = perItem.filter((p) => p.status === 'scored');
+  if (skill === 'speaking') {
+    const nums = scored.map((p) => p.aiScore).filter((v) => typeof v === 'number');
+    return {
+      score: nums.length ? Math.round(nums.reduce((a, v) => a + v, 0) / nums.length) : null,
+      scoredN: nums.length,
+      unscoredN: perItem.filter((p) => p.status === 'unscored').length,
+      unavailableN: perItem.filter((p) => p.status === 'unavailable').length,
+      skill,
+    };
+  }
+  // Correctness domains: only objectively-scored items count.
+  const meaningful = scored.filter((p) => typeof p.correct === 'boolean');
+  return {
+    score: meaningful.length ? Math.round((meaningful.filter((p) => p.correct).length / meaningful.length) * 100) : null,
+    scoredN: meaningful.length,
+    unscoredN: perItem.filter((p) => p.status === 'unscored').length,
+    unavailableN: perItem.filter((p) => p.status === 'unavailable').length,
+    skill,
+  };
+}
 
 // ── outcome records: one per targeted selection trial ──────────────────────
 

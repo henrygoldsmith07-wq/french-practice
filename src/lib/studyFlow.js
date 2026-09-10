@@ -10,6 +10,7 @@ import {
   enrolStudy, isEnrolled, studyDay, isCheckDay, buildHeldOutPool,
   makeCheckRecord, recordCheckResult, makeOutcomeRecord, withdrawStudy,
   applyRetestToOutcome, applyRecurrenceToOutcome, cleanBaseline,
+  checkSkillSummary,
   PROTOCOL_VERSION,
 } from './evidenceStudy.js';
 import { mayEnrol, hasDeclined, makeConsentRecord, consentGuardOk, protocolVersionOk } from './studyConsent.js';
@@ -21,7 +22,7 @@ import {
 } from './storage.js';
 
 // Re-exports for components: the study glue is the single study surface.
-export { buildHeldOutPool, makeCheckRecord } from './evidenceStudy.js';
+export { buildHeldOutPool, makeCheckRecord, recordCheckResult } from './evidenceStudy.js';
 export { effectiveVariant, verifyTreatmentConsistency } from './assignment.js';
 
 /** Enrol (idempotently) using the placement result as the starting band.
@@ -217,6 +218,8 @@ export function recordCheckOutcome(checkId, finished) {
       total: finished.total,
       quizScore: finished.quizScore ?? null,
       secondsSpent: finished.secondsSpent ?? null,
+      // Full modality-specific per-item evidence survives the component.
+      perItem: Array.isArray(finished.perItem) ? finished.perItem : [],
     });
     saveStudyChecks(list);
     return list[idx];
@@ -345,4 +348,22 @@ export function attachTransferToOutcomes({ day, score, skill = null }) {
     }
     if (touched) saveStudyOutcomes(list);
   } catch { /* noop */ }
+}
+
+/**
+ * Compute a check's per-skill evidence from its persisted per-item results
+ * and attach it to this study day's outcome rows. Returns the summary so the
+ * caller can decide; an unscorable skill (no valid scored evidence) attaches
+ * NOTHING — missing evidence is never fabricated as 0.
+ */
+export function attachTransferFromCheck(checkId) {
+  try {
+    const chk = getStudyChecks().find((c) => c.id === checkId);
+    if (!chk) return null;
+    const summary = checkSkillSummary(chk);
+    if (summary.score != null) attachTransferToOutcomes({ day: chk.day, score: summary.score, skill: summary.skill });
+    return summary;
+  } catch {
+    return null;
+  }
 }

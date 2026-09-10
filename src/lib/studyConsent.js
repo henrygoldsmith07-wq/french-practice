@@ -63,6 +63,26 @@ export function consentGuardOk(consent, study) {
 }
 
 /**
+ * The CONSENT TRAIL check: true when this participant ever consented and
+ * their identity is valid, regardless of active/withdrawn state. Writing NEW
+ * research data requires consentGuardOk; exporting the identity/attrition
+ * record only requires this, so a withdrawn participant's metadata (and any
+ * data collected before withdrawal) remains exportable for honest attrition
+ * analysis — and never more than that.
+ */
+export function consentTrailOk(consent, study) {
+  try {
+    if (consent?.decision !== 'accepted') return false;
+    if (!study || (study.status !== 'active' && study.status !== 'withdrawn')) return false;
+    if (typeof study.participantId !== 'string' || !study.participantId.startsWith('participant-')) return false;
+    if (study.arm !== 'adaptive' && study.arm !== 'balanced') return false;
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Protocol-integrity check for a study record: the record must carry a
  * known protocol version no newer than this build's. Unknown or future
  * protocols must not silently mix into this build's data.

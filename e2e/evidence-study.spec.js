@@ -132,15 +132,15 @@ test('held-out check rides the session on a check day and scores measurement-onl
   await expect(checkPrompt).toBeVisible({ timeout: 20_000 });
   // Answer EVERY item until the check finishes (vocabulary MCQ items).
   for (let guard = 0; guard < 12; guard++) {
-    const finishBtn = page.getByRole('button', { name: /^Finish check$/i });
-    const nextBtn = page.getByRole('button', { name: /^Next$/i });
+    const finishBtn = page.getByRole('button', { name: /Finish check/i });
+    const contBtn = page.getByRole('button', { name: /Record & next/i });
     const group = page.getByRole('group', { name: /Choose the matching French word/i });
     if (await finishBtn.isVisible({ timeout: 500 }).catch(() => false)) {
       await finishBtn.click();
       break;
     }
-    if (await nextBtn.isVisible({ timeout: 500 }).catch(() => false)) {
-      await nextBtn.click();
+    if (await contBtn.isVisible({ timeout: 500 }).catch(() => false)) {
+      await contBtn.click();
       continue;
     }
     if (await group.isVisible({ timeout: 500 }).catch(() => false)) {
