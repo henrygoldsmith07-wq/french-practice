@@ -87,12 +87,17 @@ test('held-out pool draws ONLY from the verified bank — never practice content
     participantId: 'p1', day: 3, level: 'B1', vocabEntries: practiceEntries,
     srsMap: {}, listeningTracks: [{ id: 'tr-1', cefr: 'B1' }],
   });
-  const ids = pool.words.map((w) => w.id);
-  assert.ok(ids.length > 0, 'bank has verified B1 items');
-  for (const id of ids) {
+  const sourceIds = pool.words.map((w) => w.sourceItemId);
+  assert.ok(sourceIds.length > 0, 'bank has verified B1 items');
+  for (const id of sourceIds) {
     assert.ok(id.startsWith('chk-'), `bank item ${id} namespaced`);
-    assert.ok(!ids.includes('c-b1-toutefois'), 'practice vocab excluded');
-    assert.ok(!ids.includes('unseen-unbanded'), 'untagged vocab is not CEFR-matched');
+    assert.ok(!sourceIds.includes('c-b1-toutefois'), 'practice vocab excluded');
+    assert.ok(!sourceIds.includes('unseen-unbanded'), 'untagged vocab is not CEFR-matched');
+  }
+  // Frozen payloads carry explicit correctOptionId — no id inference.
+  for (const item of pool.words) {
+    assert.ok(item.assessmentId && item.content && Array.isArray(item.options), 'frozen payload shape');
+    if (item.options.length) assert.ok(item.correctOptionId, 'MCQ items carry an explicit correct option');
   }
   assert.equal(pool.track, null, 'listening tracks are level-filtered separately, never pooled raw');
 });
@@ -115,7 +120,9 @@ test('check records are measurement-only and score correctly', () => {
   chk = recordCheckResult(chk, { correct: 3, total: 4, secondsSpent: 90 });
   assert.equal(checkScore(chk), 75);
   assert.equal(chk.results.secondsSpent, 90);
-  assert.equal(chk.wordIds.length, pool.words.length, 'word ids frozen');
+  assert.equal(chk.items.length, pool.words.length, 'frozen assessment payloads frozen');
+  assert.ok(chk.items.every((it) => it.assessmentId && it.sourceItemId && it.skill), 'payload contract shape');
+  assert.equal(chk.wordIds.length, chk.items.length, 'word ids frozen');
   const bad = recordCheckResult(chk, { correct: -3, total: 'x' });
   assert.equal(bad.results.total, 0, 'malformed input clamps, never fabricates');
 });

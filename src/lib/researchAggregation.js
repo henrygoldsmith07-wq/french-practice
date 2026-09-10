@@ -29,6 +29,32 @@ function isValidStudyRecord(study) {
   return true;
 }
 
+const TRANSFER_SKILLS = ['vocabulary', 'grammar', 'listening', 'vocabulary-prod', 'reading', 'speaking'];
+
+/** Per-skill transfer shape: { vocabulary?: {score}, grammar?: … }. Legacy
+ *  rows with a single scalar transfer.score (old vocabulary records) stay
+ *  valid; unknown skill keys, invalid scores and malformed objects reject. */
+function isValidTransfer(t) {
+  if (t == null) return true; // absent transfer is fine
+  if (typeof t !== 'object' || Array.isArray(t)) return false;
+  const keys = Object.keys(t);
+  if (keys.length === 0) return false;
+  // Legacy scalar: { score } with no skill keys → old vocabulary record.
+  if (keys.length === 1 && keys[0] === 'score') {
+    return typeof t.score === 'number' && t.score >= 0 && t.score <= 100;
+  }
+  let sawSkill = false;
+  for (const key of keys) {
+    if (key === 'score') continue; // tolerated alongside skill keys (migration)
+    if (!TRANSFER_SKILLS.includes(key)) return false; // unknown skill key
+    const entry = t[key];
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return false;
+    if (typeof entry.score !== 'number' || entry.score < 0 || entry.score > 100) return false;
+    sawSkill = true;
+  }
+  return sawSkill;
+}
+
 function isValidOutcomeRow(o) {
   if (!o || typeof o !== 'object') return false;
   if (typeof o.id !== 'string' || !o.id) return false;
@@ -37,7 +63,7 @@ function isValidOutcomeRow(o) {
     const v = o[key];
     if (v != null && typeof v.correct !== 'boolean') return false;
   }
-  if (o.transfer != null && (typeof o.transfer.score !== 'number' || o.transfer.score < 0 || o.transfer.score > 100)) return false;
+  if (!isValidTransfer(o.transfer)) return false;
   if (o.recurred != null && typeof o.recurred !== 'boolean') return false;
   return true;
 }

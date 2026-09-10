@@ -61,6 +61,7 @@ test('declining consent never enrols and Today keeps working', async ({ page }) 
 });
 
 test('the dashboard never reveals the arm and gates the comparison', async ({ page }) => {
+  test.slow();
   await boot(page);
   await page.getByRole('button', { name: 'Progress', exact: true }).click();
   await page.getByRole('button', { name: /Analytics/i }).first().click();
@@ -77,21 +78,28 @@ test('the dashboard never reveals the arm and gates the comparison', async ({ pa
   const body = await page.evaluate(() => document.body.innerText);
   expect(body).not.toContain(`Arm: ${stored.arm}`);
   expect(body).not.toMatch(/assigned to (adaptive|balanced)/i);
-  // Honesty: status prints Provisional/No data, comparison message gates.
-  await expect(page.getByTestId('study-status')).toContainText(/Provisional|Not enough evidence yet/);
+  // Honesty: status prints Not-enough-evidence/Provisional/Collecting.
+  await expect(page.getByTestId('study-status')).toContainText(/Provisional|Not enough evidence|Collecting/);
   await expect(page.getByTestId('study-comparison')).toContainText(/needs at least/i);
+  // Research diagnostics open behind progressive disclosure.
+  const diagnostics = page.locator('details');
+  await expect(diagnostics).toBeVisible();
+  await diagnostics.locator('summary').click();
+  await expect(page.getByText(/Protocol version:/i)).toBeVisible();
+  await expect(page.getByText(/Exclusions by reason:/i)).toBeVisible();
+  await expect(page.getByText(/Rejected imports:/i)).toBeVisible();
 });
 
 test('held-out check rides the session on a check day and scores measurement-only', async ({ page }) => {
+  test.slow();
   await boot(page);
-  // Operator override: pin the arm override store so the schedule phase is
-  // deterministic; then enrol by opening Today on a forced check day.
+  // participant 'participant-e2e-check' is scheduled for a check on study
+  // day 3 (isCheckDay is deterministic); day 3 → ordinal 0 → vocabulary.
   await page.evaluate(() => {
-    // Enrol first (so participantId exists), then re-derive nothing — the
-    // check-day decision is read live from the study state each session.
     localStorage.setItem('fp.study.state.v1', JSON.stringify({
       schemaVersion: 1,
       engineVersion: 1,
+      protocolVersion: 1,
       participantId: 'participant-e2e-check',
       arm: 'adaptive',
       armSource: 'sync-id-hash',
@@ -101,31 +109,78 @@ test('held-out check rides the session on a check day and scores measurement-onl
       weeks: 8,
       status: 'active',
     }));
+    localStorage.setItem('fp.study.consent.v1', JSON.stringify({ decision: 'accepted', at: new Date().toISOString(), version: 1 }));
   });
   await page.getByRole('button', { name: 'Speak today' }).click();
-  await page.waitForTimeout(1500);
-  // A check is inserted only when day 3 is a check day for this participant;
-  // either way the session must be complete (no dead segments).
   const overlay = page.locator('[aria-label="Today\'s French"]');
-  await expect(overlay).toBeVisible();
-  const steps = await page.evaluate(() => document.querySelectorAll('[aria-label="Today\'s French"] header span.h-1\\.5').length);
-  expect(steps).toBeGreaterThan(0);
-  // If the check step exists, finish a check item honestly.
-  const checkPrompt = page.getByText(/Check 1\//i);
-  if (await checkPrompt.isVisible({ timeout: 3000 }).catch(() => false)) {
-    // Answer the first item: click the first option.
-    await page.getByRole('group', { name: /Choose the matching French word/i }).locator('button').first().click();
-    await page.getByRole('button', { name: /Next|Finish check/i }).click();
-    // Results must be in the study store, never in the mistake graph.
-    const stored = await page.evaluate(() => ({
-      checks: JSON.parse(localStorage.getItem('fp.study.checks.v1') || '[]'),
-      graph: JSON.parse(localStorage.getItem('fp.mistakeGraph.v1') || '[]'),
-    }));
-    expect(stored.checks.length).toBe(1);
-    expect(stored.graph.length).toBe(0);
+  await expect(overlay).toBeVisible({ timeout: 20_000 });
+  // Walk to the check: complete the speak segment with a mock turn, then
+  // skip any middle segments until the scheduled check appears.
+  const input = page.getByRole('textbox', { name: /Typed reply/i });
+  await expect(input).toBeVisible({ timeout: 20_000 });
+  await input.fill('Bonjour, je voudrais un café.');
+  await input.press('Enter');
+  await page.getByRole('button', { name: /End Session/i }).first().click();
+  const checkPrompt = page.getByText(/check 1\/\d/i);
+  for (let i = 0; i < 8 && !(await checkPrompt.isVisible().catch(() => false)); i++) {
+    const skip = page.getByRole('button', { name: /^Skip/i });
+    if (!(await skip.isVisible({ timeout: 2500 }).catch(() => false))) break;
+    await skip.click();
+    await page.waitForTimeout(250);
   }
-  // Close out the session.
-  await page.getByRole('button', { name: "End today's session" }).click();
+  // Day 3 is a scheduled check day, so the check MUST have arrived.
+  await expect(checkPrompt).toBeVisible({ timeout: 20_000 });
+  // Answer EVERY item until the check finishes (vocabulary MCQ items).
+  for (let guard = 0; guard < 12; guard++) {
+    const finishBtn = page.getByRole('button', { name: /^Finish check$/i });
+    const nextBtn = page.getByRole('button', { name: /^Next$/i });
+    const group = page.getByRole('group', { name: /Choose the matching French word/i });
+    if (await finishBtn.isVisible({ timeout: 500 }).catch(() => false)) {
+      await finishBtn.click();
+      break;
+    }
+    if (await nextBtn.isVisible({ timeout: 500 }).catch(() => false)) {
+      await nextBtn.click();
+      continue;
+    }
+    if (await group.isVisible({ timeout: 500 }).catch(() => false)) {
+      await group.locator('button').first().click();
+      continue;
+    }
+    break; // check already completed
+  }
+  // The session completed → dismiss the takeaway screen.
+  const completeScreen = page.getByRole('dialog', { name: "Today's French complete" });
+  await expect(completeScreen).toBeVisible({ timeout: 10_000 });
+  await completeScreen.getByRole('button', { name: /^Close$/i }).click();
+  // Study store: one check, results recorded, frozen payloads, explicit
+  // correct options, no feedback contamination of the mistake graph.
+  const stored = await page.evaluate(() => {
+    const checks = JSON.parse(localStorage.getItem('fp.study.checks.v1') || '[]');
+    const graph = JSON.parse(localStorage.getItem('fp.mistakeGraph.v1') || '[]');
+    const outcomes = JSON.parse(localStorage.getItem('fp.study.outcomes.v1') || '[]');
+    return { checks, graph, outcomes };
+  });
+  expect(stored.checks).toHaveLength(1);
+  const chk = stored.checks[0];
+  expect(chk.results, 'check reached the end and recorded results').not.toBeNull();
+  expect(chk.skills).toContain('vocabulary');
+  expect(chk.items.length).toBeGreaterThan(0);
+  // Every MCQ payload carries an explicit correctOptionId (never inferred).
+  for (const item of chk.items) {
+    expect(item.sourceItemId).toMatch(/^chk-/);
+    expect(item.correctOptionId).toBeTruthy();
+    expect(item.options.some((o) => o.id === item.correctOptionId)).toBe(true);
+    expect(item.skill).toBe('vocabulary');
+  }
+  // Measurement-only: nothing entered the mistake graph.
+  expect(stored.graph).toHaveLength(0);
+  // Same-day reopen must NOT create a second check (dedupe by id).
+  await page.getByRole('button', { name: 'Speak today' }).click();
+  await expect(overlay).toBeVisible({ timeout: 10_000 });
+  await page.getByRole('button', { name: "End today's session" }).click().catch(() => {});
+  const reopened = await page.evaluate(() => JSON.parse(localStorage.getItem('fp.study.checks.v1') || '[]'));
+  expect(reopened).toHaveLength(1);
 });
 
 test('export bundle carries anonymised study streams', async ({ page }) => {

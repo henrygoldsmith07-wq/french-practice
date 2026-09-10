@@ -206,30 +206,38 @@ export function isCheckDay(participantId, day, { first = FIRST_CHECK_DAY, every 
  * participant, and carries level/skill/difficulty/provenance.
  * Deterministic per (participant, day) so reloads cannot reshuffle.
  */
-export function buildHeldOutPool({ participantId, day, level = 'B1', vocabEntries = [], srsMap = {}, listeningTracks = [], limit = PROTOCOL.heldOut.itemsPerCheck, skills = null } = {}) {
+export function buildHeldOutPool({ participantId, day, level = 'B1', vocabEntries = [], srsMap = {}, listeningTracks = [], limit = PROTOCOL.heldOut.itemsPerCheck, skills = null, seenIds = new Set() } = {}) {
   void vocabEntries; void srsMap; void listeningTracks; // practice content is never held-out material
   if (!participantId) return { words: [], track: null, skills: [] };
-  const { selectHeldOutItems } = requireBank();
+  const { selectHeldOutItems, buildHeldOutAssessmentItem, HELDOUT_BANK } = requireBank();
   // Protocol skill schedule: the check day's single skill (rotation index by
   // check ordinal, not calendar day, so every scheduled skill gets assessed).
   const schedule = PROTOCOL.transfer.skillSchedule;
   const checkOrdinal = Math.floor((day - FIRST_CHECK_DAY) / CHECK_EVERY_DAYS);
   const scheduledSkill = schedule[((checkOrdinal % schedule.length) + schedule.length) % schedule.length];
   const wanted = skills || [scheduledSkill];
-  const words = selectHeldOutItems({ participantId, day, level, limit, skills: wanted });
+  const words = selectHeldOutItems({ participantId, day, level, limit, skills: wanted, seenIds });
+  // FROZEN ASSESSMENT PAYLOADS: each bank item becomes a complete, persisted
+  // assessment item — content, option ids/text, explicit correctOptionId —
+  // generated deterministically before storage. Renderers never infer
+  // correctness from option ids.
+  const distractorPool = HELDOUT_BANK.filter((i) => i.reviewStatus === 'verified' && wanted.includes(i.skill));
+  const items = words
+    .map((w) => buildHeldOutAssessmentItem(w, { distractorPool, participantId, day }))
+    .filter(Boolean);
   return {
-    words,
+    words: items,
     track: null,
-    skills: [...new Set(words.map((w) => w.skill))],
+    skills: [...new Set(items.map((w) => w.skill))],
     scheduledSkill,
   };
 }
 
 function requireBank() {
   // eslint-disable-next-line import/no-cycle
-  return { selectHeldOutItems: __selectHeldOutItems };
+  return { selectHeldOutItems: __selectHeldOutItems, buildHeldOutAssessmentItem: __buildHeldOutAssessmentItem, HELDOUT_BANK: __HELDOUT_BANK };
 }
-import { selectHeldOutItems as __selectHeldOutItems } from './heldOutBank.js';
+import { selectHeldOutItems as __selectHeldOutItems, buildHeldOutAssessmentItem as __buildHeldOutAssessmentItem, HELDOUT_BANK as __HELDOUT_BANK } from './heldOutBank.js';
 
 /**
  * A check record, frozen the moment the check renders. Mastery/FSRS state
@@ -242,7 +250,21 @@ export function makeCheckRecord({ participantId, day, level = 'B1', pool = { wor
     day,
     level,
     at: new Date(now).toISOString(),
-    wordIds: (pool.words || []).map((w) => w.id),
+    wordIds: (pool.words || []).map((w) => w.sourceItemId ?? w.id),
+    // FROZEN ASSESSMENT PAYLOADS: complete render+score data per item
+    // (content, options with ids/text, explicit correctOptionId, skill,
+    // cefr, sourceItemId) — persisted so replays and scoring never depend
+    // on live lookups or id inference.
+    items: (pool.words || []).map((w) => ({
+      assessmentId: w.assessmentId ?? `as-${w.id}`,
+      sourceItemId: w.sourceItemId ?? w.id,
+      skill: w.skill,
+      cefr: w.cefr ?? null,
+      content: w.content ?? null,
+      options: w.options ?? [],
+      correctOptionId: w.correctOptionId ?? null,
+      accept: w.accept ?? null,
+    })),
     // Per-skill accounting: which banks were sampled, so results can be
     // reported per skill (vocabulary / vocabulary-prod / grammar / listening
     // / reading / speaking) and never merged into an overall score.

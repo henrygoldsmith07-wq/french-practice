@@ -1,85 +1,86 @@
 import { useMemo, useRef, useState } from 'react';
-import { ChevronRight, Volume } from './icons';
+import { ChevronRight, Volume, Mic } from './icons';
 import { speak } from '../lib/tts';
+import useRecorder from '../hooks/useRecorder';
+import { transcribe, evaluateTurn, friendlyError } from '../lib/groq';
 
 // Held-out transfer check (Evidence Study, measurement-only).
 //
-//   · material the learner has never practised (verified bank, unseen)
+//   · items are FROZEN ASSESSMENT PAYLOADS persisted in the check record —
+//     content, options, explicit correctOptionId — so scoring never infers
+//     correctness from ids and replays are identical
 //   · unscaffolded: no hints, no corrections, no "why", no mastery updates
-//   · brief: a handful of items, one pass
-//   · CEFR-matched at enrolment level
-//   · SKILL-SPECIFIC renderers: recognition, production, grammar, listening,
-//     reading, speaking — modality matches what the skill actually is
-//
-// Results feed ONLY the study stores — never the mistake graph, never the
-// SRS scheduler, never the adaptive engine. Selection cannot learn from
-// these items, which is what keeps them held out.
-//
-// Honesty rules for measurement: correct answers and corrective feedback are
-// never revealed during a check; audio-only items never show their text
-// before the item is answered (listening is audio-first).
+//   · skill-specific renderers: recognition MCQ, typed production, grammar
+//     production, audio-first listening, passage reading, REAL speaking
+//     pipeline (record → transcribe → evaluate → store; unscored if the
+//     objective evaluation fails — self-rating is confidence only)
+//   · one pass; results feed ONLY the study stores
 
-const RECOGNITION_OPTIONS = 4;
-
-function deterministicShuffle(items, seedStr) {
-  let h = 0;
-  for (const c of String(seedStr)) h = Math.imul(h ^ c.charCodeAt(0), 2654435761);
-  const out = [...items];
-  for (let i = out.length - 1; i > 0; i--) {
-    h = Math.imul(h ^ (i + 1), 2654435761);
-    const j = Math.abs(h) % (i + 1);
-    [out[i], out[j]] = [out[j], out[i]];
-  }
-  return out;
+function OptionList({ options, correctOptionId, answered, chosenId, onPick, lang = 'fr', groupLabel }) {
+  return (
+    <div className="grid gap-2" role="group" aria-label={groupLabel}>
+      {options.map((o) => {
+        const isChosen = chosenId === o.id;
+        const isCorrect = o.id === correctOptionId;
+        const tone = !answered
+          ? 'border-line bg-surface hover:border-ink3'
+          : isCorrect
+            ? 'border-line bg-surface opacity-70'
+            : isChosen
+              ? 'border-amber-300 bg-amber-50'
+              : 'border-line bg-surface opacity-60';
+        return (
+          <button
+            key={o.id}
+            onClick={() => onPick(o)}
+            disabled={Boolean(answered)}
+            className={`w-full text-left rounded-xl border px-4 py-3 text-sm font-semibold transition-colors ${tone}`}
+          >
+            <span lang={lang}>{o.text}</span>
+          </button>
+        );
+      })}
+    </div>
+  );
 }
 
-// ── per-skill item renderers ───────────────────────────────────────────────
-
-function RecognitionItem({ item, bankWords, answered, onAnswer }) {
-  const options = useMemo(() => {
-    const distractors = bankWords.filter((w) => w.id !== item.id && w.fr && w.en);
-    const picked = [];
-    const used = new Set([item.id]);
-    for (const w of deterministicShuffle(distractors, item.id)) {
-      if (picked.length >= RECOGNITION_OPTIONS - 1) break;
-      if (used.has(w.id)) continue;
-      used.add(w.id);
-      picked.push(w);
-    }
-    const all = deterministicShuffle([...picked, { id: item.id, fr: item.fr }], `${item.id}|opts`);
-    return all;
-  }, [item, bankWords]);
+function ChoiceRunner({ item, answered, onPick }) {
   return (
     <div className="space-y-4">
-      <p className="text-center text-lg font-bold text-ink">{item.en}</p>
+      <p className="text-center text-lg font-bold text-ink">{item.content.prompt}</p>
       <p className="text-center text-[11px] text-ink3">Choose the matching French word.</p>
-      <div className="grid gap-2" role="group" aria-label="Choose the matching French word">
-        {options.map((o) => (
-          <OptionButton key={o.id} label={o.fr} lang="fr" disabled={Boolean(answered)} answered={answered} chosenId={answered?.chosen} itemId={item.id} id={o.id} onAnswer={onAnswer} answer={o} />
-        ))}
-      </div>
+      <OptionList
+        options={item.options}
+        correctOptionId={item.correctOptionId}
+        answered={answered}
+        chosenId={answered?.chosen}
+        onPick={(o) => onPick({ chosen: o.id, correct: o.id === item.correctOptionId })}
+        lang="fr"
+        groupLabel="Choose the matching French word"
+      />
     </div>
   );
 }
 
-function ProductionItem({ item, answered, onAnswer }) {
+function TypedRunner({ item, answered, onAnswer, placeholder, hint }) {
   const [draft, setDraft] = useState('');
   const submit = () => {
     if (!draft.trim() || answered) return;
-    const ok = item.accept.some((a) => a.toLowerCase().trim() === draft.toLowerCase().trim());
-    onAnswer({ id: item.id, correct: ok });
+    const norm = draft.toLowerCase().trim();
+    const ok = (item.accept || []).some((a) => a.toLowerCase().trim() === norm);
+    onAnswer({ correct: ok });
   };
   return (
     <div className="space-y-4">
-      <p className="text-center text-lg font-bold text-ink">{item.en}</p>
-      <p className="text-center text-[11px] text-ink3">Write this in French — spelling counts.</p>
+      <p className="text-center text-lg font-bold text-ink">{item.content.prompt}</p>
+      <p className="text-center text-[11px] text-ink3">{hint}</p>
       <div className="flex items-center gap-2 rounded-xl border border-line bg-surface2 px-3">
         <input
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && submit()}
           disabled={Boolean(answered)}
-          placeholder="Votre réponse…"
+          placeholder={placeholder}
           aria-label="Your answer in French"
           className="flex-1 bg-transparent py-3 text-sm text-ink placeholder:text-ink3 focus:outline-none"
         />
@@ -89,50 +90,16 @@ function ProductionItem({ item, answered, onAnswer }) {
           </button>
         )}
       </div>
-      {answered && <NextHint />}
+      {answered && <p className="text-[10px] text-ink3 text-center">Recorded. No answers are shown during checks.</p>}
     </div>
   );
 }
 
-function GrammarItem({ item, answered, onAnswer }) {
-  const [draft, setDraft] = useState('');
-  const submit = () => {
-    if (!draft.trim() || answered) return;
-    const ok = item.accept.some((a) => a.toLowerCase().trim() === draft.toLowerCase().trim());
-    onAnswer({ id: item.id, correct: ok });
-  };
-  return (
-    <div className="space-y-4">
-      <p className="text-center text-lg font-bold text-ink" lang="fr">{item.prompt}</p>
-      <p className="text-center text-[11px] text-ink3">Write the correct form — no hints here, by design.</p>
-      <div className="flex items-center gap-2 rounded-xl border border-line bg-surface2 px-3">
-        <input
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && submit()}
-          disabled={Boolean(answered)}
-          placeholder="Votre réponse…"
-          aria-label="Your answer in French"
-          className="flex-1 bg-transparent py-3 text-sm text-ink placeholder:text-ink3 focus:outline-none"
-        />
-        {!answered && (
-          <button onClick={submit} disabled={!draft.trim()} className="text-ink px-1 min-h-11 grid place-items-center disabled:opacity-40" aria-label="Submit answer">
-            <ChevronRight size={16} />
-          </button>
-        )}
-      </div>
-      {answered && <NextHint />}
-    </div>
-  );
-}
-
-function ListeningItem({ item, answered, onAnswer }) {
-  // AUDIO-FIRST: the text never renders before the item is answered.
+function ListeningRunner({ item, answered, onPick, ttsRate = 1 }) {
   const [plays, setPlays] = useState(0);
   const play = () => {
-    try { speak(item.audio, { lang: 'fr' }); setPlays((p) => p + 1); } catch { /* TTS unavailable: item stays answerable by replay attempts */ }
+    try { speak(item.content.audio, { rate: ttsRate }); setPlays((p) => p + 1); } catch { /* TTS unavailable: item stays answerable by replay attempts */ }
   };
-  const showText = Boolean(answered);
   return (
     <div className="space-y-4">
       <p className="text-center text-[11px] text-ink3">Listen, then choose the meaning. You may replay.</p>
@@ -146,119 +113,175 @@ function ListeningItem({ item, answered, onAnswer }) {
           <Volume size={18} /> {plays ? 'Replay' : 'Play'}
         </button>
       </div>
-      {showText && <p className="text-center text-sm text-ink3 italic" lang="fr">«{item.audio}»</p>}
-      <div className="grid gap-2" role="group" aria-label="Choose the meaning you heard">
-        {item.options.map((o) => (
-          <OptionButton key={o.id} label={o.en} lang="en" disabled={Boolean(answered)} answered={answered} chosenId={answered?.chosen} itemId={item.id} id={o.id} onAnswer={onAnswer} answer={o} />
-        ))}
-      </div>
+      {/* Audio-first: the transcript never renders before the item is answered. */}
+      {answered && <p className="text-center text-sm text-ink3 italic" lang="fr">«{item.content.audio}»</p>}
+      <OptionList
+        options={item.options}
+        correctOptionId={item.correctOptionId}
+        answered={answered}
+        chosenId={answered?.chosen}
+        onPick={(o) => onPick({ chosen: o.id, correct: o.id === item.correctOptionId })}
+        lang="en"
+        groupLabel="Choose the meaning you heard"
+      />
     </div>
   );
 }
 
-function ReadingItem({ item, answered, onAnswer }) {
+function ReadingRunner({ item, answered, onPick }) {
   return (
     <div className="space-y-4">
       <div className="bg-surface2 border border-line rounded-xl px-4 py-3">
-        <p className="text-sm text-ink leading-relaxed" lang="fr">{item.text}</p>
+        <p className="text-sm text-ink leading-relaxed" lang="fr">{item.content.text}</p>
       </div>
       <p className="text-center text-[11px] text-ink3">Read the passage, then choose the meaning.</p>
-      <div className="grid gap-2" role="group" aria-label="Choose the correct meaning">
-        {item.options.map((o) => (
-          <OptionButton key={o.id} label={o.en} lang="en" disabled={Boolean(answered)} answered={answered} chosenId={answered?.chosen} itemId={item.id} id={o.id} onAnswer={onAnswer} answer={o} />
-        ))}
-      </div>
+      <OptionList
+        options={item.options}
+        correctOptionId={item.correctOptionId}
+        answered={answered}
+        chosenId={answered?.chosen}
+        onPick={(o) => onPick({ chosen: o.id, correct: o.id === item.correctOptionId })}
+        lang="en"
+        groupLabel="Choose the correct meaning"
+      />
     </div>
   );
 }
 
-function SpeakingItem({ item, answered, onAnswer }) {
-  // Independent speaking task: the learner speaks; the check records a
-  // self-completed attempt (confidence-aware scoring arrives via the
-  // speaking pipeline and stays measurement-only).
-  const [started, setStarted] = useState(false);
+function SpeakingRunner({ item, answered, onAnswer, apiKey, mockMode, level }) {
+  // REAL speaking pipeline: record → transcribe → evaluate → store.
+  // If the objective evaluation fails, the attempt is stored UNSCORED
+  // (never "correct"); the learner's self-rating is a confidence field only.
+  const [stage, setStage] = useState('idle'); // idle | ready | recording | evaluating | done
   const startedAtRef = useRef(null);
+  const [scored, setScored] = useState(null); // { aiScore, asrConfidence, status }
+  const [error, setError] = useState(null);
+
+  const recorder = useRecorder({
+    onComplete: async (blob) => {
+      setStage('evaluating');
+      try {
+        const transcript = await transcribe(apiKey, blob, { mock: mockMode });
+        const words = String(transcript || '').split(/\s+/).filter(Boolean);
+        const evaluation = await evaluateTurn(apiKey, {
+          scenario: { title: 'Held-out speaking check', opener: item.content.prompt, curveball: null },
+          history: [],
+          userText: transcript,
+          level,
+          mock: mockMode,
+        });
+        const score = evaluation?.scores?.overall;
+        setScored({
+          transcript,
+          aiScore: Number.isFinite(Number(score)) ? Math.max(0, Math.min(100, Math.round(Number(score)))) : null,
+          asrConfidence: words.length >= 3 ? 'usable' : 'low',
+          status: Number.isFinite(Number(score)) ? 'scored' : 'unscored',
+        });
+        onAnswer({ correct: null, scored: true, aiScore: scoredNum(score), status: 'scored' });
+      } catch (e) {
+        // Objective scoring unavailable: store as UNSCORED, never correct.
+        setScored({ status: 'unscored', reason: friendlyError(e) });
+        onAnswer({ correct: null, scored: false, status: 'unscored' });
+      }
+      setStage('done');
+    },
+  });
+
+  const scoredNum = (v) => (Number.isFinite(Number(v)) ? Math.max(0, Math.min(100, Math.round(Number(v)))) : null);
+
   return (
     <div className="space-y-4">
-      <p className="text-center text-[11px] text-ink3">Speaking task — say it aloud, then mark honestly.</p>
-      <p className="text-center text-lg font-bold text-ink" lang="fr">{item.prompt}</p>
-      {!answered && (
-        <div className="grid gap-2">
-          <button
-            onClick={() => { setStarted(true); startedAtRef.current = Date.now(); }}
-            disabled={started}
-            className={`btn ${started ? 'btn-secondary' : 'btn-primary'} min-h-12 rounded-xl text-sm`}
-          >
-            {started ? 'Speaking…' : 'I\'m ready to speak'}
+      <p className="text-center text-[11px] text-ink3">Speaking task — respond aloud. This is recorded for measurement only.</p>
+      <p className="text-center text-lg font-bold text-ink" lang="fr">{item.content.prompt}</p>
+      {stage === 'idle' && (
+        <div className="grid place-items-center">
+          <button onClick={() => { setStage('ready'); startedAtRef.current = Date.now(); }} className="btn btn-primary min-h-12 px-6 rounded-xl text-sm">
+            I'm ready
           </button>
-          {started && (
-            <>
-              <button onClick={() => onAnswer({ id: item.id, correct: true, selfScore: 'managed' })} className="btn btn-secondary min-h-11 rounded-xl text-sm">I managed it</button>
-              <button onClick={() => onAnswer({ id: item.id, correct: false, selfScore: 'could-not' })} className="btn btn-secondary min-h-11 rounded-xl text-sm">I couldn\'t finish it</button>
-            </>
-          )}
         </div>
       )}
-      {answered && <NextHint />}
+      {stage === 'ready' && !answered && (
+        <div className="grid place-items-center gap-2">
+          <button
+            onClick={recorder.start}
+            disabled={recorder.recording}
+            aria-label="Record my speaking attempt"
+            className="btn btn-primary w-16 h-16 rounded-full grid place-items-center"
+          >
+            <Mic size={22} />
+          </button>
+          <p className="text-[11px] text-ink3">Tap, speak, then tap again to stop.</p>
+        </div>
+      )}
+      {recorder.recording && (
+        <div className="grid place-items-center gap-2">
+          <button
+            onClick={recorder.stop}
+            aria-label="Stop recording"
+            className="rec-pulse w-16 h-16 rounded-full bg-accent text-onaccent grid place-items-center"
+          >
+            <span className="w-5 h-5 rounded-sm bg-onaccent" />
+          </button>
+          <p className="text-[11px] text-ink3 tabular-nums">{recorder.elapsed}s</p>
+        </div>
+      )}
+      {stage === 'evaluating' && <p className="text-center text-sm text-ink2">Evaluating your attempt…</p>}
+      {stage === 'done' && scored && (
+        <p className="text-center text-[11px] text-ink3">
+          {scored.status === 'scored'
+            ? `Attempt recorded (AI score available for research; not shown to keep the check honest).`
+            : 'Attempt recorded as UNSCORED — objective evaluation was unavailable. Your confidence rating below is not a score.'}
+          {scored.reason ? ` (${scored.reason})` : ''}
+        </p>
+      )}
+      {stage === 'done' && !answered && (
+        <div className="grid grid-cols-2 gap-2">
+          <button onClick={() => onAnswer({ correct: null, status: scored?.status || 'unscored', aiScore: scored?.aiScore ?? null, asrConfidence: scored?.asrConfidence ?? null, confidence: 'managed' })} className="btn btn-secondary min-h-11 rounded-xl text-sm">I managed it</button>
+          <button onClick={() => onAnswer({ correct: null, status: scored?.status || 'unscored', aiScore: scored?.aiScore ?? null, asrConfidence: scored?.asrConfidence ?? null, confidence: 'could-not' })} className="btn btn-secondary min-h-11 rounded-xl text-sm">I couldn't finish it</button>
+        </div>
+      )}
+      {error && <p role="alert" className="text-xs text-ink bg-surface2 border border-line rounded-xl px-3 py-2">{error}</p>}
+      {answered && <p className="text-[10px] text-ink3 text-center">Attempt stored ({answered.status || 'unscored'}). Confidence is recorded separately from scoring.</p>}
     </div>
   );
-}
-
-function OptionButton({ label, lang, disabled, answered, chosenId, itemId, id, onAnswer, answer }) {
-  const isChosen = answered?.chosen === id;
-  const isTarget = id === itemId;
-  const tone = !answered
-    ? 'border-line bg-surface hover:border-ink3'
-    : isTarget
-      ? 'border-line bg-surface opacity-70'
-      : isChosen
-        ? 'border-amber-300 bg-amber-50'
-        : 'border-line bg-surface opacity-60';
-  return (
-    <button
-      onClick={() => onAnswer({ id: itemId, correct: id === itemId, chosen: id })}
-      disabled={disabled}
-      className={`w-full text-left rounded-xl border px-4 py-3 text-sm font-semibold transition-colors ${tone}`}
-    >
-      <span lang={lang}>{label}</span>
-    </button>
-  );
-}
-
-function NextHint() {
-  return <p className="text-[10px] text-ink3 text-center">Recorded. No answers are shown during checks — that keeps them honest.</p>;
 }
 
 const RUNNERS = {
-  vocabulary: RecognitionItem,
-  'vocabulary-prod': ProductionItem,
-  grammar: GrammarItem,
-  listening: ListeningItem,
-  reading: ReadingItem,
-  speaking: SpeakingItem,
+  vocabulary: ChoiceRunner,
+  'vocabulary-prod': (props) => <TypedRunner {...props} placeholder="Votre réponse…" hint="Write this in French — spelling counts." />,
+  grammar: (props) => <TypedRunner {...props} placeholder="Votre réponse…" hint="Write the correct form — no hints here, by design." />,
+  listening: ListeningRunner,
+  reading: ReadingRunner,
+  speaking: SpeakingRunner,
 };
 
-export default function HeldOutCheck({ check, onDone }) {
-  // Items arrive in the frozen check record (bank shape); the pool view keeps
-  // the study store lean (ids only) so the component rehydrates them.
-  const items = check?.poolItems || [];
-  const bankWords = check?.poolWords || [];
+export default function HeldOutCheck({ check, onDone, apiKey, mockMode, level, ttsRate = 1 }) {
+  // Items are FROZEN ASSESSMENT PAYLOADS persisted in the check record.
+  const items = check?.items || [];
   const [idx, setIdx] = useState(0);
-  const [answered, setAnswered] = useState(null); // { chosen, correct }
+  const [answered, setAnswered] = useState(null); // { chosen?, correct, status?, aiScore?, asrConfidence?, confidence? }
   const startedRef = useRef(Date.now());
-  const resultsRef = useRef({});
+  const resultsRef = useRef([]);
 
   const item = items[idx];
-  const Runner = item ? (RUNNERS[item.skill] || RecognitionItem) : null;
+  const Runner = item ? (RUNNERS[item.skill] || ChoiceRunner) : null;
 
   const finish = () => {
-    const scored = Object.values(resultsRef.current);
-    const correct = scored.filter(Boolean).length;
+    const scored = resultsRef.current;
+    const objectivelyScored = scored.filter((r) => r.correct != null);
+    const correct = objectivelyScored.filter((r) => r.correct).length;
     onDone?.({
       correct,
       total: scored.length,
-      quizScore: scored.length ? Math.round((correct / scored.length) * 100) : null,
+      // Objective scoring only counts rows that had a definite answer;
+      // unscored speaking attempts are excluded from the fraction, never
+      // counted as correct.
+      quizScore: objectivelyScored.length
+        ? Math.round((correct / objectivelyScored.length) * 100)
+        : null,
+      unscored: scored.length - objectivelyScored.length,
       secondsSpent: Math.round((Date.now() - startedRef.current) / 1000),
+      perItem: scored,
     });
   };
 
@@ -273,8 +296,8 @@ export default function HeldOutCheck({ check, onDone }) {
 
   const answer = (r) => {
     if (answered) return;
-    resultsRef.current[r.id] = Boolean(r.correct);
-    setAnswered({ chosen: r.chosen ?? r.id, correct: Boolean(r.correct) });
+    resultsRef.current.push({ sourceItemId: item.sourceItemId, skill: item.skill, correct: r.correct ?? null, status: r.status || (r.correct != null ? 'scored' : 'unscored'), aiScore: r.aiScore ?? null, asrConfidence: r.asrConfidence ?? null, confidence: r.confidence ?? null });
+    setAnswered({ chosen: r.chosen ?? null, correct: r.correct, status: r.status });
   };
 
   const next = () => {
@@ -293,7 +316,7 @@ export default function HeldOutCheck({ check, onDone }) {
           <p className="text-[11px] text-ink3">New material — answer from what you know. No hints here, by design.</p>
         </div>
         <div className="bg-surface border border-line rounded-2xl p-5 space-y-4">
-          {Runner && <Runner item={item} bankWords={bankWords} answered={answered} onAnswer={answer} />}
+          {Runner && <Runner item={item} answered={answered} apiKey={apiKey} mockMode={mockMode} level={level} ttsRate={ttsRate} onPick={(o) => answer({ chosen: o.id, correct: o.id === item.correctOptionId })} onAnswer={answer} />}
           {answered && (
             <button onClick={next} className="btn btn-primary w-full min-h-11 rounded-xl text-sm inline-flex items-center justify-center gap-1.5">
               {idx + 1 >= items.length ? 'Finish check' : 'Next'} <ChevronRight size={14} />

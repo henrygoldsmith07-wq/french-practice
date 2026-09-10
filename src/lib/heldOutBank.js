@@ -186,3 +186,77 @@ function hashStr(s) {
 }
 
 export const bankItem = (id) => BANK_BY_ID.get(id) || null;
+
+/**
+ * FROZEN ASSESSMENT PAYLOAD — bank item → everything a renderer needs to
+ * display AND score the item, persisted in the check record so correctness
+ * never depends on live lookups or id inference:
+ *   { assessmentId, sourceItemId, skill, cefr, content, options[], correctOptionId }
+ * Listening/reading distractors are generated deterministically here, before
+ * persistence, so every replay renders and scores identically. Renderers must
+ * compare the learner's choice against correctOptionId — never against
+ * option.id === item.id.
+ */
+export function buildHeldOutAssessmentItem(item, { distractorPool = [], participantId = '', day = 0 } = {}) {
+  if (!item) return null;
+  const base = {
+    assessmentId: `as-${item.id}`,
+    sourceItemId: item.id,
+    skill: item.skill,
+    cefr: item.cefr,
+    difficulty: item.difficulty ?? null,
+    provenance: item.provenance ?? null,
+  };
+  if (item.skill === 'vocabulary') {
+    // Recognition: EN prompt → pick the French word.
+    const distractors = distractorPool
+      .filter((d) => d.id !== item.id && d.fr && d.en && d.skill === 'vocabulary')
+      .slice(0, 3)
+      .map((d) => ({ id: `as-${d.id}`, text: d.fr }));
+    const options = deterministicShuffle4([...distractors, { id: base.assessmentId, text: item.fr }], `${participantId}|${day}|${item.id}`);
+    return { ...base, content: { prompt: item.en }, options, correctOptionId: base.assessmentId };
+  }
+  if (item.skill === 'vocabulary-prod') {
+    return { ...base, content: { prompt: item.en }, accept: item.accept, options: [], correctOptionId: null };
+  }
+  if (item.skill === 'grammar') {
+    return { ...base, content: { prompt: item.prompt }, accept: item.accept, options: [], correctOptionId: null };
+  }
+  if (item.skill === 'listening') {
+    // Audio-first comprehension: EN meaning options; the audio text never
+    // renders before the item is answered.
+    const distractors = distractorPool
+      .filter((d) => d.id !== item.id && d.skill === 'listening' && d.en)
+      .slice(0, 2)
+      .map((d) => ({ id: `as-${d.id}`, text: d.en }));
+    const options = deterministicShuffle4([...distractors, { id: base.assessmentId, text: item.en }], `${participantId}|${day}|${item.id}`);
+    return { ...base, content: { audio: item.audio }, options, correctOptionId: base.assessmentId };
+  }
+  if (item.skill === 'reading') {
+    const distractors = distractorPool
+      .filter((d) => d.id !== item.id && d.skill === 'reading' && d.en)
+      .slice(0, 2)
+      .map((d) => ({ id: `as-${d.id}`, text: d.en }));
+    const options = deterministicShuffle4([...distractors, { id: base.assessmentId, text: item.en }], `${participantId}|${day}|${item.id}`);
+    return { ...base, content: { text: item.text }, options, correctOptionId: base.assessmentId };
+  }
+  if (item.skill === 'speaking') {
+    return { ...base, content: { prompt: item.prompt }, accept: null, options: [], correctOptionId: null };
+  }
+  return null;
+}
+
+function deterministicShuffle4(options, seedStr) {
+  return deterministicShuffle(options, seedStr);
+}
+
+function deterministicShuffle(items, seedStr) {
+  const out = [...items];
+  let h = hashStr(seedStr);
+  for (let i = out.length - 1; i > 0; i--) {
+    h = Math.imul(h ^ (i + 1), 2654435761);
+    const j = Math.abs(h) % (i + 1);
+    [out[i], out[j]] = [out[j], out[i]];
+  }
+  return out;
+}

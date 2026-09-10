@@ -128,7 +128,8 @@ export default function StudyPanel() {
   }
 
   const { state, day, personal, checks } = data;
-  const comparison = data.pool.comparison;
+  const pool = data.pool; // single source for all pooled references
+  const comparison = pool.comparison;
   const statusLabel = personal.n === 0
     ? 'Not enough evidence yet'
     : personal.n < MIN_N_PER_ARM
@@ -198,7 +199,7 @@ export default function StudyPanel() {
 
       <div className="border-t border-line pt-2 space-y-2">
         <p className="text-[10px] font-bold uppercase tracking-wider text-ink3">
-          Adaptive vs balanced — pooled, participant-weighted ({data.pool.participants} participant{data.pool.participants === 1 ? '' : 's'}: {data.pool.participantsByArm.adaptive || 0} adaptive · {data.pool.participantsByArm.balanced || 0} balanced)
+          Adaptive vs balanced — pooled, participant-weighted ({pool.participants} participant{pool.participants === 1 ? '' : 's'}: {pool.participantsByArm.adaptive || 0} adaptive · {pool.participantsByArm.balanced || 0} balanced)
         </p>
         {armBlock('Adaptive', comparison.adaptive)}
         {armBlock('Balanced', comparison.balanced)}
@@ -220,22 +221,22 @@ export default function StudyPanel() {
       <details className="border-t border-line pt-2">
         <summary className="text-[10px] font-bold uppercase tracking-wider text-ink3 cursor-pointer">Research diagnostics</summary>
         <div className="mt-2 space-y-1 text-[10px] text-ink3">
-          <p>Protocol version: {data.pool.protocolVersion ?? 1} · included rows: {pool.includedRows} of {pool.rowCount}</p>
-          <p>Exclusions by reason: {exclusionSummary(data.pool.exclusionCounts)}</p>
-          <p>Rejected imports: {data.pool.rejected.length}{data.pool.rejected.length ? ` — first reason: ${data.pool.rejected[0].errors[0]}` : ''}</p>
+          <p>Protocol version: {pool.protocolVersion ?? 1} · included rows: {pool.includedRows} of {pool.rowCount}</p>
+          <p>Exclusions by reason: {exclusionSummary(pool.exclusionCounts)}</p>
+          <p>Rejected imports: {pool.rejected.length}{pool.rejected.length ? ` — first reason: ${pool.rejected[0].errors[0]}` : ''}</p>
           {['adaptive', 'balanced'].map((arm) => (
             <p key={arm}>
               {arm}: transfer evidence per skill — {
-                Object.entries(data.pool.comparison[arm].transferBySkill || {})
+                Object.entries(pool.comparison[arm].transferBySkill || {})
                   .map(([skill, m]) => `${skill}: ${m.scoredParticipants}`).join(' · ') || '—'
               }
             </p>
           ))}
-          <p>Baseline coverage: adaptive {data.pool.baselineCoverage.adaptive.withBoth}/{data.pool.baselineCoverage.adaptive.withUsableBaseline} both · balanced {data.pool.baselineCoverage.balanced.withBoth}/{data.pool.baselineCoverage.balanced.withUsableBaseline}</p>
+          <p>Baseline coverage: adaptive {pool.baselineCoverage.adaptive.withBoth}/{pool.baselineCoverage.adaptive.withUsableBaseline} both · balanced {pool.baselineCoverage.balanced.withBoth}/{pool.baselineCoverage.balanced.withUsableBaseline}</p>
           <p>
-            Attrition: adaptive {attritionLine(data.pool.attrition.adaptive)} · balanced {attritionLine(data.pool.balanced ? data.pool.attrition.balanced : data.pool.attrition.balanced)}
+            Attrition: adaptive {attritionLine(pool.attrition.adaptive)} · balanced {attritionLine(pool.balanced ? pool.attrition.balanced : pool.attrition.balanced)}
           </p>
-          <p>Missing outcomes: adaptive {data.pool.comparison.adaptive.missingShort} · balanced {data.pool.comparison.balanced.missingShort} (1–3d window)</p>
+          <p>Missing outcomes: adaptive {pool.comparison.adaptive.missingShort} · balanced {pool.comparison.balanced.missingShort} (1–3d window)</p>
         </div>
       </details>
 

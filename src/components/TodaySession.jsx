@@ -21,7 +21,7 @@ import { getPracticeAssignment, balancedDrillTopic } from '../lib/assignment';
 import { recordSelectionTrial, getSelectionTrial, saveSelectionTrial } from '../lib/storage';
 import {
   getSrs, getNotebook, getDueWeaknesses, rateCard,
-  getMistakeGraph, saveMistakeGraph, getSyncId,
+  getMistakeGraph, saveMistakeGraph, getSyncId, getStudyChecks,
 } from '../lib/storage';
 import { getErrorNotebook } from '../lib/errorNotebook';
 import { allEntries } from '../lib/vocab';
@@ -118,23 +118,36 @@ export default function TodaySession({ open, onClose, minutes = 20, apiKey, mock
     const checkDue = isCheckScheduled(study, sDay);
     let heldOut = null;
     if (checkDue) {
-      const pool = buildHeldOutPool({
-        participantId: study.participantId,
-        day: sDay,
-        level: level || study.startLevel || 'B1',
-        vocabEntries: allEntries(),
-        srsMap: getSrs(),
-        listeningTracks: tracks,
-      });
-      if (pool.words.length || pool.track) {
-        const saved = saveCheckRecord(makeCheckRecord({
-          participantId: study.participantId, day: sDay, level: level || study.startLevel || 'B1', pool,
-        }));
-        // The persisted record keeps ids only; the bank-shaped items ride on
-        // the in-memory plan so the skill-specific runner can render without
-        // re-reading the bank.
-        heldOut = { ...saved, poolItems: pool.words, poolWords: pool.words };
-      }
+      // Study instrumentation must never take down practice: any failure in
+      // pool building simply means no check today.
+      try {
+        // TRULY HELD-OUT: every previously shown sourceItemId is collected
+        // from past checks so no item repeats for this participant. If the
+        // verified bank is exhausted for the scheduled skill, the pool comes
+        // back empty and the check honestly skips (no recycling).
+        const seenIds = new Set(
+          getStudyChecks().flatMap((c) => (c.items || []).map((it) => it.sourceItemId))
+        );
+        const pool = buildHeldOutPool({
+          participantId: study.participantId,
+          day: sDay,
+          level: level || study.startLevel || 'B1',
+          vocabEntries: allEntries(),
+          srsMap: getSrs(),
+          listeningTracks: tracks,
+          seenIds,
+        });
+        if (pool.words.length || pool.track) {
+          const saved = saveCheckRecord(makeCheckRecord({
+            participantId: study.participantId, day: sDay, level: level || study.startLevel || 'B1', pool,
+          }));
+          if (saved) {
+            // The persisted record carries the frozen assessment payloads in
+            // .items — the skill-specific runner renders straight from those.
+            heldOut = saved;
+          }
+        }
+      } catch { /* a broken check plan is no reason to lose the session */ }
     }
     // P1 selection-trial record: frozen before any practice happens, with
     // the resolved activity so analysis knows what was actually delivered.
@@ -304,11 +317,12 @@ function TodayBody({ plan, segIndex, setSegIndex, close, apiKey, mockMode, level
         check={plan.heldOut}
         onDone={(finished) => {
           recordCheckOutcome(plan.heldOut.id, finished);
-          // Transfer attaches PER SKILL (the check day's scheduled skill) —
-          // measurement only; selection never sees these items. Skills are
-          // never merged while the protocol forbids an overall score.
-          const score = finished?.total
-            ? Math.round((finished.correct / finished.total) * 100)
+          // Transfer attaches PER SKILL from objectively scored items only —
+          // unscored speaking attempts are excluded from the fraction, never
+          // counted as correct. Measurement only; selection never sees these.
+          const scored = (finished?.perItem || []).filter((r) => r.correct != null);
+          const score = scored.length
+            ? Math.round((scored.filter((r) => r.correct).length / scored.length) * 100)
             : null;
           attachTransferToOutcomes({
             day: plan.studyDay,

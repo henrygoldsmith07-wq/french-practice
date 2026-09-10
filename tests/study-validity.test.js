@@ -189,6 +189,8 @@ test('contamination prevention: held-out items are namespaced away from practice
     assert.equal(storage.getSrs()[id], undefined, 'held-out id never in SRS');
     assert.equal(storage.getMistakeGraph().some((m) => m.id === id), false, 'held-out id never in graph');
   }
+  // Frozen payloads are the scoring source of truth.
+  assert.ok(chk.items.every((it) => it.sourceItemId && it.skill), 'payload contract shape');
   // Selection inputs are empty — the engine cannot learn from held-out items.
   const { dueRetests } = await import(`../src/lib/mistakeGraph.js?mg=${Date.now()}`);
   assert.equal(dueRetests(storage.getMistakeGraph()).length, 0);
