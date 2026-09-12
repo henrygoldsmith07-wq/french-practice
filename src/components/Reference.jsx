@@ -8,6 +8,7 @@ import { getNotebook, saveToNotebook } from '../lib/storage';
 import { speak, stopSpeaking } from '../lib/tts';
 import { SpeakButton } from './ui';
 import PhraseDrills from './PhraseDrills';
+import ConjugationDrill from './ConjugationDrill';
 import { shuffleOptions } from './GrammarExercises';
 import { X, ChevronLeft, ChevronRight, Check, Play, Book, Volume, FileText, Plus, Layers, MessageCircle, Target } from './icons';
 
@@ -19,6 +20,7 @@ const TOOLS = [
   { id: 'drills', icon: Target, title: 'Phrase drills', blurb: 'Shadow, type, or flip real-world lines' },
   { id: 'phrasebook', icon: MessageCircle, title: 'Phrasebook', blurb: 'Essential phrases for real situations' },
   { id: 'conjugation', icon: Layers, title: 'Verb conjugations', blurb: 'Full tables for key verbs, with IPA' },
+  { id: 'conjugation-drill', icon: Target, title: 'Conjugation drill', blurb: 'Type the form from memory — accents count' },
   { id: 'pairs', icon: Volume, title: 'Minimal pairs', blurb: 'Train your ear on tricky sound contrasts' },
   { id: 'cloze', icon: FileText, title: 'Cloze tests', blurb: 'Fill the gap — grammar in context' },
   { id: 'dict', icon: Book, title: 'Dictionary & frequency', blurb: 'Search words, see IPA, import your own' },
@@ -37,6 +39,7 @@ export default function Reference({ open, onClose, onImported, onXp, initialTool
     if (tool === 'drills') return <PhraseDrills onXp={onXp} onBack={() => setTool(null)} />;
     if (tool === 'phrasebook') return <Phrasebook />;
     if (tool === 'conjugation') return <Conjugations />;
+    if (tool === 'conjugation-drill') return <ConjugationDrill onXp={onXp} onBack={() => setTool(null)} />;
     if (tool === 'pairs') return <MinimalPairs />;
     if (tool === 'cloze') return <Cloze />;
     if (tool === 'dict') return <Dictionary onImported={onImported} />;
