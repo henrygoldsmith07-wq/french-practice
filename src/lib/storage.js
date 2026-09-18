@@ -237,44 +237,14 @@ export function importProgress(payload) {
 
 // theme: null = follow the OS preference; 'dark' | 'light' once toggled
 // level: CEFR level used to calibrate the LLM; dailyGoal: XP target per day
-const DEFAULT_SETTINGS = {
-  ttsRate: 1,
-  mockMode: false,
-  devPanel: false,
-  theme: null,
-  level: 'B1',
-  dailyGoal: 30,
-  weeklyGoal: 150,
-  smartReminders: false,
-  name: '',
-  language: 'fr', // the language being studied right now: fr | de | es
-  // Every language the learner signed up for. Empty means "derive from
-  // `language`", which is what settings saved before multi-language look
-  // like — normaliseLanguages() does that, so upgrading never reassigns
-  // someone studying German to the French default.
-  languages: [],
-  timezone: null, // IANA tz, detected at onboarding — frames reminder copy
-  // accessibility preferences (applied as classes on <html>)
-  reduceMotion: false,
-  largeText: false,
-  dyslexiaFont: false,
-  highContrast: false,
-  examBoard: null, // null | gcse-aqa | gcse-edexcel | a-level-aqa | delf-b1 | delf-b2
-  correctionFrequency: 'adaptive', // adaptive | every-turn | important | end | off
-};
-export const getSettings = () => ({ ...DEFAULT_SETTINGS, ...read(KEYS.settings, {}) });
-export const setSettings = (s) => write(KEYS.settings, s);
+// Settings & prefs persistence lives in stores/settingsStore.js; these
+// facade getters keep the DEFAULT_* merging and every import working.
+import { getSettings as _storeGetSettings, setSettings as _storeSetSettings, getPrefs as _storeGetPrefs, setPrefs as _storeSetPrefs } from './stores/settingsStore.js';
+export const getSettings = () => _storeGetSettings();
+export const setSettings = (s2) => _storeSetSettings(s2);
+export const getPrefs = () => _storeGetPrefs();
+export const setPrefs = (p) => _storeSetPrefs(p);
 
-// ---- personalisation preferences ----
-
-const DEFAULT_PREFS = {
-  learningStyle: 'balanced', // balanced | conversation | grammar | vocabulary | immersion
-  lessonLength: 'medium', // short | medium | long
-  adaptiveDifficulty: true, // nudge effective difficulty from recent scores
-  favouriteTopics: [], // subset of TOPIC ids
-};
-export const getPrefs = () => ({ ...DEFAULT_PREFS, ...read(KEYS.prefs, {}) });
-export const setPrefs = (p) => write(KEYS.prefs, { ...getPrefs(), ...p });
 
 // ---- Pulse opt-in ---------------------------------------------------------
 // Pulse reads the mirror under `fp.pulse-history.v2`. Sharing is off by
