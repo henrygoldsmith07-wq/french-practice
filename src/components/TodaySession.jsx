@@ -51,6 +51,7 @@ import { NotebookRetype } from './NotebookRetype';
 import Quiz from './Quiz';
 import { ChevronRight, X } from './icons';
 import { personAt } from '../lib/conjugationMeta';
+import { recordLearnerSuccess } from '../lib/storage';
 import { segmentExplain, recoveryStatus } from '../lib/segmentExplain';
 import RecoveryBadge from './RecoveryBadge';
 
