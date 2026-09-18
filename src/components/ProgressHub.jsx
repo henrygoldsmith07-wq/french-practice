@@ -1,6 +1,8 @@
 import { lazy, Suspense, useState } from 'react';
 import { BarChart, Map, Clock, Target, Layers } from './icons';
 import { ChevronRight } from './icons';
+import { contentLang } from '../lib/content/active.js';
+import { isFullSupport } from '../lib/languages';
 
 const LazyProfile = lazy(() => import('./Profile'));
 const LazyAnalytics = lazy(() => import('./Analytics'));
@@ -17,7 +19,7 @@ function ScreenLoader() {
   );
 }
 
-const SECTIONS = [
+const SECTIONS_ALL = [
   { id: 'stats', title: 'Stats & streak', subtitle: 'XP, level, streak & weekly goal — your private dashboard.', icon: BarChart },
   { id: 'path', title: 'Learning path', subtitle: '12 units · checkpoints · 60 lessons per goal.', icon: Map },
   { id: 'proficiency', title: 'Proficiency', subtitle: 'Your CEFR score, level gates & placement test.', icon: Target },
@@ -25,6 +27,12 @@ const SECTIONS = [
   { id: 'analytics', title: 'Analytics', subtitle: 'Time, retention & skill breakdown.', icon: BarChart },
   { id: 'focus', title: 'Focus & habits', subtitle: 'Timer, Pomodoro & habit tracker.', icon: Clock },
 ];
+
+// The 12-unit learning path is authored for French only; beta languages get
+// the core loop and honest progress surfaces instead of a half-built path.
+const SECTIONS = (lang) => SECTIONS_ALL.filter(
+  (s) => isFullSupport(lang) || s.id !== 'path',
+);
 
 export default function ProgressHub({
   view,
@@ -124,7 +132,7 @@ export default function ProgressHub({
           <p className="text-ink2 mt-1.5 text-sm max-w-xl mx-auto">Streak, learning path and analytics — the quiet scoreboard. No guilt, just shape and momentum.</p>
         </div>
         <div className="grid gap-3.5 sm:grid-cols-2">
-          {SECTIONS.map((s) => (
+          {SECTIONS(contentLang()).map((s) => (
             <button
               key={s.id}
               onClick={() => onView(s.id)}

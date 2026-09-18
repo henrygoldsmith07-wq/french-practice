@@ -5,6 +5,8 @@ import {
 import { getPhrasebook } from '../lib/phrasebook';
 import { allEntries } from '../lib/vocab';
 import { getNotebook, saveToNotebook } from '../lib/storage';
+import { contentLang } from '../lib/content/active.js';
+import { isFullSupport } from '../lib/languages';
 import { speak, stopSpeaking } from '../lib/tts';
 import { SpeakButton } from './ui';
 import PhraseDrills from './PhraseDrills';
@@ -15,7 +17,7 @@ import { X, ChevronLeft, ChevronRight, Check, Play, Book, Volume, FileText, Plus
 // ear drill, cloze tests, phrase drills, and an offline dictionary / frequency
 // list with custom word-list import. All offline; TTS is on-device.
 
-const TOOLS = [
+const TOOLS_ALL = [
   { id: 'drills', icon: Target, title: 'Phrase drills', blurb: 'Shadow, type, or flip real-world lines' },
   { id: 'phrasebook', icon: MessageCircle, title: 'Phrasebook', blurb: 'Essential phrases for real situations' },
   { id: 'conjugation', icon: Layers, title: 'Verb conjugations', blurb: 'Full tables for key verbs, with IPA' },
@@ -23,6 +25,8 @@ const TOOLS = [
   { id: 'cloze', icon: FileText, title: 'Cloze tests', blurb: 'Fill the gap — grammar in context' },
   { id: 'dict', icon: Book, title: 'Dictionary & frequency', blurb: 'Search words, see IPA, import your own' },
 ];
+// Authored for French only; hidden for beta languages rather than wrong.
+const FRENCH_ONLY_TOOLS = new Set(['conjugation', 'pairs', 'cloze']);
 
 export default function Reference({ open, onClose, onImported, onXp, initialTool = null }) {
   const [tool, setTool] = useState(initialTool);
@@ -32,6 +36,7 @@ export default function Reference({ open, onClose, onImported, onXp, initialTool
   }, [open, initialTool]);
 
   if (!open) return null;
+  const tools = TOOLS_ALL.filter((t) => isFullSupport(contentLang()) || !FRENCH_ONLY_TOOLS.has(t.id));
 
   const body = () => {
     if (tool === 'drills') return <PhraseDrills onXp={onXp} onBack={() => setTool(null)} />;
@@ -45,7 +50,7 @@ export default function Reference({ open, onClose, onImported, onXp, initialTool
         <div className="max-w-lg mx-auto space-y-4">
           <p className="text-xs text-ink2 text-center">Reference tables and drills — all offline.</p>
           <div className="space-y-2.5">
-            {TOOLS.map((t) => (
+            {tools.map((t) => (
               <button
                 key={t.id}
                 onClick={() => setTool(t.id)}
@@ -74,7 +79,7 @@ export default function Reference({ open, onClose, onImported, onXp, initialTool
           </button>
         ) : <span className="w-10" aria-hidden="true" />}
         <h2 className="flex-1 text-center text-sm font-semibold text-ink">
-          {tool ? (TOOLS.find((t) => t.id === tool)?.title || 'Reference') : 'Reference & tools'}
+          {tool ? (tools.find((t) => t.id === tool)?.title || 'Reference') : 'Reference & tools'}
         </h2>
         <button onClick={() => { stopSpeaking(); onClose(); }} aria-label="Close reference" className="w-10 h-10 grid place-items-center rounded-full text-ink2 hover:bg-surface2 hover:text-ink">
           <X size={18} />

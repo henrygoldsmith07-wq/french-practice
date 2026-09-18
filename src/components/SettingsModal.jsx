@@ -3,7 +3,7 @@ import { Modal, Spinner } from './ui';
 import { X as XIcon } from './icons';
 import { validateKey } from '../lib/groq';
 import { readPulseOptIn, setApiKey, clearApiKey, setPulseOptIn } from '../lib/storage';
-import { LANGUAGE_LIST } from '../lib/languages';
+import { LANGUAGE_LIST, maturityLabel } from '../lib/languages';
 import { getQuota, formatQuota } from '../lib/quota';
 import { getRelayConfig, pingRelay, relayEnabled } from '../lib/relay';
 
@@ -184,7 +184,7 @@ export default function SettingsModal({ open, onClose, apiKey, onKeyChange, sett
             <RadioGroup
               label="Target language"
               groupClassName="grid grid-cols-3 gap-2"
-              options={LANGUAGE_LIST.map((l) => ({ value: l.id }))}
+              options={LANGUAGE_LIST.map((l) => ({ value: l.id, maturity: maturityLabel(l.id) }))}
               value={settings.language || 'fr'}
               onChange={(id) => onSettingsChange({ ...settings, language: id })}
               btnClass={(on) => `flex flex-col items-center gap-1 rounded-xl border px-2 py-3 transition-colors ${on ? 'bg-surface2 border-ink' : 'bg-surface border-line hover:border-ink3'}`}
@@ -193,6 +193,9 @@ export default function SettingsModal({ open, onClose, apiKey, onKeyChange, sett
                 <>
                   <span className="text-2xl" aria-hidden="true">{l.flag}</span>
                   <span className={`text-xs font-semibold ${on ? 'text-ink' : 'text-ink2'}`}>{l.nativeName}</span>
+                  {l.maturity === 'Beta' && (
+                    <span className="text-[9px] font-bold uppercase tracking-wider text-ink3">Beta</span>
+                  )}
                 </>
               )}
             </RadioGroup>

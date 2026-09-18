@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { LANGUAGE_LIST, getLanguage } from '../lib/languages';
+import { LANGUAGE_LIST, getLanguage, maturityLabel } from '../lib/languages';
 import { syncLanguage } from '../lib/i18n';
 import { SpeakButton } from './ui';
 import { ArrowRight, Check, ChevronLeft, Sparkles } from './icons';
@@ -75,7 +75,7 @@ export default function Onboarding({ open, onComplete, onSkip, onStartConversati
               id: languageOption.id,
               emoji: languageOption.flag,
               label: languageOption.name,
-              desc: `${languageOption.nativeName} · ${languageOption.hello}`,
+              desc: `${languageOption.nativeName} · ${languageOption.hello} · ${maturityLabel(languageOption.id)}`,
             }))}
             selected={d.language}
             onPick={(languageOption) => chooseLanguage(languageOption.id)}

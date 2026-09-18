@@ -44,6 +44,10 @@ import { getSelectionTrial, getMistakeGraph as getGraphForTrials } from '../lib/
 // monthly reports, and activity heatmaps — all from locally-recorded data.
 
 export default function Analytics({ open, onClose }) {
+  // Research surfaces (study enrolment, evidence panels, validation
+  // experiments) are for study operators and the dev panel — not part of the
+  // learner's Analytics. They stay available behind Settings → Dev Panel.
+  const showResearch = open && Boolean(getSettings().devPanel);
   const d = useMemo(() => {
     if (!open) return null;
     const metrics = getMetrics();
@@ -174,14 +178,18 @@ export default function Analytics({ open, onClose }) {
             </div>
           </section>
 
-          <StudyPanel />
-          <EvidenceStudy />
-          <AdaptivePracticeEvidence />
-          <LearnerValidation />
+          {showResearch && (
+            <>
+              <StudyPanel />
+              <EvidenceStudy />
+              <AdaptivePracticeEvidence />
+              <LearnerValidation />
+            </>
+          )}
           <ErrorNotebookStats />
           <LearnerErrorModel entries={d.learnerErrors} summary={d.learnerErrorSummary} />
           <SessionHistory sessions={d.sessions} />
-          <ExamBenchmark />
+          {showResearch && <ExamBenchmark />}
           {/* period reports */}
           <WeaknessMemory />
           <ErrorCategories />
