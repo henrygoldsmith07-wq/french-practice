@@ -14,12 +14,46 @@
 
 import { GRAMMAR_TOPICS } from './grammar.js';
 import { GRAMMAR_ALIASES } from './cefr.js';
+import { PERSONS } from './conjugationMeta.js';
+import { applyCalibration } from './selectionCalibration.js';
 
+// The conj-drill link sits FIRST when present: a trainer gap has a
+// purpose-built, exact-form repair (fully offline), which always beats the
+// generic AI drill — including mock mode, where the AI drill is canned
+// questions that cannot target one specific form.
 export const DRILL_FALLBACK_ORDER = [
-  'ai-drill', 'authored-drill', 'retype', 'srs-retrieval', 'listen', 'review',
+  'conj-drill', 'dictation-drill', 'accent-drill', 'ai-drill', 'authored-drill', 'retype', 'srs-retrieval', 'listen', 'review',
 ];
 
+// A conjugation-trainer gap surfaces as a concept shaped
+// "conjugating parler (present)" or — with the exact missed cell —
+// "conjugating parler (present · je)". No grammar-library topic matches
+// either shape, so the chain needs its own link: the trainer itself, focused
+// on that exact form, fully offline. `conj-drill` only enters the chain when
+// the concept has this shape — every other concept drills exactly as before.
+const TRAINER_GAP_RE = /^conjugating\s+(\S+)\s*\((?:([a-z0-9-]+))(?:\s*·\s*([a-z/']+))?\)$/i;
+export function trainerDrillFor(concept) {
+  const m = TRAINER_GAP_RE.exec(String(concept || '').trim());
+  if (!m) return null;
+  const personIdx = m[3] ? PERSONS.indexOf(m[3].toLowerCase()) : -1;
+  return { verb: m[1].toLowerCase(), tense: m[2].toLowerCase(), personIndex: personIdx >= 0 ? personIdx : null };
+}
+
 const TOPIC_IDS = new Set(GRAMMAR_TOPICS.map((t) => t.id));
+
+// The other learner-error categories get the same treatment conjugation
+// gets from conj-drill: a concept recorded by a practice mode (storage.js's
+// recordLearningActivity) is matched to a purpose-built, offline drill that
+// repairs it. Key shapes must never collide with a GRAMMAR_TOPICS id — the
+// `authored-drill` link would otherwise claim them.
+const DICTATION_GAP_RE = /^(dictée listening accuracy|dictation)$/i;
+const PRONUNCIATION_GAP_RE = /^pronunciation clarity$/i;
+export function dictationDrillFor(concept) {
+  return DICTATION_GAP_RE.test(String(concept || '').trim()) ? { kind: 'dictation-drill' } : null;
+}
+export function accentDrillFor(concept) {
+  return PRONUNCIATION_GAP_RE.test(String(concept || '').trim()) ? { kind: 'accent-drill' } : null;
+}
 
 /** Normalise a mistake concept (AI topic id or free text) to a library topic id. */
 export function conceptToTopicId(concept) {
@@ -54,6 +88,91 @@ export function authoredDrillFor(concept) {
   return { topicId, title: topic.title, exercises: drills.slice(0, 4) };
 }
 
+// ---- the drill slot's producer registry -------------------------------------
+//
+// The drill slot used to hand-wire every weakness producer into the session's
+// plan builder: a trainer gap's priority was implicit in array order (and
+// actually inverted — applyCalibration's overdueBy×weight sort demoted the
+// zero-mastery gap below any real graph node), the balanced-arm gate lived at
+// each call site (and was genuinely missed once — trainer gaps leaked into
+// the control arm), and the selection-trial freeze could drift away from what
+// was actually chosen. This registry is the ONE place that decides which
+// producer owns the drill slot, in what order, and under which gates.
+//
+// A producer:
+//   id               stable identifier; becomes the candidate's `source` so
+//                    the selection-trial record shows who nominated a pick
+//   learnerSpecific  when true, the producer is skipped in the balanced
+//                    (control) arm — study validity is enforced HERE, once,
+//                    instead of relying on every future producer's author
+//                    remembering the gate
+//   build(ctx)       candidate object | candidate array | null. `ctx` carries
+//                    everything the producer needs (already-fetched storage
+//                    reads, calibration) so this module stays free of storage
+//                    imports and pure-node tests keep working.
+//
+// Producer order = priority: the first producer that yields anything owns
+// the slot (its list is sorted by calibration WITHIN the producer), and the
+// remaining producers' candidates still join the frozen candidate list so the
+// P1 analysis keeps the full context of each selection.
+
+export const DRILL_PRODUCERS = [
+  {
+    id: 'learner-errors',
+    learnerSpecific: true,
+    // Conjugation-trainer misses (failed ≥2×, never repaired) come first:
+    // zero mastery, an exact-form repair exists (the focused trainer), and
+    // the mistake graph may never have seen the concept at all.
+    build: ({ trainerGap }) => trainerGap || null,
+  },
+  {
+    id: 'learner-errors-generic',
+    learnerSpecific: true,
+    // Dictée and pronunciation misses recorded by recordLearningActivity:
+    // each category has a purpose-built offline drill (dictation-drill,
+    // accent-drill), so an active gap with a repairable shape wins its slot
+    // — the same argument as the trainer gap, one tier down.
+    build: ({ dictationGap, pronunciationGap }) => dictationGap || pronunciationGap || null,
+  },
+  {
+    id: 'mistake-graph',
+    learnerSpecific: true,
+    // The mistake graph's due retests in urgency order (already limited to
+    // the top few by the caller); applyCalibration applies the P2 per-type
+    // weights within this list.
+    build: ({ dueRetestCandidates }) => dueRetestCandidates || [],
+  },
+];
+
+/**
+ * Build the drill slot: run every eligible producer, freeze the combined
+ * candidate list, and pick the winner. Pure.
+ *
+ * Returns { candidates, top, producer }:
+ *   candidates  the frozen candidate list — exactly what the selection-trial
+ *               record freezes, so selectedId can only ever name a frozen id
+ *   top         the winning candidate (null when nothing fired, or when the
+ *               balanced arm stripped all learner-specific targeting)
+ *   producer    the winning producer's id (null with `top`)
+ */
+export function buildDrillSlot(ctx = {}) {
+  const balanced = Boolean(ctx.balanced);
+  const candidates = [];
+  let producer = null;
+  for (const p of DRILL_PRODUCERS) {
+    if (balanced && p.learnerSpecific) continue;
+    let built = null;
+    try { built = p.build(ctx) || null; } catch { built = null; }
+    if (!built || (Array.isArray(built) && built.length === 0)) continue;
+    const list = Array.isArray(built) ? built : [built];
+    const sorted = applyCalibration(list, ctx.calibration || { ready: false, weights: {} })
+      .map((c) => ({ ...c, source: c.source || p.id }));
+    if (!candidates.length) producer = p.id;
+    candidates.push(...sorted);
+  }
+  return { candidates, top: candidates[0] || null, producer };
+}
+
 /**
  * Probe what this session can actually run, given the environment and the
  * learner's current state. `hasAi` = API key, relay or mock mode — the same
@@ -69,9 +188,15 @@ export function probeCapabilities({
   recentCorrections = 0,
 } = {}) {
   const authored = concept ? authoredDrillFor(concept) : null;
+  const trainer = concept ? trainerDrillFor(concept) : null;
+  const dictation = concept ? dictationDrillFor(concept) : null;
+  const accent = concept ? accentDrillFor(concept) : null;
   return {
     concept: concept || null,
     'ai-drill': Boolean(hasAi) && Boolean(concept),
+    'conj-drill': Boolean(trainer),
+    'dictation-drill': Boolean(dictation),
+    'accent-drill': Boolean(accent),
     'authored-drill': Boolean(authored),
     'retype': pendingRetypes > 0,
     'srs-retrieval': srsDue > 0,
@@ -79,6 +204,9 @@ export function probeCapabilities({
     'review': recentCorrections > 0,
     'speak': hasScenario,
     authoredDrill: authored,
+    trainerDrill: trainer,
+    dictationDrill: dictation,
+    accentDrill: accent,
   };
 }
 
@@ -89,6 +217,11 @@ export function probeCapabilities({
  */
 export function drillChain(caps) {
   const chain = [];
+  if (caps['conj-drill']) {
+    chain.push({ kind: 'conj-drill', verb: caps.trainerDrill.verb, tense: caps.trainerDrill.tense, personIndex: caps.trainerDrill.personIndex });
+  }
+  if (caps['dictation-drill']) chain.push({ kind: 'dictation-drill' });
+  if (caps['accent-drill']) chain.push({ kind: 'accent-drill' });
   if (caps['ai-drill']) {
     chain.push({ kind: 'ai-drill', concept: caps.concept ?? null });
   }

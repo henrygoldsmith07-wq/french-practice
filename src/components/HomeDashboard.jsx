@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { getStreak, getTodayXp, getSrs, getNotebook, getSettings, getSessions, getHabits, getGrammarProgress, getWeeklyPractice } from '../lib/storage';
-import { dueEntries, notebookAsEntries, weakEntries } from '../lib/memory';
+import { useAllEntries, useDueCount } from '../lib/vocabAsync';
+import { notebookAsEntries, weakEntries } from '../lib/memory';
 import { getScenarios } from '../lib/data';
 import { getLanguage } from '../lib/languages';
 import { ArrowRight, Layers, MessageCircle, Play, Target, Mic, BookOpen, StudioMark, Bookmark } from './icons';
@@ -22,19 +23,17 @@ export default function HomeDashboard({ dailyGoal = 30, level, onStartLesson, on
   const language = getLanguage(settings.language);
   const streak = getStreak();
   const todayXp = getTodayXp();
-  // The vocab library loads in its own chunk — stats fill in right after
-  // first paint instead of forcing ~3k entries into the eager bundle.
-  const [library, setLibrary] = useState(null);
-  useEffect(() => {
-    let on = true;
-    import('../lib/vocab').then(({ allEntries }) => { if (on) setLibrary(allEntries()); });
-    return () => { on = false; };
-  }, []);
+  // The vocab library loads in its own chunk (per-language registries) —
+  // stats fill in right after first paint. `null` means still loading.
+  const library = useAllEntries();
   const fullLibrary = useMemo(
     () => (library ? [...library, ...notebookAsEntries(getNotebook())] : null),
     [library],
   );
-  const dueCount = fullLibrary ? dueEntries(fullLibrary, getSrs()).length : 0;
+  // The shared live due count — one due computation for the whole app
+  // (App's badge and reminder read the same hook). `null` only while the
+  // library chunk loads; the dashboard showed 0 in that window before too.
+  const dueCount = useDueCount() ?? 0;
   const suggested = suggestScenario(getSessions());
   const todayRecs = useMemo(() => {
     if (!fullLibrary) return [];

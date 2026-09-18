@@ -3,11 +3,19 @@ import {
   getExaminerScripts, saveExamBoundarySet,
 } from '../lib/storage';
 import {
-  EXAM_MODES, TIER, timingQa,
+  EXAM_MODE, EXAM_MODES, TIER, timingQa, BOARDS, boardList, specCaveat,
 } from '../lib/exams/boards.js';
 import { benchmarkExaminer } from '../lib/exams/simulator.js';
 import { parseBoundaryImport } from '../lib/exams/boundaries.js';
 import { GraduationCap, ChevronRight } from './icons';
+
+// Shared time formatter (same shape as the simulator stage's local fmt).
+const fmt = (s) => {
+  const total = Math.max(0, Math.round(Number(s) || 0));
+  const m = Math.floor(total / 60);
+  const r = total % 60;
+  return m > 0 ? `${m}m ${r}s` : `${r}s`;
+};
 
 // Exam setup stage, split out of ExamSimulator.jsx: board/tier/theme/mode
 // pickers and the boundary import. Pure UI over props from the controller.

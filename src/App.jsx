@@ -29,7 +29,7 @@ import useOverlayNav from './hooks/useOverlayNav';
 import {
   getApiKey, getSettings, setSettings as persistSettings, getStreak, getXp, addXp,
   getActiveSession, setActiveSession, clearActiveSession,
-  getSrs, getNotebook, shouldRemindToday, markRemindedToday, getTodayXp,
+  shouldRemindToday, markRemindedToday, getTodayXp,
   getCoins, addCoins, getAvatar, bumpChallengeMetric, addEventXp,
   getPrefs, setPrefs, getSessions, addStudyTime,
   setApiKey as persistApiKey, setAvatar as persistAvatar, ownAvatar, setHabitList,
@@ -39,10 +39,10 @@ import {
 // groq) are NOT statically imported here — they would drag ~600 kB of content
 // into the first bundle for a handful of label lookups. They load lazily
 // below and inside their own screens' chunks.
-import { notebookAsEntries, dueEntries, NEW_CARD_CAP } from './lib/memory';
 import { adaptiveLevel } from './lib/personalise';
 import { AVATARS, activeEvent, levelFromXp } from './lib/game';
 import { syncLanguage } from './lib/i18n';
+import { useDueCount, loadAllEntries, warmScenarios } from './lib/vocabAsync';
 import { getLanguage } from './lib/languages';
 import { relayEnabled } from './lib/relay';
 import { Flame, Bolt, Sun, Moon, Gear, Key, ArrowRight, Home, MessageCircle, Layers, BookOpen, BarChart, Search, Target, Coins as CoinsIcon, X, Download } from './components/icons';
@@ -79,10 +79,25 @@ export default function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [dashboardOpen, setDashboardOpen] = useState(false);
+  // The active scenario may legitimately be null: for DE/ES the scenario
+  // registry resolves a beat after first render (App's boot prefetch warms
+  // it — French is eager, so this never shows there). The warm-then-heal
+  // effect below reselects once the registry lands, and every consumer here
+  // tolerates null rather than crashing on `.id` of undefined.
   const [scenario, setScenario] = useState(() => {
     const saved = getActiveSession();
-    return (saved && getScenarios().find((s) => s.id === saved.scenarioId)) || getScenarios()[0];
+    return (saved && getScenarios().find((s) => s.id === saved.scenarioId)) || getScenarios()[0] || null;
   });
+  useEffect(() => {
+    if (scenario) return undefined;
+    let on = true;
+    warmScenarios().then(() => {
+      if (!on) return;
+      const saved = getActiveSession();
+      setScenario((saved && getScenarios().find((s) => s.id === saved.scenarioId)) || getScenarios()[0] || null);
+    });
+    return () => { on = false; };
+  }, [scenario]);
   const [history, setHistory] = useState(() => {
     const saved = getActiveSession();
     return saved && Array.isArray(saved.history) ? saved.history : [];
@@ -115,6 +130,13 @@ export default function App() {
   const pwa = usePwaInstall();
   const [installDismissed, setInstallDismissed] = useState(false);
   const [path, setPath] = useState(getPath);
+  // The ONE live count of cards due (vocab + notebook), in the active
+  // language: useDueCount handles the library chunk load, the language-switch
+  // reload, and the new-card cap internally. `xp`, `streakTick` and `tab`
+  // bump it whenever SRS/notebook state can have changed; the path fingerprint
+  // covers the learning path's CEFR reassignment.
+  const dueTick = `${tab}|${xp}|${streakTick}|${path ? `${path.goal}:${path.cefr}:${path.unitIndex}:${path.lessonIndex}` : ''}`;
+  const dueCount = useDueCount(dueTick);
   const [learningPathOpen, setLearningPathOpen] = useState(false);
   const [pathSetupOpen, setPathSetupOpen] = useState(false);
   const [grammarFocus, setGrammarFocus] = useState(null);
@@ -135,13 +157,16 @@ export default function App() {
     };
   }, []);
 
-  // The vocabulary library (~3k entries across all languages) loads in its
-  // own chunk — due counts and the badge fill in a beat after first paint.
-  const [libraryReady, setLibraryReady] = useState(false);
+  // Boot prefetches: the vocabulary library loads in its own chunk
+  // (per-language registries — only the active language's dictionaries
+  // download), and loadAllEntries warms its sync facade so lazy screens can
+  // keep calling allEntries() unchanged. The scenario registry gets the same
+  // warm-up — the speak tab, Home and search read getScenarios() synchronously.
+  // Due counts, the OS badge and the smart reminder recompute through
+  // useDueCount when the chunk lands; nothing else needs to gate on readiness.
   useEffect(() => {
-    let on = true;
-    import('./lib/vocab').then(() => { if (on) setLibraryReady(true); });
-    return () => { on = false; };
+    loadAllEntries().catch(() => {});
+    warmScenarios().catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -186,34 +211,32 @@ export default function App() {
   ];
   useOverlayNav(overlayClosers);
 
+  // Smart reminder: reads the shared live due count — one due computation
+  // for the whole app. shouldRemindToday/markRemindedToday keep it to one
+  // notification per day; the extra effect runs are no-ops.
   useEffect(() => {
-    if (!libraryReady || !settings.smartReminders || !shouldRemindToday()) return;
+    if (dueCount === null || !settings.smartReminders || !shouldRemindToday()) return;
     if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
-    import('./lib/vocab').then(({ allEntries }) => {
-      const srs = getSrs();
-      const due = dueEntries([...allEntries(), ...notebookAsEntries(getNotebook())], srs, Date.now(), { newCardCap: NEW_CARD_CAP }).length;
-      const streak = getStreak().count;
-      const streakAtRisk = streak >= 3 && getTodayXp() === 0 && new Date().getHours() >= 17;
-      if (due === 0 && !streakAtRisk) return;
-      markRemindedToday();
-      const body = streakAtRisk
-        ? `Your ${streak}-day streak is at risk — two minutes today keeps it alive.`
-        : `${due} card${due > 1 ? 's are' : ' is'} due for review — a few minutes now beats relearning later.`;
-      notify('Le Studio', body);
-    });
-  }, [libraryReady, settings.smartReminders]);
+    const streak = getStreak().count;
+    const streakAtRisk = streak >= 3 && getTodayXp() === 0 && new Date().getHours() >= 17;
+    if (dueCount === 0 && !streakAtRisk) return;
+    markRemindedToday();
+    const body = streakAtRisk
+      ? `Your ${streak}-day streak is at risk — two minutes today keeps it alive.`
+      : `${dueCount} card${dueCount > 1 ? 's are' : ' is'} due for review — a few minutes now beats relearning later.`;
+    notify('Le Studio', body);
+  }, [dueCount, settings.smartReminders]);
 
+  // The OS badge: same live count. (The old hand-rolled copy was missing the
+  // language-switch signal — switching FR→DE kept advertising the previous
+  // language's due cards until an unrelated tick.)
   useEffect(() => {
-    if (!libraryReady || !('setAppBadge' in navigator)) return;
-    import('./lib/vocab').then(({ allEntries }) => {
-      const srs = getSrs();
-      const due = dueEntries([...allEntries(), ...notebookAsEntries(getNotebook())], srs, Date.now(), { newCardCap: NEW_CARD_CAP }).length;
-      try {
-        if (due > 0) navigator.setAppBadge(due);
-        else navigator.clearAppBadge?.();
-      } catch { /* badging unsupported */ }
-    });
-  }, [libraryReady, tab, xp, streakTick]);
+    if (!('setAppBadge' in navigator)) return;
+    try {
+      if (dueCount !== null && dueCount > 0) navigator.setAppBadge(dueCount);
+      else navigator.clearAppBadge?.();
+    } catch { /* badging unsupported */ }
+  }, [dueCount]);
 
   useEffect(() => {
     const STEP = 20;
@@ -224,9 +247,10 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    if (!scenario) return; // registry still resolving (DE/ES cold start)
     if (history.length > 0) setActiveSession(scenario.id, history);
     else clearActiveSession();
-  }, [scenario.id, history]);
+  }, [scenario, history]);
 
   const isDark = settings.theme
     ? settings.theme === 'dark'
@@ -301,20 +325,7 @@ export default function App() {
 
   const effectiveLevel = adaptiveLevel(settings.level, getSessions(), prefs.adaptiveDifficulty).level;
 
-  // One shared scan for "cards due" — rebuilding the whole library per render
-  // (and per telemetry tick) was the single hottest redundant computation.
-  const [dueCount, setDueCount] = useState(0);
-  useEffect(() => {
-    if (!libraryReady) return undefined;
-    let stale = false;
-    import('./lib/vocab').then(({ allEntries }) => {
-      if (!stale) {
-        setDueCount(dueEntries([...allEntries(), ...notebookAsEntries(getNotebook())], getSrs(), Date.now(), { newCardCap: NEW_CARD_CAP }).length);
-      }
-    });
-    return () => { stale = true; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [libraryReady, tab, xp, streakTick, path]);
+
 
   const toggleTheme = () =>
     updateSettings({ ...settings, theme: isDark ? 'light' : 'dark' });
@@ -349,6 +360,7 @@ export default function App() {
   };
 
   const handleTurn = (scores) => {
+    if (!scenario) return; // registry still resolving (DE/ES cold start)
     setLastScores(scores);
     recordSpeakingGap('conversation', {
       label: 'Conversation turn',
@@ -599,7 +611,7 @@ export default function App() {
               }}
             />
           )}
-          {tab === 'speak' && (
+          {tab === 'speak' && scenario && (
             <ChatArena
               onEndSession={endSession}
               apiKey={apiKey}
@@ -681,8 +693,7 @@ export default function App() {
             </div>
           )}
           </Suspense>
-        </main>
-        {tab === 'speak' && <FeedbackWidget scores={lastScores} turnCount={history.length} />}
+        </main>          {tab === 'speak' && scenario && <FeedbackWidget scores={lastScores} turnCount={history.length} />}
       </div>
 
       <nav className="flex border-t border-line bg-surface backdrop-blur pb-safe elev-nav" aria-label="Main navigation">

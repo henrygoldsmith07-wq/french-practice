@@ -6,12 +6,39 @@
 import { FLASHCARDS } from './data.js';
 import { EXTRA_VOCAB_PACKS } from './vocab-extra.js';
 import { CORE_VOCAB_PACKS } from './vocab-core.js';
-import { FREQUENCY_PACKS, FREQUENCY_PACKS_DE, FREQUENCY_PACKS_ES } from './vocab-frequency.js';
-import { DE_VOCAB_PACKS } from './content/de-vocab.js';
-import { ES_VOCAB_PACKS } from './content/es-vocab.js';
+import { FREQUENCY_PACKS } from './vocab-frequency.js';
 import { contentLang } from './content/active.js';
 import { CURRICULUM_PACKS_LOWER } from './content/curriculum-vocab-core.js';
 import { CURRICULUM_PACKS_UPPER } from './content/curriculum-vocab-upper.js';
+
+// German and Spanish load through their own registries — dynamic imports, so
+// their dictionaries only download when the learner studies that language.
+// (Static imports here would put every language in the first-load bundle.)
+const registryLoaders = {
+  de: () => import('./content/de-packs.js').then((m) => m.getDePacks()),
+  es: () => import('./content/es-packs.js').then((m) => m.getEsPacks()),
+};
+const registryCache = new Map(); // lang → promise
+const resolvedPacks = new Map(); // lang → packs (once the promise lands)
+function getRegisteredPacks(lang) {
+  if (!registryCache.has(lang)) {
+    const loader = registryLoaders[lang] || (() => Promise.resolve([]));
+    const p = loader()
+      .then((packs) => {
+        // Publish synchronously: after the first async load (App prefetches at
+        // boot) the sync facade serves this language too, so lazy screens can
+        // keep calling allEntries() unchanged.
+        resolvedPacks.set(lang, packs);
+        return packs;
+      })
+      .catch(() => {
+        registryCache.delete(lang);
+        return [];
+      });
+    registryCache.set(lang, p);
+  }
+  return registryCache.get(lang);
+}
 
 // freq: 1 = top 100 words, 2 = top 500, 3 = top 1000, 4 = top 5000, 5 = rare/niche
 export const FREQ_LABELS = { 1: 'Top 100', 2: 'Top 500', 3: 'Top 1000', 4: 'Top 5000', 5: 'Niche' };
@@ -301,8 +328,7 @@ const FR_VOCAB_PACKS = [
 
 // German and Spanish get the same treatment: their themed packs followed by
 // frequency-ranked decks built from their own high-frequency dictionaries.
-const DE_ALL_PACKS = [...DE_VOCAB_PACKS, ...FREQUENCY_PACKS_DE];
-const ES_ALL_PACKS = [...ES_VOCAB_PACKS, ...FREQUENCY_PACKS_ES];
+// Both live behind the registries at the top of this file.
 
 // The CEFR curriculum packs sit at the front of the French library: they are
 // the level-banded spine, so a learner following the path meets them first.
@@ -310,11 +336,22 @@ export const CURRICULUM_PACKS = [...CURRICULUM_PACKS_LOWER, ...CURRICULUM_PACKS_
 
 const FR_ALL_PACKS = [...CURRICULUM_PACKS, ...FR_VOCAB_PACKS];
 
-const PACKS_BY_LANG = { fr: FR_ALL_PACKS, de: DE_ALL_PACKS, es: ES_ALL_PACKS };
+// The active language's packs. French is fully synchronous (composed
+// eagerly). DE/ES return their packs once the registry has resolved — which
+// the App prefetch does at boot — and [] in the brief cold-start window
+// before that. Async callers should prefer getVocabPacksAsync/allEntriesAsync.
+export const getVocabPacks = () => {
+  const lang = contentLang();
+  if (lang === 'fr') return FR_ALL_PACKS;
+  return resolvedPacks.get(lang) || [];
+};
 
-// The active language's packs. A function (not a const) so the whole app
-// re-reads it after the learner switches language.
-export const getVocabPacks = () => PACKS_BY_LANG[contentLang()] || FR_ALL_PACKS;
+/** The active language's packs, resolving lazily for DE/ES. */
+export function getVocabPacksAsync() {
+  const lang = contentLang();
+  if (lang === 'fr') return Promise.resolve(FR_ALL_PACKS);
+  return getRegisteredPacks(lang);
+}
 
 export const getPack = (id) => getVocabPacks().find((p) => p.id === id);
 
@@ -368,17 +405,35 @@ export const categoryOf = (id) => PACK_CATEGORY[id] || (String(id).startsWith('f
 
 // The active language's packs grouped by category, in declared order, with
 // empty categories dropped. Powers the grouped view in the vocab hub.
+// (Sync view of the FRENCH library; for DE/ES use groupedPacksAsync.)
 export function groupedPacks() {
   const packs = getVocabPacks();
+  return grouped(packs || []);
+}
+
+function grouped(packs) {
   return PACK_CATEGORIES
     .map((c) => ({ ...c, packs: packs.filter((p) => categoryOf(p.id) === c.id) }))
     .filter((g) => g.packs.length);
 }
 
+/** Async grouped view — works for every language. */
+export function groupedPacksAsync() {
+  return getVocabPacksAsync().then(grouped);
+}
+
+/** All entries for the active language, resolving lazily for DE/ES. */
+export const allEntriesAsync = () => getVocabPacksAsync().then((packs) => packs.flatMap((p) => p.entries));
+
 export const allEntryIds = () => allEntries().map((e) => e.id);
 
 export function findEntry(id) {
   return allEntries().find((e) => e.id === id) || null;
+}
+
+/** Async findEntry — safe for every language (DE/ES resolve their registry). */
+export function findEntryAsync(id) {
+  return allEntriesAsync().then((entries) => entries.find((e) => e.id === id) || null);
 }
 
 // ---- CEFR banding -----------------------------------------------------------

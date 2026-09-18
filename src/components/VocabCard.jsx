@@ -1,6 +1,8 @@
 import { useState } from 'react';
-import { checkSentence, friendlyError } from '../lib/groq';
-import { FREQ_LABELS } from '../lib/vocab';
+// The AI layer (groq.js) and the vocab library are lazy chunks — import them
+// dynamically so components reachable from the entry chunk don't drag them in.
+const groqPromise = import('../lib/groq');
+const FREQ_LABELS = { 1: 'Top 100', 2: 'Top 500', 3: 'Top 1000', 4: 'Top 5000', 5: 'Niche' };
 import { SpeakButton, Spinner } from './ui';
 import { Check, X, Bookmark, BookmarkFilled } from './icons';
 
@@ -45,6 +47,7 @@ export default function VocabCard({ entry, cardDue, saved, disabled, onRate, onT
     if (!sentence) return;
     setChallenge((c) => ({ ...c, checking: true }));
     try {
+      const { checkSentence } = await groqPromise;
       const result = await checkSentence(apiKey, {
         card: { front: entry.fr, meaning: entry.en },
         sentence,
@@ -52,6 +55,7 @@ export default function VocabCard({ entry, cardDue, saved, disabled, onRate, onT
       });
       setChallenge((c) => ({ ...c, checking: false, result }));
     } catch (e) {
+      const { friendlyError } = await groqPromise;
       setChallenge((c) => ({ ...c, checking: false, result: { correct: false, feedback: friendlyError(e) } }));
     }
   };

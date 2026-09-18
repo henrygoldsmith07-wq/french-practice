@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { lazy, Suspense, useState } from 'react';
 import { langName } from '../lib/i18n';
+import { contentLang } from '../lib/content/active';
 import { randomPoolSentence, toWords, diffWords, displayHits } from '../lib/sentences';
 import { COMPLETION_STARTERS, randomFrom } from '../lib/writing';
 import { judgeCompletion, friendlyError } from '../lib/groq';
@@ -9,12 +10,15 @@ import TranslateDrill from './TranslateDrill';
 import { SpeakButton, Spinner } from './ui';
 import { getErrorNotebook, markCorrectedByLearner } from '../lib/errorNotebook';
 import { explainCorrection } from '../lib/writing';
-import { Pencil, Check, X, RefreshCw, ChevronLeft, ChevronRight, MessageCircle, BookOpen, Clock } from './icons';
+import { Pencil, Check, X, RefreshCw, ChevronLeft, ChevronRight, MessageCircle, BookOpen, Clock, Target } from './icons';
 
-// Writing hub: typing drill (accent-exact), sentence completion, free
-// writing with AI correction, and the essay studio.
+// Writing hub: typing drill (accent-exact), conjugation drill, sentence
+// completion, free writing with AI correction, and the essay studio.
+
+const ConjugationTrainer = lazy(() => import('./ConjugationTrainer'));
 
 const MODES = [
+  { id: 'conjugation', icon: Target, title: 'Conjugation trainer', subtitle: 'Type the right form — accents graded' },
   { id: 'accents', icon: Pencil, title: 'Accent trainer', subtitle: 'Retype words with every accent in place' },
   { id: 'translate', icon: RefreshCw, title: 'Translation drill', subtitle: 'EN→FR and FR→EN, alternating' },
   { id: 'typing', icon: Clock, title: 'Typing drill', subtitle: 'Copy a sentence exactly — accents count' },
@@ -36,7 +40,7 @@ export default function Writing({ apiKey, mockMode, level, onXp, onActivity }) {
             <p className="text-xs text-ink2 mt-1">From accurate typing to argued essays — always with feedback.</p>
           </div>
           <div className="space-y-2.5">
-            {MODES.map((m) => (
+            {MODES.filter((m) => m.id !== 'conjugation' || contentLang() === 'fr').map((m) => (
               <button
                 key={m.id}
                 onClick={() => setMode(m.id)}
@@ -66,6 +70,11 @@ export default function Writing({ apiKey, mockMode, level, onXp, onActivity }) {
           <h2 className="flex-1 text-center text-sm font-semibold text-ink">{active.title}</h2>
           <span className="w-10" aria-hidden="true" />
         </div>
+        {mode === 'conjugation' && (
+          <Suspense fallback={<Spinner label="Loading verbs…" />}>
+            <ConjugationTrainer onXp={onXp} />
+          </Suspense>
+        )}
         {mode === 'accents' && <AccentDrill onXp={onXp} />}
         {mode === 'translate' && <TranslateDrill onXp={onXp} />}
         {mode === 'typing' && <><TypingDrill onXp={onXp} /><div className="pt-4"><ErrorNotebookCard /></div></>}

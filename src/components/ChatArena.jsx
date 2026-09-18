@@ -14,9 +14,11 @@ import {
 } from '../lib/storage';
 import { recordMistake, typeForCategory, mistakeId as graphIdFor } from '../lib/mistakeGraph';
 import { saveMistakeGraph, getMistakeGraph } from '../lib/storage';
+import { addErrorNotebook } from '../lib/errorNotebook';
+import { recordCorpusEntry } from '../lib/storage';
 import { categoryForTopic } from '../lib/errorTaxonomy';
 import { allEntries } from '../lib/vocab';
-import { GRAMMAR_TOPICS } from '../lib/grammar';
+import { GRAMMAR_TOPICS, getGrammarTopic } from '../lib/grammar';
 import { buildLearningPlan } from '../lib/learningAdaptation';
 import { SpeakButton, RateSlider, Spinner } from './ui';
 import { speak, stopSpeaking } from '../lib/tts';

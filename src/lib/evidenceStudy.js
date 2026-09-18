@@ -234,7 +234,6 @@ export function buildHeldOutPool({ participantId, day, level = 'B1', vocabEntrie
 }
 
 function requireBank() {
-  // eslint-disable-next-line import/no-cycle
   return { selectHeldOutItems: __selectHeldOutItems, buildHeldOutAssessmentItem: __buildHeldOutAssessmentItem, HELDOUT_BANK: __HELDOUT_BANK };
 }
 import { selectHeldOutItems as __selectHeldOutItems, buildHeldOutAssessmentItem as __buildHeldOutAssessmentItem, HELDOUT_BANK as __HELDOUT_BANK } from './heldOutBank.js';

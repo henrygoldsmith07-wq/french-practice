@@ -12,7 +12,7 @@ import { listeningDifficultyLadder } from '../lib/learningAdaptation';
 // cannot see; they type what they heard and get a word-level diff + accuracy
 // score. Everything runs locally (TTS + diff) — no API calls.
 
-export default function Dictation({ ttsRate, level: cefr = 'B1', onXp, onActivity }) {
+export default function Dictation({ ttsRate, level: cefr = 'B1', onXp, onActivity, sessionMode, onDone }) {
   const level = (() => {
     try {
       return listeningDifficultyLadder({ level: cefr, srs: getSrs(), entries: allEntries(), metrics: getMetrics(), reviewEvents: getReviewEvents() }).stage;
@@ -150,9 +150,18 @@ export default function Dictation({ ttsRate, level: cefr = 'B1', onXp, onActivit
               <h4 className="text-[11px] font-bold uppercase tracking-wider text-ink2 mb-1">You wrote</h4>
               <p className="text-sm text-ink2" lang="fr">{input || '—'}</p>
             </div>
-            <button onClick={next} className="btn btn-secondary w-full min-h-11 rounded-xl text-sm">
-              <RefreshCw size={13} /> Next sentence
-            </button>
+            {/* Session mode: the segment ends once a clean pass repairs the
+                gap (recordLearningActivity fires the success on ≥80). Below
+                that, keep drilling — the whole point of the segment. */}
+            {sessionMode && result.accuracy >= 80 ? (
+              <button onClick={onDone} className="btn btn-primary w-full min-h-11 rounded-xl text-sm">
+                <Check size={14} /> Done drilling
+              </button>
+            ) : (
+              <button onClick={next} className="btn btn-secondary w-full min-h-11 rounded-xl text-sm">
+                <RefreshCw size={13} /> Next sentence
+              </button>
+            )}
           </div>
         )}
       </div>

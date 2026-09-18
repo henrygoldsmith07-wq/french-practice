@@ -3,8 +3,15 @@
 // assets (so new builds ship immediately), while offline visitors are served
 // the last-seen version from the runtime cache. TTS audio is generated on the
 // device by the browser, so it keeps working with no network at all.
+//
+// Cache versioning: scripts/version-sw.mjs stamps __BUILD_ID__ at build time.
+// Every deploy owns its own runtime cache, and activate() deletes every other
+// cache — so content-hashed chunks from old builds stop accumulating forever
+// on long-term PWA installs. Source keeps the placeholder; only dist/ is
+// stamped (dev serves the placeholder name verbatim, which is a valid cache
+// name, so dev registration keeps working unchanged).
 
-const CACHE = 'le-studio-v1';
+const CACHE = 'le-studio-__BUILD_ID__';
 const SHELL = ['./', './index.html', './manifest.webmanifest', './icon.svg'];
 
 self.addEventListener('install', (event) => {

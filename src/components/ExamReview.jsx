@@ -1,7 +1,22 @@
 import { useState } from 'react';
 import { recordExaminerMark, recordRealExamResult, recordSkillScore } from '../lib/storage';
-import { gradeEstimate, examFeedback, benchmarkExaminer, validateAgainstResults } from '../lib/exams/simulator.js';
-import { GraduationCap } from './icons';
+import {
+  gradeEstimate, examFeedback, benchmarkExaminer, validateAgainstResults,
+  scoreTask, scorePaper, scoreExamTechnique,
+} from '../lib/exams/simulator.js';
+import {
+  EXAM_MODE, EXAM_MODES, TIER, TASK_CRITERIA, CRITERIA,
+} from '../lib/exams/boards.js';
+import { getExaminerScripts, getRealExamResults } from '../lib/storage';
+import { GraduationCap, Check } from './icons';
+
+// Shared time formatter (same shape as the setup stage's local fmt).
+const fmt = (s) => {
+  const total = Math.max(0, Math.round(Number(s) || 0));
+  const m = Math.floor(total / 60);
+  const r = total % 60;
+  return m > 0 ? `${m}m ${r}s` : `${r}s`;
+};
 
 // Exam review stage, split out of ExamSimulator.jsx: per-criterion sliders,
 // examiner benchmark status and real-results validation. Pure UI over the

@@ -9,7 +9,7 @@ export const MINIMAL_PAIRS = [
 ];
 
 export const TRANSFORMATIONS = [
-  { from: "présent", to: "passé composé", example: "Je mange → J\'ai mangé" },
+  { from: "présent", to: "passé composé", example: "Je mange → J'ai mangé" },
   { from: "affirmatif", to: "négatif", example: "Je sais → Je ne sais pas" },
   { from: "tu", to: "vous", example: "Tu veux → Vous voulez" },
 ];

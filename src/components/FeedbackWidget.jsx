@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { ScoreBadge, scoreColor } from './ui';
-import { compositeScore } from '../lib/groq';
+// compositeScore lives in score.js (weight math only) — importing it from
+// groq.js here would drag the whole AI provider layer into the entry chunk.
+import { compositeScore } from '../lib/score';
 import { scoreExplainers } from '../lib/score';
 
 // Live per-turn scores: bottom sheet on mobile, side pane on desktop.

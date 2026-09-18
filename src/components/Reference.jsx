@@ -347,10 +347,18 @@ function Dictionary({ onImported }) {
   const [added, setAdded] = useState(null);
 
   // Merge the frequency list, the vocabulary library and saved notebook words
-  // into one searchable offline dictionary.
+  // into one searchable offline dictionary. The frequency list is async (the
+  // DE/ES dictionaries are lazy chunks) — French lands immediately, other
+  // languages fill in a beat later.
+  const [freqWords, setFreqWords] = useState([]);
+  useEffect(() => {
+    let on = true;
+    getFrequencyWords().then((words) => { if (on) setFreqWords(words); });
+    return () => { on = false; };
+  }, []);
   const dict = useMemo(() => {
     const vocab = allEntries().map((e) => ({ fr: e.fr, en: e.en, ipa: e.ipa || null, source: 'vocab' }));
-    const freq = getFrequencyWords().map((w) => ({ ...w, source: 'freq' }));
+    const freq = freqWords.map((w) => ({ ...w, source: 'freq' }));
     const nb = getNotebook().map((e) => ({ fr: e.fr, en: e.en, ipa: null, source: 'notebook' }));
     const seen = new Set();
     return [...freq, ...vocab, ...nb].filter((w) => {
@@ -359,7 +367,7 @@ function Dictionary({ onImported }) {
       seen.add(k);
       return true;
     });
-  }, [added]);
+  }, [added, freqWords]);
 
   const results = useMemo(() => {
     const q = query.trim().toLowerCase();

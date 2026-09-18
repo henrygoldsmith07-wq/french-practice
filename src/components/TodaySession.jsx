@@ -1,14 +1,14 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { buildDailyCurriculum } from '../lib/dailyCurriculum';
 import { takeawayPhrase } from '../lib/takeaway';
 import {
   dueRetests, recordRetest, EVIDENCE_ENGINE_VERSION,
 } from '../lib/mistakeGraph';
 import {
-  calibrateSelection, applyCalibration, MIN_TRIALS_READY,
+  calibrateSelection,
 } from '../lib/selectionCalibration';
 import {
-  probeCapabilities, nextFallback, resolvePlanCapabilities,
+  probeCapabilities, nextFallback, resolvePlanCapabilities, buildDrillSlot,
 } from '../lib/todayCapabilities';
 import {
   enrolStudyState, studyStatus, daySinceEnrolment, isCheckScheduled,
@@ -21,20 +21,36 @@ import { getPracticeAssignment, balancedDrillTopic } from '../lib/assignment';
 import { recordSelectionTrial, getSelectionTrial, saveSelectionTrial } from '../lib/storage';
 import {
   getSrs, getNotebook, getDueWeaknesses, rateCard,
-  getMistakeGraph, saveMistakeGraph, getSyncId, getStudyChecks,
+  getMistakeGraph, saveMistakeGraph, getSyncId, getStudyChecks, getLearnerErrors,
 } from '../lib/storage';
 import { getErrorNotebook } from '../lib/errorNotebook';
-import { allEntries } from '../lib/vocab';
+// The vocab library is a separate lazy chunk (per-language registries) — it
+// must be awaited, never statically imported from the entry graph. The hook
+// centralises the null-means-loading discipline and reloads on language switch.
+import { useAllEntries } from '../lib/vocabAsync';
 import { notebookAsEntries, dueEntries, reviewOrder, NEW_CARD_CAP } from '../lib/memory';
 import { getScenarios } from '../lib/data';
 import { allListeningTracks } from '../lib/listening';
-import ChatArena from './ChatArena';
-import { TrackPlayer } from './Listening';
+
+// The arena, the held-out check and the track player are heavy (audio, LLM,
+// recording, content) and only rendered mid-session — load them with the
+// session, not with the app.
+const ChatArena = lazy(() => import('./ChatArena'));
+const HeldOutCheck = lazy(() => import('./HeldOutCheck'));
+const TrackPlayer = lazy(() => import('./Listening').then((m) => ({ default: m.TrackPlayer })));
+// The conjugation trainer renders inside the session when a trainer gap owns
+// the drill slot — heavy content (verb tables), so it loads with the session.
+const ConjugationTrainer = lazy(() => import('./ConjugationTrainer'));
+// The focused dictée and accent drills render inside the session when a
+// listening/pronunciation gap owns the drill slot — both are light, but they
+// are mid-session-only surfaces, so they load with the session like the rest.
+const Dictation = lazy(() => import('./Dictation'));
+const AccentDrill = lazy(() => import('./AccentDrill'));
 import VocabCard from './VocabCard';
-import { NotebookRetype } from './Memory';
+import { NotebookRetype } from './NotebookRetype';
 import Quiz from './Quiz';
-import HeldOutCheck from './HeldOutCheck';
 import { ChevronRight, X } from './icons';
+import { personAt } from '../lib/conjugationMeta';
 
 // Today's French — one Start button, one composed session. Segments come
 // from the daily curriculum; the learner never chooses a mode. Every phase
@@ -48,31 +64,90 @@ import { ChevronRight, X } from './icons';
 // so the early-return structure can never reorder them.
 
 export default function TodaySession({ open, onClose, minutes = 20, apiKey, mockMode, level, ttsRate, onTurn, onXp, onActivity }) {
+  // The vocabulary library lives in its own lazy chunk — awaited before the
+  // plan builds. `null` (chunk loading) means no plan and no early return.
+  const entries = useAllEntries();
   const plan = useMemo(() => {
-    if (!open) return null;
+    if (!open || !entries) return null;
     const graph = getMistakeGraph();
+    // Conjugation-trainer misses are grammar gaps the mistake graph may never
+    // have seen (the trainer writes to the learnerErrors model). A gap that
+    // failed twice and has never been repaired competes for today's drill —
+    // zero mastery, so it goes first. Formal recovery happens in the trainer
+    // (recordLearnerSuccess flips the entry to recovering/resolved).
     // Evidence Study: keep enrolment fresh (idempotent, consent-gated).
     const study = enrolStudyState({ startLevel: level || null });
     // ONE authoritative treatment: study arm when enrolled+active, else
     // adaptive. Nonparticipants always get the fully personalised product.
     const variant = effectiveVariant({ study });
     const balanced = variant === 'balanced';
+    // Study validity: the trainer gap is learner-specific targeting. It is
+    // built UNCONDITIONALLY here and gated by the drill-slot registry
+    // (buildDrillSlot skips learner-specific producers in the balanced arm) —
+    // the gate lives in ONE place instead of at every construction site.
+    const trainerGap = (() => {
+      try {
+        const due = getLearnerErrors({ limit: 12 }).find((e) =>
+          e.key.startsWith('conjugation:') && e.status === 'active' && e.errorCount > 1);
+        if (!due) return null;
+        const [verb, tense, personIdx] = due.key.slice('conjugation:'.length).split(':');
+        return {
+          id: due.id,
+          concept: `conjugating ${verb} (${tense}${personIdx ? ` · ${personAt(Number(personIdx)) || ''}` : ''})`,
+          label: due.label,
+          type: 'grammar',
+          mastery: 0,
+          recurrence: due.recurrenceCount,
+          // The exact missed cell, carried into the drill payload so the
+          // focused trainer leads with the very form that was missed.
+          personIndex: Number.isInteger(Number(personIdx)) && personIdx !== '' ? Number(personIdx) : null,
+          // Marks the selection-trial candidate set as extended: the frozen
+          // candidates list must contain whatever the trial's selectedId can
+          // name, or the P1 analysis joins a foreign id.
+          source: 'learner-errors',
+        };
+      } catch { return null; }
+    })();
+    // The other learner-error categories get their own focused consumers the
+    // same way: an active dictée gap drills dictation, an active pronunciation
+    // gap drills accents — built unconditionally, gated by the registry in
+    // the balanced arm like every other learner-specific producer.
+    const dueLearnerErrors = getLearnerErrors({ limit: 12 });
+    const dictationGap = (() => {
+      const gap = dueLearnerErrors.find((e) =>
+        e.key === 'dictation' && e.status === 'active' && e.errorCount > 1);
+      return gap ? { id: gap.id, concept: 'Dictée listening accuracy', label: gap.label, type: 'listening', mastery: 0, recurrence: gap.recurrenceCount, source: 'learner-errors' } : null;
+    })();
+    const pronunciationGap = (() => {
+      const gap = dueLearnerErrors.find((e) =>
+        e.key === 'pronunciation' && e.status === 'active' && e.errorCount > 1);
+      return gap ? { id: gap.id, concept: 'Pronunciation clarity', label: gap.label, type: 'pronunciation', mastery: 0, recurrence: gap.recurrenceCount, source: 'learner-errors' } : null;
+    })();
     // P2 calibration: join past selection trials with their delayed retest
     // outcomes and derive conservative per-type weights. Below the sample
     // floor this is a no-op — selection stays the urgency order.
     const calibration = calibrateSelection(getSelectionTrial(), graph);
-    // Freeze the selection candidates BEFORE choosing — P1 analysis joins
-    // the delayed retest outcome against this record later.
-    const candidates = applyCalibration(
-      dueRetests(graph, Date.now(), 3).map((n) => ({
-        id: n.id, concept: n.concept, type: n.type,
-        mastery: n.mastery, recurrence: n.recurrence,
-      })),
+    // The drill slot: which weakness producer owns it, in what order, under
+    // which study-arm gates — decided in ONE registry (see todayCapabilities).
+    // The registry freezes the combined candidate list BEFORE the choice, so
+    // the trial's selectedId can only ever name a frozen candidate, and it
+    // applies P2 calibration WITHIN each producer (the old joint sort let the
+    // zero-overdue trainer gap lose to any real graph node by accident).
+    const drill = buildDrillSlot({
+      balanced,
       calibration,
-    );
-    const top = candidates[0] || null;
+      trainerGap,
+      dictationGap,
+      pronunciationGap,
+      dueRetestCandidates: dueRetests(graph, Date.now(), 3).map((n) => ({
+        id: n.id, concept: n.concept, type: n.type,
+        mastery: n.mastery, recurrence: n.recurrence, overdueBy: n.overdueBy,
+      })),
+    });
+    const candidates = drill.candidates;
+    const top = drill.top;
     const srs = getSrs();
-    const library = [...allEntries(), ...notebookAsEntries(getNotebook())];
+    const library = [...entries, ...notebookAsEntries(getNotebook())];
     const srsDue = dueEntries(library, srs, Date.now(), { newCardCap: NEW_CARD_CAP }).length;
     const notebook = getErrorNotebook();
     const pendingRetypes = notebook.filter((e) => !e.correctedByLearner).length;
@@ -87,7 +162,11 @@ export default function TodaySession({ open, onClose, minutes = 20, apiKey, mock
     const caps = probeCapabilities({
       hasAi,
       hasScenario: scenarios.length > 0,
-      concept: top?.concept || null,
+      // Study validity: in the balanced arm the drill must be the ROTATION
+      // topic, not the learner's own top concept (adaptive picks the top;
+      // the control arm gets the deterministic rotation — the same rule
+      // scripts/curriculum-eval.mjs simulates).
+      concept: balanced ? rotationTopic : (top?.concept || null),
       pendingRetypes,
       srsDue,
       listeningTrack: listeningTrack ? { id: listeningTrack.id, title: listeningTrack.title, audioSrc: listeningTrack.audioSrc || null } : null,
@@ -132,7 +211,7 @@ export default function TodaySession({ open, onClose, minutes = 20, apiKey, mock
           participantId: study.participantId,
           day: sDay,
           level: level || study.startLevel || 'B1',
-          vocabEntries: allEntries(),
+          vocabEntries: entries,
           srsMap: getSrs(),
           listeningTracks: tracks,
           seenIds,
@@ -176,7 +255,17 @@ export default function TodaySession({ open, onClose, minutes = 20, apiKey, mock
       startOutcomeRecord({ trial, graph, arm: variant, day: sDay, consistency });
     } catch { /* trial logging must never break the session */ }
     return { ...planResolved, study, heldOut, studyDay: sDay };
-  }, [open, minutes, apiKey, mockMode, level]);
+  }, [open, minutes, apiKey, mockMode, level, entries]);
+
+  // The arena and the held-out check are heavy (audio, LLM, recording) —
+  // load them with the session, not with the app.
+  const [arenaReady, setArenaReady] = useState(false);
+  useEffect(() => {
+    if (!open) return undefined;
+    let on = true;
+    Promise.all([import('./ChatArena'), import('./HeldOutCheck')]).then(() => { if (on) setArenaReady(true); });
+    return () => { on = false; };
+  }, [open]);
 
   const [segIndex, setSegIndex] = useState(0);
   const [xp, setXp] = useState(0);
@@ -186,6 +275,7 @@ export default function TodaySession({ open, onClose, minutes = 20, apiKey, mock
   if (!open || !plan) return null;
   const close = () => { onClose(); setSegIndex(0); setHistory([]); setXp(0); };
   return (
+    <Suspense fallback={null}>
     <TodayBody
       plan={plan}
       segIndex={segIndex}
@@ -201,6 +291,7 @@ export default function TodaySession({ open, onClose, minutes = 20, apiKey, mock
       history={history}
       setHistory={setHistory}
     />
+    </Suspense>
   );
 }
 
@@ -271,6 +362,7 @@ function TodayBody({ plan, segIndex, setSegIndex, close, apiKey, mockMode, level
   // empty itself mid-session) falls through to the next segment instead of a
   // dead screen.
   let body = null;
+  let drillFocus = null;
   if (!done && seg) {
     if (seg.id === 'speak') {
       const sc = getScenarios().find((x) => x.id === seg.payload.scenarioId);
@@ -302,16 +394,24 @@ function TodayBody({ plan, segIndex, setSegIndex, close, apiKey, mockMode, level
           level={level}
           apiKey={apiKey}
           mockMode={mockMode}
+          ttsRate={ttsRate}
           onXp={award}
           onDone={advance}
         />
       );
+      drillFocus = seg.payload?.kind === 'conj-drill'
+        ? { ...seg.payload }
+        : (seg.payload?.chain || []).find((p) => p.kind === 'conj-drill') || null;
     } else if (seg.id === 'review') {
       body = <DelayedReview count={seg.payload.count} onXp={award} onDone={advance} />;
     } else if (seg.id === 'listen' && seg.payload.track) {
       const track = allListeningTracks().find((t) => t.id === seg.payload.track.id);
-      if (track) body = <TrackPlayer track={track} baseRate={ttsRate} level={level} onXp={onXp} onActivity={onActivity} onDone={advance} />;
+      if (track) body = <TrackPlayer track={track} baseRate={ttsRate} level={level} onXp={award} onActivity={onActivity} onDone={advance} />;
     }
+  }
+
+  if (!body && drillFocus) {
+    body = <TrainerDrill focus={drillFocus} onXp={award} onDone={advance} />;
   }
 
   if (!body && onCheckStep && plan.heldOut) {
@@ -395,10 +495,29 @@ function TodayBody({ plan, segIndex, setSegIndex, close, apiKey, mockMode, level
 // full ordered chain from the capability resolver; if the AI drill returns
 // nothing (offline, quota, error), the runner walks to the next link instead
 // of showing "unavailable" — the session always stays complete.
-function DrillChainRunner({ payload, level, apiKey, mockMode, onXp, onDone }) {
+function DrillChainRunner({ payload, level, apiKey, mockMode, ttsRate, onXp, onDone }) {
   const [current, setCurrent] = useState(payload);
   const kind = current?.kind || payload?.kind;
 
+  if (kind === 'conj-drill') {
+    return <TrainerDrill focus={{ ...current, personIndex: current.personIndex ?? payload.personIndex ?? null }} onXp={onXp} onDone={onDone} />;
+  }
+  if (kind === 'dictation-drill') {
+    // sessionMode: the segment ends when the repair lands — a clean pass
+    // repairs the gap (recordLearnerSuccess), 'Done' hands back to the session.
+    return (
+      <SessionDrillShell title="Dictée — train your ear" onXp={onXp} onDone={onDone}>
+        <Dictation ttsRate={ttsRate} onXp={onXp} sessionMode onDone={onDone} />
+      </SessionDrillShell>
+    );
+  }
+  if (kind === 'accent-drill') {
+    return (
+      <SessionDrillShell title="Accent drill — retype with the accents" onXp={onXp} onDone={onDone}>
+        <AccentDrill onXp={onXp} sessionMode onDone={onDone} />
+      </SessionDrillShell>
+    );
+  }
   if (kind === 'authored-drill') {
     return (
       <AuthoredDrill
@@ -440,6 +559,28 @@ function DrillChainRunner({ payload, level, apiKey, mockMode, onXp, onDone }) {
 
 function FallbackBridge({ onEmpty }) {
   return <div className="h-full grid place-items-center px-4"><p className="text-sm text-ink2">Preparing the next drill…</p></div>;
+}
+
+// Chrome for the session-embedded focused drills (dictée, accents): the
+// standalone pages have their own headers and finish buttons; inside the
+// session the segment needs a title and an explicit end. `canFinish` gates
+// the button to after the first completed round — ending the segment before
+// any repair attempt would just leave the gap active with nothing gained.
+function SessionDrillShell({ title, canFinish, onXp, onDone, children }) {
+  return (
+    <div className="h-full overflow-y-auto nice-scroll px-4 py-6">
+      <div className="max-w-md mx-auto space-y-4">
+        <p className="text-[11px] uppercase tracking-wider text-ink3">Focused drill — your weak spot</p>
+        <h2 className="text-lg font-semibold text-ink">{title}</h2>
+        {children}
+        {canFinish && (
+          <button onClick={onDone} className="btn btn-primary w-full min-h-11 rounded-xl text-sm">
+            Done drilling
+          </button>
+        )}
+      </div>
+    </div>
+  );
 }
 
 // The AI micro-drill: on failure/empty, falls through to the next chain link.
@@ -497,6 +638,22 @@ function AiDrillRunner({ concept, level, apiKey, mockMode, onXp, onDone, onEmpty
   );
 }
 
+// Conjugation-trainer drill link: repairs the trainer gap in-session with
+// the trainer itself, focused on the exact weak form (no level picker, no
+// browsing) so a missed form gets one more chance within today's plan.
+function TrainerDrill({ focus, onXp, onDone }) {
+  return (
+    <div className="h-full overflow-y-auto nice-scroll px-4 py-6">
+      <div className="max-w-md mx-auto">
+        <p className="text-[11px] uppercase tracking-wider text-ink3 mb-2">Verb drill — your weak form</p>
+        <Suspense fallback={<div className="h-40 grid place-items-center"><p className="text-sm text-ink2">Loading the trainer…</p></div>}>
+          <ConjugationTrainer focus={focus} onXp={onXp} onDone={onDone} />
+        </Suspense>
+      </div>
+    </div>
+  );
+}
+
 // Authored drill from the grammar library — always available offline.
 function AuthoredDrill({ exercises, topicTitle, onXp, onDone }) {
   return (
@@ -526,16 +683,24 @@ function ListenFallback({ track, onDone }) {
 // Mistake-graph cards (id prefix 'mistake-') feed recordRetest as spaced,
 // non-immediate evidence — an SRS resurface is by definition delayed.
 export function RecallRunner({ cardCap, onDone, onXp, onActivity }) {
-  const deck = useMemo(() => {
+  // The vocab library is a lazy chunk — the hook's `null` means still loading;
+  // only a RESOLVED empty deck auto-advances, otherwise the effect would race
+  // the chunk load and skip the segment before a card had a chance to render.
+  const entries = useAllEntries();
+  const [deck, setDeck] = useState(null);
+  useEffect(() => {
+    if (entries === null) return undefined;
     const srs = getSrs();
-    const library = [...allEntries(), ...notebookAsEntries(getNotebook())];
-    return reviewOrder(dueEntries(library, srs, Date.now(), { newCardCap: cardCap }), srs).slice(0, cardCap);
-  }, [cardCap]);
+    const library = [...entries, ...notebookAsEntries(getNotebook())];
+    setDeck(reviewOrder(dueEntries(library, srs, Date.now(), { newCardCap: cardCap }), srs).slice(0, cardCap));
+    return undefined;
+  }, [entries, cardCap]);
   const [idx, setIdx] = useState(0);
   const firedRef = useRef(false);
-  useEffect(() => { if (!deck.length && !firedRef.current) { firedRef.current = true; setTimeout(onDone, 0); } }, [deck.length, onDone]);
+  const loaded = deck !== null;
+  useEffect(() => { if (loaded && deck.length === 0 && !firedRef.current) { firedRef.current = true; setTimeout(onDone, 0); } }, [loaded, deck, onDone]);
   useEffect(() => { firedRef.current = false; }, [cardCap]);
-  if (!deck.length) return null;
+  if (!loaded || deck.length === 0) return null;
   if (idx >= deck.length) {
     return (
       <div className="h-full grid place-items-center px-4">

@@ -22,7 +22,7 @@ const ROUNDS = 10;
 
 const strip = (s) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/œ/g, 'oe').replace(/’/g, "'");
 
-export default function AccentDrill({ onXp }) {
+export default function AccentDrill({ onXp, sessionMode, onDone }) {
   const [game, setGame] = useState(null);
   const inputRef = useRef(null);
 
@@ -77,11 +77,19 @@ export default function AccentDrill({ onXp }) {
   }
 
   if (game.done) {
+    const passed = game.score >= 80;
     return (
       <div className="bg-surface border border-line rounded-2xl p-6 text-center space-y-3 fade-in">
         <p className="text-3xl font-bold text-ink tabular-nums">{game.correct}/{ROUNDS}</p>
-        <p className="text-xs text-ink2">{game.score >= 80 ? 'Accents impeccables !' : 'è vs é trips everyone — one more round.'}</p>
-        <button onClick={start} className="btn btn-secondary min-h-10 px-4 rounded-xl text-xs"><RefreshCw size={12} /> Again</button>
+        <p className="text-xs text-ink2">{passed ? 'Accents impeccables !' : 'è vs é trips everyone — one more round.'}</p>
+        {/* Session mode: a clean round repairs the pronunciation gap
+            (recordLearningActivity fires the success on ≥80) and ends the
+            segment; below 80 the learner goes straight back in. */}
+        {sessionMode && passed ? (
+          <button onClick={onDone} className="btn btn-primary min-h-11 px-5 rounded-xl text-sm"><Check size={14} /> Done drilling</button>
+        ) : (
+          <button onClick={start} className="btn btn-secondary min-h-10 px-4 rounded-xl text-xs"><RefreshCw size={12} /> Again</button>
+        )}
       </div>
     );
   }

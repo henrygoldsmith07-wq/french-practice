@@ -277,6 +277,10 @@ function Deck({ packId, onBack, srs, onRated, onSavedChange, apiKey, mockMode, o
   const [savedTick, setSavedTick] = useState(0);
   const [study, setStudy] = useState('cards'); // cards | quiz
   const [cardMode, setCardMode] = useState('receptive'); // receptive | productive — FSRS dual-mastery
+  // Declared with the other hooks ON PURPOSE: it sits below two early returns
+  // in the render body, and a conditional hook order corrupts state when the
+  // deck empties or the quiz mounts.
+  const [advancing, setAdvancing] = useState(false);
 
   // Virtual packs: 'review' = every due card (packs + notebook), 'weak' =
   // high-lapse stumblers, 'notebook' = the learner's custom flashcards.
@@ -352,7 +356,6 @@ function Deck({ packId, onBack, srs, onRated, onSavedChange, apiKey, mockMode, o
 
   // Guard against a double-tap firing two ratings for one card (two SRS
   // updates, doubled XP and one skipped card) during the advance delay.
-  const [advancing, setAdvancing] = useState(false);
   const rate = (rating) => {
     if (advancing) return;
     setAdvancing(true);

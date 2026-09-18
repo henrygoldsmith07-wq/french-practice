@@ -6,10 +6,13 @@
 // browsable, searchable and reviewable with the same SRS engine as the curated
 // cards — without hand-writing thousands more card literals: the packs are
 // built from the dictionary at module load.
+//
+// Each language's dictionary is loaded through its own async loader so the
+// OTHER languages' dictionaries split into lazy chunks and never weigh down
+// the active language's graph (getPacksFor(lang) is only called for the
+// active language — the loaders for the other two never even start).
 
 import { FREQUENCY_WORDS } from './frequency.js';
-import { FREQUENCY_WORDS_DE } from './content/frequency-de.js';
-import { FREQUENCY_WORDS_ES } from './content/frequency-es.js';
 
 // Map a coarse frequency band (rank 1–10) onto the card's freq label bucket
 // (FREQ_LABELS in vocab.js: 1 Top 100 · 2 Top 500 · 3 Top 1000 · 4 Top 5000 · 5 Niche).
@@ -63,13 +66,49 @@ function buildPacks(words, adjective, prefix) {
   return packs;
 }
 
+// French is composed eagerly — it is the default content language, so its
+// dictionary is needed on the very first render and must stay synchronous.
 export const FREQUENCY_PACKS = buildPacks(FREQUENCY_WORDS, 'French', 'fq');
-export const FREQUENCY_PACKS_DE = buildPacks(FREQUENCY_WORDS_DE, 'German', 'fqde');
-export const FREQUENCY_PACKS_ES = buildPacks(FREQUENCY_WORDS_ES, 'Spanish', 'fqes');
 
-// The deduped word lists, for the offline dictionary (per language).
-export const FREQUENCY_WORDS_BY_LANG = {
-  fr: dedupeByTerm(FREQUENCY_WORDS),
-  de: dedupeByTerm(FREQUENCY_WORDS_DE),
-  es: dedupeByTerm(FREQUENCY_WORDS_ES),
+// German and Spanish load on demand: the promise is shared per language and
+// not cached on failure, so a transient error can be retried.
+const loaders = {
+  de: () => import('./content/frequency-de.js').then((m) => buildPacks(m.FREQUENCY_WORDS_DE, 'German', 'fqde')),
+  es: () => import('./content/frequency-es.js').then((m) => buildPacks(m.FREQUENCY_WORDS_ES, 'Spanish', 'fqes')),
 };
+const cache = new Map();
+export function getFrequencyPacksFor(lang) {
+  if (lang === 'fr') return Promise.resolve(FREQUENCY_PACKS);
+  if (!cache.has(lang)) {
+    const p = (loaders[lang] || (() => Promise.resolve([])))().catch(() => {
+      cache.delete(lang);
+      return [];
+    });
+    cache.set(lang, p);
+  }
+  return cache.get(lang);
+}
+
+// The deduped word lists, for the offline dictionary (per language). French is
+// synchronous; DE/ES resolve their dictionaries on demand so the Reference
+// tool's German/Spanish dictionaries also stay out of the eager graph.
+let deWordsPromise = null;
+let esWordsPromise = null;
+export function getFrequencyWordsFor(lang) {
+  if (lang === 'fr') return Promise.resolve(dedupeByTerm(FREQUENCY_WORDS));
+  if (lang === 'de') {
+    if (!deWordsPromise) {
+      deWordsPromise = import('./content/frequency-de.js').then((m) => dedupeByTerm(m.FREQUENCY_WORDS_DE));
+      deWordsPromise.catch(() => { deWordsPromise = null; });
+    }
+    return deWordsPromise;
+  }
+  if (lang === 'es') {
+    if (!esWordsPromise) {
+      esWordsPromise = import('./content/frequency-es.js').then((m) => dedupeByTerm(m.FREQUENCY_WORDS_ES));
+      esWordsPromise.catch(() => { esWordsPromise = null; });
+    }
+    return esWordsPromise;
+  }
+  return Promise.resolve([]);
+}

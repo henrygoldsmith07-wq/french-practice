@@ -159,11 +159,13 @@ export const CLOZE_TESTS = [
 // The high-frequency word list — the app's core searchable lexicon — lives in
 // its own data modules (one per language) so it can grow to real dictionary
 // scale. `getFrequencyWords()` follows the active target language, so the
-// offline dictionary shows German/Spanish words for those learners.
-import { FREQUENCY_WORDS_BY_LANG } from './vocab-frequency.js';
+// offline dictionary shows German/Spanish words for those learners. DE/ES
+// dictionaries are lazy chunks, so the call is async — it resolves
+// immediately for French and after the dictionary chunk loads otherwise.
+import { getFrequencyWordsFor } from './vocab-frequency.js';
 import { contentLang } from './content/active.js';
 
-export const getFrequencyWords = () => FREQUENCY_WORDS_BY_LANG[contentLang()] || FREQUENCY_WORDS_BY_LANG.fr;
+export const getFrequencyWords = () => getFrequencyWordsFor(contentLang());
 
 // Back-compat alias: the French list (kept so older imports don't break).
 export { FREQUENCY_WORDS } from './frequency.js';

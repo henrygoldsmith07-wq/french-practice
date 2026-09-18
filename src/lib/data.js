@@ -3,9 +3,15 @@
 // UI-facing fields (title, setup, hint scaffolding) are in English; the
 // practice material itself (openers, hints' French phrases, topics,
 // examples) stays in French. aiRole/curveball are model-facing prompts.
+//
+// French scenarios are composed eagerly (default language, needed on first
+// render). German and Spanish load through per-language registries — dynamic
+// imports, so their scenario lists only download when the learner actually
+// studies that language (mirrors the vocab registry in vocab.js). Until a
+// registry resolves, getScenarios() serves [] — a resolved-empty state, NOT a
+// loading error. Callers treat it exactly like the vocabulary library's
+// cold-start window: the boot prefetch warms it a beat after first paint.
 
-import { DE_SCENARIOS } from './content/de.js';
-import { ES_SCENARIOS } from './content/es.js';
 import { contentLang } from './content/active.js';
 
 const FR_SCENARIOS = [
@@ -621,6 +627,41 @@ FR_SCENARIOS.push(
   }
 );
 
+// ---- per-language scenario registries -------------------------------------
+// Same contract as vocab.js's registries: one loader per registry language,
+// shared promise per language (not cached on failure, so a transient error can
+// be retried), and a sync facade that warms after the first resolve so lazy
+// consumers can keep calling getScenarios() unchanged.
+const registryLoaders = {
+  de: () => import('./content/de.js').then((m) => m.DE_SCENARIOS),
+  es: () => import('./content/es.js').then((m) => m.ES_SCENARIOS),
+};
+const registryCache = new Map();   // lang → promise (scenarios for that language)
+const resolvedScenarios = new Map(); // lang → scenarios (once the promise lands)
+function getRegisteredScenarios(lang) {
+  if (!registryCache.has(lang)) {
+    const loader = registryLoaders[lang] || (() => Promise.resolve([]));
+    const p = loader()
+      .then((scenarios) => {
+        resolvedScenarios.set(lang, scenarios);
+        return scenarios;
+      })
+      .catch(() => {
+        registryCache.delete(lang);
+        return [];
+      });
+    registryCache.set(lang, p);
+  }
+  return registryCache.get(lang);
+}
+
+/** Resolve the active language's scenarios lazily (FR is synchronous). */
+export function getScenariosAsync() {
+  const lang = contentLang();
+  if (lang === 'fr') return Promise.resolve(FR_SCENARIOS);
+  return getRegisteredScenarios(lang);
+}
+
 export const DAILY_TOPICS = [
   { fr: "Décrivez votre petit-déjeuner idéal.", en: 'Describe your ideal breakfast.' },
   { fr: "Racontez la dernière fois que vous avez été en retard.", en: 'Tell the story of the last time you were late.' },
@@ -638,25 +679,45 @@ export const DAILY_TOPICS = [
 
 // Scenarios for the active target language. Functions (not consts) so the
 // Arena, Home and search re-read them after the learner switches language.
-const SCENARIOS_BY_LANG = { fr: FR_SCENARIOS, de: DE_SCENARIOS, es: ES_SCENARIOS };
-export const getScenarios = () => SCENARIOS_BY_LANG[contentLang()] || FR_SCENARIOS;
+// French is synchronous; DE/ES serve [] from the sync facade until their
+// registry chunk resolves (App warms it at boot — see the useScenarios hook).
+export const getScenarios = () => {
+  const lang = contentLang();
+  if (lang === 'fr') return FR_SCENARIOS;
+  return resolvedScenarios.get(lang) || [];
+};
 export const getScenario = (id) => getScenarios().find((s) => s.id === id) || getScenarios()[0];
 
 // Speak is organised by situation, not chapter. Four everyday situations lead:
 // café, school, directions, home. Each resolves to a full roleplay scenario.
+// The scenario ids are FALLBACKS: DE/ES carry no 'bistro'/'maison' scenarios,
+// so their cafés/homes resolve through these language-prefixed alternatives.
+// (Before the fallbacks, getSituations() silently returned [] for DE/ES —
+// the Speak tab's situation row vanished when learning German or Spanish.)
 export const SITUATIONS = [
-  { id: 'cafe', label: 'Au café', blurb: 'Order, ask, pay', scenarioId: 'bistro' },
+  { id: 'cafe', label: 'Au café', blurb: 'Order, ask, pay', scenarioId: 'bistro', fallbacks: ['de-cafe', 'es-cafe'] },
   { id: 'ecole', label: "À l'école", blurb: 'Ask for help in class', scenarioId: 'ecole' },
-  { id: 'directions', label: 'Directions', blurb: 'Find your way in town', scenarioId: 'directions' },
+  { id: 'directions', label: 'Directions', blurb: 'Find your way in town', scenarioId: 'directions', fallbacks: ['de-directions', 'es-directions'] },
   { id: 'maison', label: 'À la maison', blurb: 'Chat at home', scenarioId: 'maison' },
 ];
 
+/** Async view of getSituations — resolves the registry language first. */
+export function getSituationsAsync() {
+  return getScenariosAsync().then(getSituationsFrom);
+}
+
 export function getSituations() {
-  const scenarios = getScenarios();
-  return SITUATIONS.map((sit) => ({
-    ...sit,
-    scenario: scenarios.find((s) => s.id === sit.scenarioId) || null,
-  })).filter((sit) => sit.scenario);
+  return getSituationsFrom(getScenarios());
+}
+
+function getSituationsFrom(scenarios) {
+  return SITUATIONS.map((sit) => {
+    const ids = [sit.scenarioId, ...(sit.fallbacks || [])];
+    return {
+      ...sit,
+      scenario: scenarios.find((s) => ids.includes(s.id)) || null,
+    };
+  }).filter((sit) => sit.scenario);
 }
 
 export const FLASHCARDS = [

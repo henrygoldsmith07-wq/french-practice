@@ -3,12 +3,34 @@ import { test } from 'node:test';
 import {
   conceptToTopicId, authoredDrillFor, probeCapabilities,
   drillChain, nextFallback, resolvePlanCapabilities, DRILL_FALLBACK_ORDER,
+  trainerDrillFor, buildDrillSlot, dictationDrillFor, accentDrillFor,
 } from '../src/lib/todayCapabilities.js';
 import { buildDailyCurriculum } from '../src/lib/dailyCurriculum.js';
 
 test('fallback order matches the product spec', () => {
   assert.deepEqual(DRILL_FALLBACK_ORDER,
-    ['ai-drill', 'authored-drill', 'retype', 'srs-retrieval', 'listen', 'review']);
+    ['conj-drill', 'dictation-drill', 'accent-drill', 'ai-drill', 'authored-drill', 'retype', 'srs-retrieval', 'listen', 'review']);
+});
+
+test('trainer-gap concepts get a conj-drill link; ordinary concepts do not', () => {
+  // The trainer gap concept shape: "conjugating <verb> (<tense>)".
+  assert.deepEqual(trainerDrillFor('conjugating parler (present)'), { verb: 'parler', tense: 'present', personIndex: null });
+  assert.deepEqual(trainerDrillFor('conjugating parler (present · je)'), { verb: 'parler', tense: 'present', personIndex: 0 }, 'the exact missed cell parses too');
+  assert.equal(trainerDrillFor('passe-compose'), null, 'ordinary grammar concepts never get a trainer link');
+  // Gating is by concept shape: an unknown verb still parses (the focused
+  // pool just comes back empty and the session segment ends gracefully).
+  assert.deepEqual(trainerDrillFor('conjugating nonsense (present)'), { verb: 'nonsense', tense: 'present', personIndex: null });
+  assert.equal(trainerDrillFor(''), null);
+
+  const caps = probeCapabilities({ hasAi: true, concept: 'conjugating finir (passe)', hasScenario: true });
+  const chain = drillChain(caps);
+  assert.deepEqual(chain.map((p) => p.kind), ['conj-drill', 'ai-drill'], 'the focused trainer leads; the generic AI drill falls back');
+  assert.equal(chain[0].verb, 'finir');
+  assert.equal(chain[0].tense, 'passe');
+  assert.deepEqual(chain[0].fallbacks, ['ai-drill']);
+
+  const offline = probeCapabilities({ hasAi: false, concept: 'conjugating finir (passe)' });
+  assert.deepEqual(drillChain(offline).map((p) => p.kind), ['conj-drill'], 'the trainer link works fully offline');
 });
 
 test('concept strings resolve to library topics, including aliases and free text', () => {
@@ -162,4 +184,127 @@ test('listen segment without a track is dropped and minutes re-flow', () => {
   assert.equal(plan.totalMinutes, 30, 'minutes re-flow; the session stays complete');
   const biggest = plan.segments.reduce((a, b) => ((b.minutes || 0) > (a.minutes || 0) ? b : a));
   assert.ok(biggest.minutes > 8, 'spare minutes re-flow into the biggest segment');
+});
+// ---- the drill-slot producer registry --------------------------------------
+
+test('registry: the trainer gap owns the slot even against a hot mistake-graph node', () => {
+  // The pre-registry bug: applyCalibration's overdueBy×weight sort demoted
+  // the zero-overdue trainer gap below ANY real graph node. The producer
+  // order in the registry fixes that by construction.
+  const ctx = {
+    balanced: false,
+    calibration: { ready: false, weights: {} },
+    trainerGap: { id: 'le-1', concept: 'conjugating parler (present · je)', type: 'grammar', mastery: 0, recurrence: 2, source: 'learner-errors' },
+    dueRetestCandidates: [
+      { id: 'mg-9', concept: 'passe-compose', type: 'tense', mastery: 10, recurrence: 5, overdueBy: 7.5 },
+      { id: 'mg-2', concept: 'negation', type: 'grammar', mastery: 40, recurrence: 1, overdueBy: 2.0 },
+    ],
+  };
+  const slot = buildDrillSlot(ctx);
+  assert.equal(slot.producer, 'learner-errors', 'the trainer-gap producer wins by registry order, not by accident');
+  assert.equal(slot.top.id, 'le-1');
+  assert.equal(slot.candidates.length, 3, 'the graph nodes still join the frozen candidate list');
+  assert.ok(slot.candidates.every((c) => c.source), 'every frozen candidate names its producer');
+});
+
+test('registry: balanced arm strips every learner-specific producer', () => {
+  const ctx = {
+    balanced: true,
+    calibration: { ready: false, weights: {} },
+    trainerGap: { id: 'le-1', concept: 'conjugating parler (present)', type: 'grammar', mastery: 0, recurrence: 2 },
+    dueRetestCandidates: [
+      { id: 'mg-9', concept: 'passe-compose', type: 'tense', mastery: 10, recurrence: 5, overdueBy: 7.5 },
+    ],
+  };
+  const slot = buildDrillSlot(ctx);
+  assert.equal(slot.producer, null, 'no producer fires in the control arm');
+  assert.deepEqual(slot.candidates, [], 'the frozen candidate list is empty — nothing learner-specific leaks into the trial');
+  assert.equal(slot.top, null);
+});
+
+test('registry: mistake-graph producer keeps the urgency order and applies calibration within the producer', () => {
+  // ready:true weights must reorder WITHIN the producer's list, never across
+  // producers (producer order is the priority contract).
+  const ctx = {
+    balanced: false,
+    calibration: { ready: true, weights: { tense: 1.1, grammar: 0.9 } },
+    trainerGap: null,
+    dueRetestCandidates: [
+      { id: 'mg-a', concept: 'negation', type: 'grammar', mastery: 0, recurrence: 9, overdueBy: 0.5 },
+      { id: 'mg-b', concept: 'passe-compose', type: 'tense', mastery: 0, recurrence: 1, overdueBy: 1 },
+    ],
+  };
+  const slot = buildDrillSlot(ctx);
+  assert.equal(slot.producer, 'mistake-graph');
+  assert.deepEqual(slot.candidates.map((c) => c.id), ['mg-b', 'mg-a'],
+    'weighted overdueBy reorders within the producer (1×1.1 beats 0.5×0.9)');
+  assert.equal(slot.top.id, 'mg-b');
+});test('registry: a producer that throws or returns nothing is skipped, not fatal', () => {
+  // buildDrillSlot wraps each producer build in try/catch — verify via the
+  // real registry with a context that yields nothing.
+  const slot = buildDrillSlot({ balanced: false, trainerGap: null, dueRetestCandidates: [] });
+  assert.equal(slot.producer, null);
+  assert.deepEqual(slot.candidates, []);
+  assert.equal(slot.top, null);
+  // And the empty slot is a valid balanced-arm state too.
+  const balancedEmpty = buildDrillSlot({ balanced: true, trainerGap: { id: 'x' }, dueRetestCandidates: [{ id: 'y' }] });
+  assert.deepEqual(balancedEmpty.candidates, []);
+});
+
+test('dictée and pronunciation gaps get their own focused offline drills', () => {
+  assert.deepEqual(dictationDrillFor('Dictée listening accuracy'), { kind: 'dictation-drill' });
+  assert.deepEqual(dictationDrillFor('dictation'), { kind: 'dictation-drill' }, 'activity-record fallback label matches too');
+  assert.deepEqual(accentDrillFor('Pronunciation clarity'), { kind: 'accent-drill' });
+  // Cross-category: a dictée concept never gets an accent drill and vice versa.
+  assert.equal(dictationDrillFor('Pronunciation clarity'), null);
+  assert.equal(accentDrillFor('Dictée listening accuracy'), null);
+  // Ordinary grammar concepts match neither — no accidental topic collisions.
+  assert.equal(dictationDrillFor('passe-compose'), null);
+  assert.equal(accentDrillFor('passe-compose'), null);
+  assert.equal(dictationDrillFor(''), null);
+
+  const caps = probeCapabilities({ hasAi: true, concept: 'Dictée listening accuracy', hasScenario: true });
+  const chain = drillChain(caps);
+  assert.deepEqual(chain.map((p) => p.kind), ['dictation-drill', 'ai-drill'],
+    'the focused dictation drill leads; the generic AI drill is its fallback');
+  assert.deepEqual(chain[0].fallbacks, ['ai-drill'], 'no authored topic matches a dictée gap');
+
+  const prCaps = probeCapabilities({ hasAi: true, concept: 'Pronunciation clarity' });
+  assert.deepEqual(drillChain(prCaps).map((p) => p.kind), ['accent-drill', 'ai-drill']);
+
+  const offline = probeCapabilities({ hasAi: false, concept: 'Dictée listening accuracy' });
+  assert.deepEqual(drillChain(offline).map((p) => p.kind), ['dictation-drill'], 'fully offline repair');
+});
+
+test('registry: learner-errors-generic producer owns the slot below the trainer gap', () => {
+  const dictationGap = { id: 'le-d', concept: 'Dictée listening accuracy', type: 'listening', mastery: 0, recurrence: 2 };
+  const pronunciationGap = { id: 'le-p', concept: 'Pronunciation clarity', type: 'pronunciation', mastery: 0, recurrence: 1 };
+  const graphNode = { id: 'mg-1', concept: 'passe-compose', type: 'grammar', mastery: 40, recurrence: 5, overdueBy: 96 };
+
+  // A dictée gap beats a hot (overdue) mistake-graph node: an exact-form
+  // repair exists and mastery is zero.
+  const slot = buildDrillSlot({ dictationGap, dueRetestCandidates: [graphNode] });
+  assert.equal(slot.producer, 'learner-errors-generic');
+  assert.equal(slot.top.id, 'le-d');
+  assert.ok(slot.candidates.some((c) => c.id === 'mg-1'), 'graph candidates still join the frozen list for the P1 join');
+
+  // Pronunciation only fires when dictation has no gap.
+  const prSlot = buildDrillSlot({ pronunciationGap, dueRetestCandidates: [graphNode] });
+  assert.equal(prSlot.producer, 'learner-errors-generic');
+  assert.equal(prSlot.top.id, 'le-p');
+
+  // And the trainer gap outranks both — its producer is first.
+  const conjSlot = buildDrillSlot({
+    trainerGap: { id: 'le-c', concept: 'conjugating parler (present)', type: 'grammar', mastery: 0, recurrence: 3 },
+    dictationGap,
+    dueRetestCandidates: [graphNode],
+  });
+  assert.equal(conjSlot.producer, 'learner-errors');
+  assert.equal(conjSlot.top.id, 'le-c');
+
+  // Study validity: the balanced arm strips the generic producer exactly like
+  // the trainer-gap producer.
+  const balanced = buildDrillSlot({ balanced: true, dictationGap, pronunciationGap, dueRetestCandidates: [graphNode] });
+  assert.equal(balanced.producer, null);
+  assert.deepEqual(balanced.candidates, []);
 });
