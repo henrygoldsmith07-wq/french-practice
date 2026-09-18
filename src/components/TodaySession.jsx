@@ -51,6 +51,8 @@ import { NotebookRetype } from './NotebookRetype';
 import Quiz from './Quiz';
 import { ChevronRight, X } from './icons';
 import { personAt } from '../lib/conjugationMeta';
+import { segmentExplain, recoveryStatus } from '../lib/segmentExplain';
+import RecoveryBadge from './RecoveryBadge';
 
 // Today's French — one Start button, one composed session. Segments come
 // from the daily curriculum; the learner never chooses a mode. Every phase
@@ -100,6 +102,7 @@ export default function TodaySession({ open, onClose, minutes = 20, apiKey, mock
           recurrence: due.recurrenceCount,
           // The exact missed cell, carried into the drill payload so the
           // focused trainer leads with the very form that was missed.
+          errorCount: due.errorCount,
           personIndex: Number.isInteger(Number(personIdx)) && personIdx !== '' ? Number(personIdx) : null,
           // Marks the selection-trial candidate set as extended: the frozen
           // candidates list must contain whatever the trial's selectedId can
@@ -189,6 +192,46 @@ export default function TodaySession({ open, onClose, minutes = 20, apiKey, mock
     // cannot run. Offline, the AI drill becomes the authored drill (or
     // retype/SRS/listen) BEFORE the session starts.
     const planResolved = resolvePlanCapabilities(planBuilt, caps);
+    // Learner-facing explanation layer (see segmentExplain.js): every
+    // targeted segment carries WHAT is practised, WHY it was selected, the
+    // evidence behind that, and what success requires — all frozen with the
+    // plan so the panel never drifts from what was actually delivered. The
+    // balanced (control) arm gets no weakness panel: its drill is the
+    // deterministic rotation, and saying otherwise would be a lie.
+    const drillSegForExplain = planResolved.segments.find((s) => s.id === 'drill');
+    if (drillSegForExplain) {
+      if (balanced) {
+        drillSegForExplain.explain = null;
+        drillSegForExplain.recovery = null;
+      } else {
+        drillSegForExplain.explain = segmentExplain({
+          segId: 'drill',
+          concept: top?.concept || null,
+          drillKind: drillSegForExplain.payload?.kind || null,
+          target: {
+            errorCount: top?.errorCount ?? top?.recurrence ?? 0,
+            overdueBy: top?.overdueBy ?? 0,
+            modes: top?.modes,
+          },
+          fallbackWhy: drillSegForExplain.why || null,
+        });
+        // Recovery state only where the learner-error model is the source of
+        // truth (trainer/dictation/pronunciation gaps); mistake-graph nodes
+        // have a different shape and stay unbadged rather than mislabelled.
+        const gapEntry = trainerGap || dictationGap || pronunciationGap;
+        drillSegForExplain.recovery = top && gapEntry && top.id === gapEntry.id
+          ? recoveryStatus(getLearnerErrors({ limit: 20 }).find((e) => e.id === top.id))
+          : null;
+      }
+    }
+    const reviewSegForExplain = planResolved.segments.find((s) => s.id === 'review');
+    if (reviewSegForExplain) {
+      reviewSegForExplain.explain = segmentExplain({
+        segId: 'review',
+        targeted: balanced ? false : caps.recentCorrections > 0,
+        fallbackWhy: reviewSegForExplain.why || null,
+      });
+    }
     // Evidence Study: deterministic held-out check insertion. On a check day
     // a brief, unscaffolded, CEFR-matched check rides at the END of the
     // session — measurement only, never practice, never mastery input.
@@ -479,6 +522,9 @@ function TodayBody({ plan, segIndex, setSegIndex, close, apiKey, mockMode, level
           {seg ? seg.why : 'A short, unscaffolded check on material you haven\'t practised — measurement only.'}
         </p>
       </header>
+      {seg?.explain && (
+        <WhyPanel explain={seg.explain} recovery={seg.recovery} />
+      )}
       <div className="flex-1 min-h-0 overflow-y-auto nice-scroll">{body}</div>
       {seg && seg.id !== 'speak' && (
         <footer className="shrink-0 border-t border-line bg-surface px-4 py-3">
@@ -487,6 +533,28 @@ function TodayBody({ plan, segIndex, setSegIndex, close, apiKey, mockMode, level
           </button>
         </footer>
       )}
+    </div>
+  );
+}
+
+// The "why this?" panel for targeted segments: what · why · evidence ·
+// success. Copy is composed by segmentExplain.js (pure, tested for learner
+// safety); this component only lays it out. The recovery badge appears when
+// the learner-error model is the source of truth for the target.
+function WhyPanel({ explain, recovery }) {
+  return (
+    <div className="shrink-0 bg-surface2 border-b border-line px-4 py-3">
+      <div className="max-w-lg mx-auto space-y-1.5">
+        <div className="flex items-baseline justify-between gap-3">
+          <p className="text-sm font-semibold text-ink" lang="fr">{explain.headline}</p>
+          {recovery && <RecoveryBadge status={recovery} />}
+        </div>
+        <p className="text-xs text-ink2">{explain.why}</p>
+        {explain.evidence.length > 0 && (
+          <p className="text-[11px] text-ink3 tabular-nums">{explain.evidence.join(' · ')}</p>
+        )}
+        <p className="text-[11px] text-ink3">Done when: {explain.success}</p>
+      </div>
     </div>
   );
 }

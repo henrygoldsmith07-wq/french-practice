@@ -7,6 +7,7 @@ import {
 // NotebookRetype lives in its own module (it is reachable from the entry
 // chunk via TodaySession, so it must not carry this dashboard's deps with it).
 import { NotebookRetype } from './NotebookRetype';
+import RecoveryBadge from './RecoveryBadge';
 export { NotebookRetype };
 import {
   memoryBuckets, weakEntries, curvePoints, heatmapWeeks, totalReviews,
@@ -272,9 +273,10 @@ function LearnerMistakeReview({ errors, onChange, onXp }) {
           <div className="flex items-start gap-2">
             <span className="shrink-0 px-2 py-1 rounded-full border border-line bg-surface2 text-[10px] font-bold uppercase tracking-wider text-ink3">{error.category}</span>
             <p className="text-sm text-ink leading-relaxed">{error.label}</p>
+            <RecoveryBadge entry={error} />
           </div>
           <p className="text-[11px] text-ink3">
-            Missed ×{error.errorCount} · seen in {error.modes.length ? error.modes.join(', ') : 'more than one mode'} · {error.status}
+            Missed ×{error.errorCount} · seen in {error.modes.length ? error.modes.join(', ') : 'more than one mode'}
           </p>
           <div className="flex gap-2">
             <button onClick={() => answer(false)} className="btn btn-secondary flex-1 min-h-11 rounded-xl text-xs">
