@@ -1,7 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
-import {
-  getErrorNotebook, markCorrectedByLearner,
+import { useEffect, useMemo, useState } from 'react';import { getErrorNotebook, markCorrectedByLearner,
 } from '../lib/errorNotebook';
+import { getLearnerErrors, recordLearnerSuccess } from '../lib/storage';
 import { Pencil } from './icons';
 
 // Retype queue for notebook corrections: the mistake was captured in the
@@ -41,6 +40,17 @@ export function NotebookRetype({ onXp, onCleared }) {
       onXp(5);
       setRehearsed(false);
       setTick((t) => t + 1);
+      // Close the loop on the learnerErrors side too: a typed-from-memory
+      // correction is a clean pass for the matching grammar gap (if one is
+      // being tracked). Its second clean pass resolves the entry — this
+      // component never resolves a gap on its own.
+      try {
+        const gap = getLearnerErrors({ limit: 40 }).find((e) =>
+          e.category === 'grammar'
+          && (e.label === entry.original || e.label === entry.corrected
+            || e.label.toLowerCase().includes(entry.original.toLowerCase())));
+        if (gap) recordLearnerSuccess({ category: 'grammar', key: gap.key, mode: 'retype', score: 100, source: 'notebook-retype' });
+      } catch { /* loop bookkeeping must never break the retype */ }
     } else {
       // Rehearsed: the delayed proof arrives tomorrow.
       onXp(2);

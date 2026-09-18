@@ -687,6 +687,18 @@ function AiDrillRunner({ concept, level, apiKey, mockMode, onXp, onDone, onEmpty
         linkRetestToOutcomes({ mistakeId: node.id, retest: { ...retest, immediate: true } });
       }
     } catch { /* graph bookkeeping must never break the drill */ }
+    // Close the learner-error loop too: this drill exists because a grammar
+    // gap was selected, so its outcome is that gap's evidence. Two correct
+    // answers (the same-session bar the mistake graph uses) record a success;
+    // the next independent pass is what actually resolves the entry.
+    try {
+      if (correctRef.current >= 2) {
+        const entry = getLearnerErrors({ limit: 40 }).find((e) => e.category === 'grammar'
+          && (e.key === concept || e.label === concept
+            || (concept && e.label && concept.toLowerCase().includes(e.label.toLowerCase()))));
+        if (entry) recordLearnerSuccess({ category: 'grammar', key: entry.key, mode: 'targeted-drill', score: null, source: 'ai-drill' });
+      }
+    } catch { /* loop bookkeeping must never break the drill */ }
     onDone();
   };
   if (state.busy) return <div className="h-full grid place-items-center"><p className="text-sm text-ink2">Building your drill…</p></div>;

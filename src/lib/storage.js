@@ -1020,6 +1020,33 @@ export function recordGrammarError(topicId, { mode = 'conversation', score = nul
   return all[topicId];
 }
 
+// Vocabulary's closed loop: a lapse ('again' rating) is a mistake; a clean
+// recall of a card with an active gap is its success evidence. Resolution
+// still needs two independent clean passes (recordLearnerSuccess's rule),
+// so a single lucky answer never grants mastery. No-op on success for cards
+// without a gap — clean reviews of healthy cards must not fabricate entries.
+export function recordVocabularyOutcome(cardKey, outcome, { mode = 'receptive', score = null, label = null, source = 'srs' } = {}) {
+  const entry = getLearnerErrors({ limit: 240 }).find((e) => e.id === `vocabulary:${cardKey}`);
+  if (!entry && outcome !== 'error') return null;
+  if (outcome === 'error') {
+    return recordLearnerError({
+      category: 'vocabulary',
+      key: cardKey,
+      label: label || cardKey,
+      mode,
+      score,
+      source,
+    });
+  }
+  return recordLearnerSuccess({
+    category: 'vocabulary',
+    key: cardKey,
+    mode,
+    score,
+    source,
+  });
+}
+
 function migrateLearnerErrors() {
   let model = createLearnerErrorModel();
   const grammarErrors = getGrammarErrors();
@@ -2025,6 +2052,18 @@ export function rateCard(cardId, rating, opts={}) {
       mode,
       itemLabel: opts.itemLabel,
       source: opts.source || 'srs',
+    });
+    // The vocabulary loop's producer AND consumer, in one place: a lapse is
+    // a mistake (enters the learner-error model); a later clean recall of a
+    // card that has an active gap is its success evidence. The success call
+    // is a no-op for cards without a gap, so ordinary reviews never create
+    // entries — and resolving still requires two independent clean passes,
+    // never one lucky answer.
+    recordVocabularyOutcome(key, rating === 'again' ? 'error' : 'success', {
+      mode,
+      score: rating === 'again' ? 0 : null,
+      label: opts.itemLabel || cardId,
+      source: 'srs',
     });
     return next;
   }
