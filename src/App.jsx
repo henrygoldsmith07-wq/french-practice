@@ -145,6 +145,27 @@ export default function App() {
   // study clock, telemetry sink) lives in one hook; App stays composition.
   const { telemetry, clearTelemetry } = useStudioBoot({ dueCount, smartReminders: settings.smartReminders });
 
+  const overlaySetters = {
+    search: setSearchOpen,
+    settings: setSettingsOpen,
+    profile: setProfileOpen,
+    realWorld: setRealWorldOpen,
+    personalise: setPersonaliseOpen,
+    offline: setOfflineOpen,
+    analytics: setAnalyticsOpen,
+    reference: setReferenceOpen,
+    focus: setFocusOpen,
+    devPanel: setDevPanelOpen,
+    learningPath: setLearningPathOpen,
+    pathSetup: setPathSetupOpen,
+    onboarding: setOnboardingOpen,
+    today: setTodayOpen,
+  };
+  const openOverlay = (name) => {
+    const set = overlaySetters[name];
+    if (set) set(true);
+  };
+
   const overlayClosers = [
     [searchOpen, () => setSearchOpen(false)],
     [settingsOpen, () => setSettingsOpen(false)],
@@ -156,6 +177,8 @@ export default function App() {
     [referenceOpen, () => setReferenceOpen(false)],
     [focusOpen, () => setFocusOpen(false)],
     [devPanelOpen, () => setDevPanelOpen(false)],
+    [onboardingOpen, () => setOnboardingOpen(false)],
+    [todayOpen, () => setTodayOpen(false)],
     [learningPathOpen, () => setLearningPathOpen(false)],
     [pathSetupOpen, () => setPathSetupOpen(false)],
   ];
@@ -420,13 +443,12 @@ export default function App() {
         <h1 className="font-bold text-lg text-ink tracking-tight mr-1 whitespace-nowrap min-w-0">
           {getLanguage(settings.language).studio}
           <span className="sr-only"> — {getLanguage(settings.language).name} speaking practice</span>
-        </h1>
-        <button
-          onClick={() => setProfileOpen(true)}
-          className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold whitespace-nowrap ${streak.count > 0 ? 'bg-surface2 text-ink' : 'bg-surface2 text-ink3'}`}
-          title="Day streak — tap for your stats"
-          aria-label={`${streak.count}-day streak — open your stats`}
-        >
+        </h1>            <button
+              onClick={() => openOverlay('profile')}
+              className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold whitespace-nowrap ${streak.count > 0 ? 'bg-surface2 text-ink' : 'bg-surface2 text-ink3'}`}
+              title="Day streak — tap for your stats"
+              aria-label={`${streak.count}-day streak — open your stats`}
+            >
           <Flame size={13} /> {streak.count}
         </button>
         <button onClick={() => setProfileOpen(true)} aria-label={`${xp} XP — open your stats`} className="relative flex items-center gap-1 px-2.5 py-1 rounded-full bg-surface2 text-ink text-xs font-semibold whitespace-nowrap" title="Experience points — tap for your stats">

@@ -11,13 +11,17 @@ import {
   probeCapabilities, nextFallback, resolvePlanCapabilities, buildDrillSlot,
   ensureGrammarTopics,
 } from '../lib/todayCapabilities';
-import {
-  enrolStudyState, studyStatus, daySinceEnrolment, isCheckScheduled,
-  buildHeldOutPool, makeCheckRecord, saveCheckRecord, recordCheckOutcome,
-  startOutcomeRecord, linkRetestToOutcomes, markOutcomeRecurrence,
-  updateOutcomeDelivery, attachTransferFromCheck,
-  effectiveVariant, verifyTreatmentConsistency,
-} from '../lib/studyFlow';
+// Study glue is measurement infrastructure: it loads WITH the session (the
+// lazy ChatArena/HeldOutCheck chunks pull the same module), never with the
+// app — same discipline as the listening library. The module lands in
+// _studyFlow (file-wide, so every component here can reach it); plan
+// construction GATES on it, so study instrumentation (enrolment, variant,
+// held-out checks) is never silently skipped, and study CALLS are safe no-ops
+// in the beat before it resolves.
+let _studyFlowMod = null;
+let _studyFlow = null;
+const loadStudyFlow = () => (_studyFlowMod ||= import('../lib/studyFlow').then((m) => { _studyFlow = m; return m; }));
+const callStudy = (name, ...args) => _studyFlow?.[name]?.(...args);
 import { getPracticeAssignment, balancedDrillTopic } from '../lib/assignment';
 import { recordSelectionTrial, getSelectionTrial, saveSelectionTrial } from '../lib/storage';
 import {
@@ -119,11 +123,28 @@ export default function TodaySession({ open, onClose, minutes = 20, apiKey, mock
     });
     return () => { on = false; };
   }, [open]);
+  // Study glue loads with the session like the listening library; the plan
+  // gates on it too, so study instrumentation (enrolment, variant, held-out
+  // checks) is resolved rather than silently skipped, and the memo re-runs
+  // via `studyTick` when the module lands.
+  const [studyTick, setStudyTick] = useState(0);
+  useEffect(() => {
+    if (!open || _studyFlow) return undefined;
+    let on = true;
+    loadStudyFlow().then(() => { if (on) setStudyTick((v) => v + 1); });
+    return () => { on = false; };
+  }, [open]);
   const plan = useMemo(() => {
-    // listeningTick re-runs the memo when the lazy listening chunk resolves;
-    // the variable itself is intentionally unused inside the memo body.
+    // listeningTick/studyTick re-run the memo when their lazy chunks resolve;
+    // the variables themselves are intentionally unused in the memo body.
     void listeningTick;
-    if (!open || !entries || !grammarTopicsReady || !scenariosReg || !listeningTracksRef.current) return null;
+    void studyTick;
+    if (!open || !entries || !grammarTopicsReady || !scenariosReg || !listeningTracksRef.current || !_studyFlow) return null;
+    const {
+      enrolStudyState, effectiveVariant, daySinceEnrolment, isCheckScheduled,
+      buildHeldOutPool, makeCheckRecord, saveCheckRecord,
+      verifyTreatmentConsistency, startOutcomeRecord,
+    } = _studyFlow;
     const graph = getMistakeGraph();
     // Conjugation-trainer misses are grammar gaps the mistake graph may never
     // have seen (the trainer writes to the learnerErrors model). A gap that
@@ -446,7 +467,7 @@ function TodayBody({ plan, segIndex, setSegIndex, close, apiKey, mockMode, level
           && !deliveredRef.current.some((d) => d.skipped && d.seconds < 5);
         saveSelectionTrial(trials);
         // Study: fold delivery into the outcome record for this trial.
-        updateOutcomeDelivery({ trialAt: last.at, timeSpent: last.timeSpent, completed: last.completed, delivered: last.delivered });
+        callStudy('updateOutcomeDelivery', { trialAt: last.at, timeSpent: last.timeSpent, completed: last.completed, delivered: last.delivered });
       }
     } catch { /* delivery logging must never break the close */ }
   }, [segIndex, plan]);
@@ -521,8 +542,8 @@ function TodayBody({ plan, segIndex, setSegIndex, close, apiKey, mockMode, level
           // Full per-item evidence is persisted first, then the check's
           // per-skill summary (speaking from numeric scores, correctness
           // domains from valid results only) attaches to today's outcomes.
-          recordCheckOutcome(plan.heldOut.id, finished);
-          attachTransferFromCheck(plan.heldOut.id);
+          callStudy('recordCheckOutcome', plan.heldOut.id, finished);
+          callStudy('attachTransferFromCheck', plan.heldOut.id);
           advance();
         }}
       />
@@ -740,7 +761,7 @@ function AiDrillRunner({ concept, level, apiKey, mockMode, onXp, onDone, onEmpty
         const retest = { at: new Date().toISOString(), correct: correctRef.current >= 2, context: 'targeted-drill', immediate: true };
         saveMistakeGraph(recordRetest(graph, { id: node.id, ...retest }));
         // Study: same-session drill outcome → immediate slot only (never retention).
-        linkRetestToOutcomes({ mistakeId: node.id, retest: { ...retest, immediate: true } });
+        callStudy('linkRetestToOutcomes', { mistakeId: node.id, retest: { ...retest, immediate: true } });
       }
     } catch { /* graph bookkeeping must never break the drill */ }
     // Close the learner-error loop too: this drill exists because a grammar
@@ -861,7 +882,7 @@ export function RecallRunner({ cardCap, onDone, onXp, onActivity }) {
             saveMistakeGraph(recordRetest(graph, { id: nb.mistakeId, ...retest }));
             // Study: the SRS resurface IS the delayed retest. ASR-sourced
             // cards carry uncertainty so the analysis can exclude them.
-            linkRetestToOutcomes({ mistakeId: nb.mistakeId, retest: { ...retest, asrUncertain: Boolean(nb.asrUncertain) } });
+            callStudy('linkRetestToOutcomes', { mistakeId: nb.mistakeId, retest: { ...retest, asrUncertain: Boolean(nb.asrUncertain) } });
           }
         }
       } catch { /* graph bookkeeping must never break recall */ }
@@ -903,7 +924,7 @@ export function DelayedReview({ count, onXp, onDone }) {
       if (match) {
         const retest = { at: new Date().toISOString(), correct: remembered, context: 'delayed-review' };
         saveMistakeGraph(recordRetest(graph, { id: match.id, ...retest }));
-        linkRetestToOutcomes({ mistakeId: match.id, retest });
+        callStudy('linkRetestToOutcomes', { mistakeId: match.id, retest });
       }
     } catch { /* graph bookkeeping must never break review */ }
     onXp(remembered ? 2 : 1);
