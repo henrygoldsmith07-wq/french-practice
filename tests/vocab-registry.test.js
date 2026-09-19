@@ -79,9 +79,10 @@ describe('per-language vocab registries', () => {
     assert.deepEqual(deduped.map((w) => w.fr), ['der', 'und']);
   });
 
-  it('scenario registry: sync facade serves [] for DE/ES before warm-up, FR synchronously', () => {
+  it('scenario registry: sync facade serves [] for every language before warm-up', async () => {
     assert.equal(contentLang(), 'fr');
-    assert.ok(getScenarios().length > 5, 'French scenarios are eager');
+    assert.deepEqual(await getScenariosAsync().then((s) => s.length > 5), true, 'FR registry resolves real scenarios');
+    assert.ok(getScenarios().length > 5, 'FR sync facade warmed by the async resolve');
     setContentLanguage('de');
     assert.deepEqual(getScenarios(), [], 'DE cold start: resolved-empty, never a throw');
     setContentLanguage('es');

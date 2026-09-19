@@ -1,7 +1,8 @@
 import { useMemo, useState } from 'react';
 import { WRITING_PROMPTS, ESSAY_PROMPTS, randomFrom } from '../lib/writing';
 import { writingFeedback, friendlyError } from '../lib/groq';
-import { recordSkillScore, recordLearnerError, recordCorpusEntry } from '../lib/storage';
+import { recordSkillScore, recordLearnerError } from '../lib/storage';
+import { recordCorpusEntry } from '../lib/stores/researchStoreHeavy.js';
 import { addErrorNotebook } from '../lib/errorNotebook';
 import { explainCorrection } from '../lib/writing';
 import { Markdown, Spinner } from './ui';

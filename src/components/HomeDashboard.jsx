@@ -3,14 +3,14 @@ import { getStreak, getTodayXp, getSrs, getNotebook, getSettings, getSessions, g
 import { useAllEntries, useDueCount } from '../lib/vocabAsync';
 import { notebookAsEntries, weakEntries } from '../lib/memory';
 import { getScenarios } from '../lib/data';
+import { useScenarios } from '../hooks/useScenarios';
 import { getLanguage } from '../lib/languages';
 import { ArrowRight, Layers, MessageCircle, Play, Target, Mic, BookOpen, StudioMark, Bookmark } from './icons';
 import { weaknessAnalysis, dailyRecommendations } from '../lib/personalise';
 import { SCENARIO_ICONS } from './icons';
 import Mascot from './Mascot';
 
-function suggestScenario(sessions) {
-  const scenarios = getScenarios();
+function suggestScenario(sessions, scenarios = getScenarios()) {
   if (!scenarios.length) return { id: 'open', title: 'Open conversation' };
   const lastSeen = {};
   sessions.forEach((session, index) => { lastSeen[session.scenarioId] = index; });
@@ -34,7 +34,10 @@ export default function HomeDashboard({ dailyGoal = 30, level, onStartLesson, on
   // (App's badge and reminder read the same hook). `null` only while the
   // library chunk loads; the dashboard showed 0 in that window before too.
   const dueCount = useDueCount() ?? 0;
-  const suggested = suggestScenario(getSessions());
+  // The scenario corpus is a per-language lazy chunk too — the hook
+  // re-renders the suggestion card when the registry resolves.
+  const scenariosReg = useScenarios();
+  const suggested = suggestScenario(getSessions(), scenariosReg || []);
   const todayRecs = useMemo(() => {
     if (!fullLibrary) return [];
     try {

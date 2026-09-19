@@ -79,10 +79,10 @@ export default function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [dashboardOpen, setDashboardOpen] = useState(false);
-  // The active scenario may legitimately be null: for DE/ES the scenario
-  // registry resolves a beat after first render (App's boot prefetch warms
-  // it — French is eager, so this never shows there). The warm-then-heal
-  // effect below reselects once the registry lands, and every consumer here
+  // The active scenario may legitimately be null: every language's scenario
+  // corpus is a per-language registry chunk now, so it resolves a beat after
+  // first render (App's boot prefetch warms it). The warm-then-heal effect
+  // below reselects once the registry lands, and every consumer here
   // tolerates null rather than crashing on `.id` of undefined.
   const [scenario, setScenario] = useState(() => {
     const saved = getActiveSession();
@@ -124,6 +124,7 @@ export default function App() {
   const [referenceOpen, setReferenceOpen] = useState(false);
   const [referenceTool, setReferenceTool] = useState(null);
   const [focusOpen, setFocusOpen] = useState(false);
+  const [devPanelOpen, setDevPanelOpen] = useState(false);
   const [onboardingOpen, setOnboardingOpen] = useState(false);
   const [todayOpen, setTodayOpen] = useState(false);
   const [prefs, setPrefsState] = useState(getPrefs);
@@ -206,6 +207,7 @@ export default function App() {
     [analyticsOpen, () => setAnalyticsOpen(false)],
     [referenceOpen, () => setReferenceOpen(false)],
     [focusOpen, () => setFocusOpen(false)],
+    [devPanelOpen, () => setDevPanelOpen(false)],
     [learningPathOpen, () => setLearningPathOpen(false)],
     [pathSetupOpen, () => setPathSetupOpen(false)],
   ];
@@ -671,7 +673,10 @@ export default function App() {
           {tab === 'progress' && (
             <ProgressHub
               view={progressView}
-              onView={setProgressView}
+              onView={(v) => {
+                if (v === 'dev') { setDevPanelOpen(true); return; }
+                setProgressView(v);
+              }}
               onXp={awardXp}
               weeklyGoal={settings.weeklyGoal}
               onHeaderChange={({ coins: c, avatarId: a }) => { setCoins(c); setAvatarId(a); }}
@@ -686,11 +691,6 @@ export default function App() {
               onOpenGrammar={(topicId) => { setGrammarFocus(topicId); setLearnView('grammar'); setTab('learn'); }}
               onOpenSpeaking={() => setTab('speak')}
             />
-          )}
-          {tab === 'progress' && settings.devPanel && (
-            <div className="px-4 pb-4">
-              <DevPanel telemetry={telemetry} apiKey={apiKey} mockMode={settings.mockMode} onMockMode={(v) => updateSettings({ ...settings, mockMode: v })} onClear={() => setTelemetry([])} />
-            </div>
           )}
           </Suspense>
         </main>          {tab === 'speak' && scenario && <FeedbackWidget scores={lastScores} turnCount={history.length} />}
@@ -714,6 +714,12 @@ export default function App() {
       {analyticsOpen && <Analytics open={analyticsOpen} onClose={() => setAnalyticsOpen(false)} />}
       {referenceOpen && (<Reference open={referenceOpen} initialTool={referenceTool} onXp={awardXp} onClose={() => { setReferenceOpen(false); setReferenceTool(null); }} />)}
       {focusOpen && <Focus open={focusOpen} onClose={() => setFocusOpen(false)} />}
+      {/* Developer panel: opt-in (Settings → Developer panel), lazy, and an
+          overlay — never inline in a tab, where its height would push layout
+          around and intercept the tab grid's clicks. */}
+      {devPanelOpen && (
+        <DevPanel open onClose={() => setDevPanelOpen(false)} telemetry={telemetry} apiKey={apiKey} mockMode={settings.mockMode} onMockMode={(v) => updateSettings({ ...settings, mockMode: v })} onClear={() => setTelemetry([])} />
+      )}
       {learningPathOpen && (
         <div className="fixed inset-0 z-[55] overflow-y-auto bg-bg" role="dialog" aria-modal="true" aria-label="Learning path">
           <div className="mx-auto min-h-full max-w-lg px-4 py-4">

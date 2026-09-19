@@ -6,6 +6,14 @@ import {
   trainerDrillFor, buildDrillSlot, dictationDrillFor, accentDrillFor,
 } from '../src/lib/todayCapabilities.js';
 import { buildDailyCurriculum } from '../src/lib/dailyCurriculum.js';
+// The grammar topic index is a lazy chunk now (boot-size), so node tests
+// bootstrap it explicitly and await readiness before capability assertions.
+import { ensureGrammarTopics, grammarTopicsReady } from '../src/lib/todayCapabilities.js';
+const __topicsReady = ensureGrammarTopics();
+test('grammar topic index is loaded for capability matching', async () => {
+  await __topicsReady;
+  assert.ok(grammarTopicsReady(), 'topic index injected');
+});
 
 test('fallback order matches the product spec', () => {
   assert.deepEqual(DRILL_FALLBACK_ORDER,

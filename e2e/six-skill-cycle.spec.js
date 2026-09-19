@@ -33,7 +33,9 @@ async function seedStudy(page, pid, day, extra = {}) {
   await expect(page.locator('h1').first()).toBeVisible({ timeout: 30_000 });
   await page.evaluate(() => localStorage.clear());
   await page.evaluate(({ pid, day, extra }) => {
-    localStorage.setItem('fp.settings', JSON.stringify({ mockMode: true, level: 'B1', ttsRate: 1 }));
+    // devPanel: this cycle drives the held-out check + study dashboard, which
+    // live behind the developer-tools setting (learner Analytics stays clean).
+    localStorage.setItem('fp.settings', JSON.stringify({ mockMode: true, level: 'B1', ttsRate: 1, devPanel: true }));
     localStorage.setItem('fp.onboarded', '1');
     localStorage.setItem('fp.study.state.v1', JSON.stringify({
       schemaVersion: 1, engineVersion: 1, protocolVersion: 1,

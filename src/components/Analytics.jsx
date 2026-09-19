@@ -3,11 +3,14 @@ import {
   getMetrics, getSessions, getGrammarProgress, getSrs, getNotebook,
   getTimeLog, getXpLog, getReviewLog, getXp, getSettings,
   getReviewEvents, getSessionHistoryMeta, getEvidenceLedgerModel, getErrorModelSummary,
-  getLearnerErrors, getLearnerErrorSummary,
-  getPlacementValidationMetrics, getProgressionValidationMetrics,
-  getCorpusMetrics, getAssistanceMetrics, getIntelligibilityBenchmark,
-  getComprehensionValidationMetrics, getStudyProgress, buildValidationBundle, ingestValidationBundle,
+  getLearnerErrors, getLearnerErrorSummary, getIntelligibilityBenchmark,
 } from '../lib/storage';
+// Measurement-stack metrics/bundles: lazy research module (never the boot graph).
+import {
+  getPlacementValidationMetrics, getProgressionValidationMetrics,
+  getCorpusMetrics, getAssistanceMetrics,
+  getComprehensionValidationMetrics, getStudyProgress, buildValidationBundle, ingestValidationBundle,
+} from '../lib/stores/researchStoreHeavy.js';
 import { allEntries } from '../lib/vocab';
 import { getGrammarErrors } from '../lib/storage';
 import { getGrammarTopic } from '../lib/grammar';

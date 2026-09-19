@@ -1,14 +1,27 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { pingLatency } from '../lib/groq';
 import {
-  recordPlacementValidation, getPlacementValidationMetrics, getLastPlacement,
-  getWritingSpeakingCorpus, updateCorpusHumanMark, updateCorpusSecondMark,
-  getComprehensionValidations, recordComprehensionValidation, updateComprehensionHumanMark, updateComprehensionSecondMark,
-  getComprehensionValidationMetrics,
-  getIntelligibilityBenchmark, recordBenchmarkSample,
+  getLastPlacement,
 } from '../lib/storage';
 import { benchmarkStatus, mergeBenchmarkItems } from '../lib/intelligibility';
-import { ChevronRight } from './icons';
+import { ChevronRight, X } from './icons';
+
+// Measurement-stack reads/writes live in researchStoreHeavy.js, which is
+// dynamically imported here: the panel is opt-in developer tooling, so its
+// heavy dependencies (placementValidation, intelligibility, corpus metrics)
+// must never ride the boot graph — not even through this lazy chunk's parent.
+const heavyPromise = import('../lib/stores/researchStoreHeavy.js');
+let _heavy = null; // module cache: resolves once per session
+function useHeavy() {
+  const [heavy, setHeavy] = useState(_heavy);
+  useEffect(() => {
+    if (heavy) return undefined;
+    let on = true;
+    heavyPromise.then((m) => { _heavy = m; if (on) setHeavy(m); });
+    return () => { on = false; };
+  }, [heavy]);
+  return heavy;
+}
 
 // Developer & utility panel: token usage totals, latency pings, raw API
 // payload log, the Mock Mode toggle (settings-backed), and the teacher entry
@@ -18,7 +31,8 @@ import { ChevronRight } from './icons';
 
 const LEVELS = ['A1', 'A2', 'B1', 'B2', 'C1', 'C2'];
 
-export default function DevPanel({ telemetry, apiKey, mockMode, onMockMode, onClear }) {
+export default function DevPanel({ telemetry, apiKey, mockMode, onMockMode, onClear, onClose = () => {} }) {
+  const heavy = useHeavy();
   const [ping, setPing] = useState(null);
   const [pinging, setPinging] = useState(false);
   const [expanded, setExpanded] = useState(null);
@@ -47,21 +61,28 @@ export default function DevPanel({ telemetry, apiKey, mockMode, onMockMode, onCl
   };
 
   return (
-    <div className="h-full overflow-y-auto nice-scroll px-4 py-6">
+    <div className="fixed inset-0 z-50 bg-bg flex flex-col" role="dialog" aria-modal="true" aria-label="Developer panel">
+      <div className="flex items-center gap-2 px-4 py-3 border-b border-line bg-surface shrink-0">
+        <h2 className="flex-1 text-lg font-bold text-ink">Developer Panel</h2>
+        <label className="flex items-center gap-2 text-xs text-ink2 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={mockMode}
+            onChange={(e) => onMockMode(e.target.checked)}
+            className="accent-ink w-4 h-4"
+          />
+          Mock Mode (offline)
+        </label>
+        <button onClick={onClose} aria-label="Close developer panel" className="w-10 h-10 grid place-items-center rounded-full text-ink2 hover:bg-surface2 hover:text-ink">
+          <X size={18} />
+        </button>
+      </div>
+      <div className="flex-1 overflow-y-auto nice-scroll px-4 py-6">
       <div className="max-w-2xl mx-auto space-y-5">
-        <div className="flex items-center justify-between">
-          <h2 className="text-lg font-bold text-ink">Developer Panel</h2>
-          <label className="flex items-center gap-2 text-xs text-ink2 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={mockMode}
-              onChange={(e) => onMockMode(e.target.checked)}
-              className="accent-ink w-4 h-4"
-            />
-            Mock Mode (offline)
-          </label>
-        </div>
-
+        {!heavy ? (
+          <p className="text-xs text-ink3 italic">Loading diagnostics…</p>
+        ) : (
+        <>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           <Metric label="API calls" value={totals.calls} />
           <Metric label="Input tokens" value={totals.prompt.toLocaleString()} />
@@ -149,6 +170,9 @@ export default function DevPanel({ telemetry, apiKey, mockMode, onMockMode, onCl
             );
           })}
         </div>
+        </>
+        )}
+      </div>
       </div>
     </div>
   );
@@ -163,17 +187,27 @@ function Metric({ label, value }) {
   );
 }
 
+function LoadingCard() {
+  return (
+    <section className="bg-surface border border-line rounded-2xl p-4">
+      <p className="text-xs text-ink3 italic">Loading diagnostics…</p>
+    </section>
+  );
+}
+
 // Teacher/assessment entry: pair a known CEFR level with a real placement
 // result. The store starts empty and stays honest — this form is the only
 // way entries appear, and every field is human-supplied.
 function PlacementValidationCard() {
+  const H = useHeavy();
   const last = getLastPlacement();
   const [form, setForm] = useState({
     knownLevel: '', placedLevel: last?.level || '', theta: last?.theta ?? '', se: last?.se ?? '',
     itemsAsked: last?.itemsAsked ?? '', rater: '', source: '',
   });
   const [saved, setSaved] = useState(null);
-  const metrics = getPlacementValidationMetrics();
+  if (!H) return <LoadingCard />;
+  const metrics = H.getPlacementValidationMetrics();
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
 
   const useLast = () => {
@@ -188,7 +222,7 @@ function PlacementValidationCard() {
   };
 
   const save = () => {
-    const made = recordPlacementValidation({
+    const made = H.recordPlacementValidation({
       knownLevel: form.knownLevel,
       placedLevel: form.placedLevel,
       theta: Number(form.theta),
@@ -265,17 +299,19 @@ function PlacementValidationCard() {
 // assessment or a real exam component). A second rater can re-mark any
 // entry for the double-marking reliability check. Nothing is generated.
 function ComprehensionValidationCard() {
-  const store = getComprehensionValidations();
+  const H = useHeavy();
+  const store = H ? H.getComprehensionValidations() : [];
   const metrics = {
-    listening: getComprehensionValidationMetrics('listening'),
-    reading: getComprehensionValidationMetrics('reading'),
+    listening: H ? H.getComprehensionValidationMetrics('listening') : null,
+    reading: H ? H.getComprehensionValidationMetrics('reading') : null,
   };
   const [form, setForm] = useState({ skill: 'listening', itemId: '', aiScore: '', humanScore: '', rater: '', source: 'teacher' });
   const [saved, setSaved] = useState(null);
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
 
   const save = () => {
-    const made = recordComprehensionValidation({
+    if (!H) return;
+    const made = H.recordComprehensionValidation({
       skill: form.skill,
       itemId: form.itemId,
       aiScore: Number(form.aiScore),
@@ -295,9 +331,9 @@ function ComprehensionValidationCard() {
         Pair what the app scored on a listening track or reading text with an independent human mark
         (your assessment or a real exam component). Measures MAE / within-5 agreement per skill;
         double-marking comes later by re-marking an entry as a different rater. Currently:{' '}
-        <span className="font-semibold text-ink2">listening {metrics.listening.label || metrics.listening.status}</span>
+        <span className="font-semibold text-ink2">listening {metrics.listening?.label || metrics.listening?.status || '…'}</span>
         {' · '}
-        <span className="font-semibold text-ink2">reading {metrics.reading.label || metrics.reading.status}</span>
+        <span className="font-semibold text-ink2">reading {metrics.reading?.label || metrics.reading?.status || '…'}</span>
       </p>
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
         <label className="space-y-1"><span className="text-[10px] font-bold uppercase tracking-wider text-ink3">Skill</span>
@@ -346,7 +382,8 @@ function ComprehensionValidationCard() {
 // qualified rater adds their mark — and a second rater re-marks for the
 // double-marking agreement check. Nothing here invents a score.
 function CorpusMarkingCard() {
-  const corpus = getWritingSpeakingCorpus();
+  const H = useHeavy();
+  const corpus = H ? H.getWritingSpeakingCorpus() : [];
   const recent = [...corpus].reverse().slice(0, 8);
   const [selectedId, setSelectedId] = useState('');
   const selected = recent.find((e) => e.id === selectedId) || null;
@@ -357,15 +394,15 @@ function CorpusMarkingCard() {
   const needsSecond = selected && selected.hasHuman && !selected.doubleMarked;
 
   const save = () => {
-    if (!selected) return;
+    if (!selected || !H) return;
     const payload = {
       humanScore: Number(form.score),
       humanCorrections: form.corrections || null,
       rater: form.rater || undefined,
     };
     const made = needsSecond
-      ? updateCorpusSecondMark(selected.id, { humanScore2: payload.humanScore, humanCorrections2: payload.humanCorrections, rater2: payload.rater })
-      : updateCorpusHumanMark(selected.id, payload);
+      ? H.updateCorpusSecondMark(selected.id, { humanScore2: payload.humanScore, humanCorrections2: payload.humanCorrections, rater2: payload.rater })
+      : H.updateCorpusHumanMark(selected.id, payload);
     setSaved(made ? 'Saved.' : 'Could not save — check the fields.');
     if (made) setForm({ score: '', corrections: '', rater: '' });
   };
@@ -435,7 +472,8 @@ function CorpusMarkingCard() {
 // humanMean (1–5 listener scale), optional raters. Rows that fail validation
 // are rejected and counted, never coerced.
 function IntelligibilityCard() {
-  const stored = getIntelligibilityBenchmark();
+  const H = useHeavy();
+  const stored = H ? H.getIntelligibilityBenchmark() : [];
   const status = benchmarkStatus(mergeBenchmarkItems(stored));
   const [raw, setRaw] = useState('');
   const [result, setResult] = useState(null);
@@ -452,7 +490,7 @@ function IntelligibilityCard() {
     let ok = 0;
     let bad = 0;
     for (const item of list) {
-      if (recordBenchmarkSample(item)) ok += 1;
+      if (H && H.recordBenchmarkSample(item)) ok += 1;
       else bad += 1;
     }
     setResult(`Imported ${ok} sample${ok === 1 ? '' : 's'}${bad ? ` · rejected ${bad} invalid row${bad === 1 ? '' : 's'}` : ''}.`);

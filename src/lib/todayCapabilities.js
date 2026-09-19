@@ -12,7 +12,28 @@
 // complete: a segment that cannot run is replaced by the next capability in
 // the chain, and the session never shows an "unavailable" hole.
 
-import { GRAMMAR_TOPICS } from './grammar.js';
+// The grammar topic index is INJECTED, not imported: grammar.js composes four
+// topic data files (~160 KB of source) that must never ride the boot graph —
+// TodaySession is statically imported by App, so a static grammar import here
+// put the whole authored-drill library into the entry chunk. ensureGrammarTopics()
+// loads it as its own lazy chunk; the plan builder awaits it before building.
+// Node tests inject a fixture directly with setGrammarTopics().
+let topicList = [];
+let topicIdSet = new Set();
+let loaderPromise = null;
+export function setGrammarTopics(topics) {
+  topicList = Array.isArray(topics) ? topics : [];
+  topicIdSet = new Set(topicList.map((t) => t && t.id).filter(Boolean));
+}
+export function grammarTopicsReady() { return topicIdSet.size > 0; }
+export function ensureGrammarTopics() {
+  if (!loaderPromise) {
+    loaderPromise = import('./grammar.js')
+      .then((m) => setGrammarTopics(m.GRAMMAR_TOPICS))
+      .catch(() => { loaderPromise = null; });
+  }
+  return loaderPromise;
+}
 import { GRAMMAR_ALIASES } from './cefr.js';
 import { PERSONS } from './conjugationMeta.js';
 import { applyCalibration } from './selectionCalibration.js';
@@ -39,13 +60,11 @@ export function trainerDrillFor(concept) {
   return { verb: m[1].toLowerCase(), tense: m[2].toLowerCase(), personIndex: personIdx >= 0 ? personIdx : null };
 }
 
-const TOPIC_IDS = new Set(GRAMMAR_TOPICS.map((t) => t.id));
-
 // The other learner-error categories get the same treatment conjugation
 // gets from conj-drill: a concept recorded by a practice mode (storage.js's
 // recordLearningActivity) is matched to a purpose-built, offline drill that
-// repairs it. Key shapes must never collide with a GRAMMAR_TOPICS id — the
-// `authored-drill` link would otherwise claim them.
+// repairs it. Key shapes must never collide with a grammar-library topic id —
+// the `authored-drill` link would otherwise claim them.
 const DICTATION_GAP_RE = /^(dictée listening accuracy|dictation)$/i;
 const PRONUNCIATION_GAP_RE = /^pronunciation clarity$/i;
 export function dictationDrillFor(concept) {
@@ -58,10 +77,10 @@ export function accentDrillFor(concept) {
 /** Normalise a mistake concept (AI topic id or free text) to a library topic id. */
 export function conceptToTopicId(concept) {
   const c = String(concept || '').trim().toLowerCase();
-  if (!c) return null;
-  if (TOPIC_IDS.has(c)) return c;
+  if (!c || !topicIdSet.size) return null;
+  if (topicIdSet.has(c)) return c;
   const alias = GRAMMAR_ALIASES[c];
-  if (alias && TOPIC_IDS.has(alias)) return alias;
+  if (alias && topicIdSet.has(alias)) return alias;
   // Loose containment: "passé composé" → passe-compose, "passe-compose vs
   // imparfait" → either topic; prefer the longest library id contained.
   const norm = (s) => s.toLowerCase()
@@ -69,7 +88,7 @@ export function conceptToTopicId(concept) {
     .replace(/[^a-z0-9]+/g, '-');
   const target = norm(c);
   let best = null;
-  for (const id of TOPIC_IDS) {
+  for (const id of topicIdSet) {
     const nid = norm(id);
     if (target.includes(nid) || nid.includes(target)) {
       if (!best || id.length > best.length) best = id;
@@ -82,7 +101,7 @@ export function conceptToTopicId(concept) {
 export function authoredDrillFor(concept) {
   const topicId = conceptToTopicId(concept);
   if (!topicId) return null;
-  const topic = GRAMMAR_TOPICS.find((t) => t.id === topicId);
+  const topic = topicList.find((t) => t.id === topicId);
   const drills = Array.isArray(topic?.drills) ? topic.drills.filter((d) => d && d.q && Array.isArray(d.options)) : [];
   if (!drills.length) return null;
   return { topicId, title: topic.title, exercises: drills.slice(0, 4) };

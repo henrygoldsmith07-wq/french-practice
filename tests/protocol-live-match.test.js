@@ -15,7 +15,7 @@ function memoryStorage() {
 async function fresh() {
   globalThis.localStorage = memoryStorage();
   const stamp = `${Date.now()}.${Math.random()}`;
-  const storage = await import(`../src/lib/storage.js?v=${stamp}`);
+  const storage = await (await import("./helpers/fullStorage.js")).importFullStorage(`v-${stamp}`);
   const studyFlow = await import(`../src/lib/studyFlow.js?sf=${stamp}`);
   const protocol = await import('../src/lib/studyProtocol.js');
   const assignment = await import('../src/lib/assignment.js');

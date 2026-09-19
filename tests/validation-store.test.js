@@ -12,7 +12,7 @@ function memoryStorage() {
 
 test('corpus, assistance log and last placement persist through storage', async () => {
   globalThis.localStorage = memoryStorage();
-  const storage = await import(`../src/lib/storage.js?validation-store-test=${Date.now()}`);
+  const storage = await (await import("./helpers/fullStorage.js")).importFullStorage(`validation-store-test-${Date.now()}`);
 
   // Corpus: AI side recorded at feedback time, human mark paired later.
   const entry = storage.recordCorpusEntry({
@@ -63,7 +63,7 @@ test('corpus, assistance log and last placement persist through storage', async 
 
 test('second marks require a different rater and set doubleMarked', async () => {
   globalThis.localStorage = memoryStorage();
-  const storage = await import(`../src/lib/storage.js?second-mark-test=${Date.now()}`);
+  const storage = await (await import("./helpers/fullStorage.js")).importFullStorage(`second-mark-test-${Date.now()}`);
 
   const entry = storage.recordCorpusEntry({
     mode: 'speaking', prompt: 'Au marché', response: 'Je voudrais des pommes', aiScore: 64,
@@ -84,7 +84,7 @@ test('second marks require a different rater and set doubleMarked', async () => 
 
 test('intelligibility benchmark store starts empty and only accepts valid labelled samples', async () => {
   globalThis.localStorage = memoryStorage();
-  const storage = await import(`../src/lib/storage.js?benchmark-test=${Date.now()}`);
+  const storage = await (await import("./helpers/fullStorage.js")).importFullStorage(`benchmark-test-${Date.now()}`);
 
   assert.deepEqual(storage.getIntelligibilityBenchmark(), []);
 

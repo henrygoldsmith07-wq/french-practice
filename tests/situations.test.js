@@ -1,9 +1,12 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { SITUATIONS, getSituations, getScenario } from '../src/lib/data.js';
+import { SITUATIONS, getSituations, getScenario, getScenariosAsync } from '../src/lib/data.js';
 
-test('four everyday situations lead Speak: cafe, school, directions, home', () => {
+// The scenario corpus (FR included) is a per-language registry chunk now, so
+// every situation assertion resolves the registry first.
+test('four everyday situations lead Speak: cafe, school, directions, home', async () => {
   assert.deepEqual(SITUATIONS.map((s) => s.id), ['cafe', 'ecole', 'directions', 'maison']);
+  assert.ok((await getScenariosAsync()).length > 0, 'registry resolves');
   const resolved = getSituations();
   assert.equal(resolved.length, 4);
   for (const sit of resolved) {
@@ -14,7 +17,8 @@ test('four everyday situations lead Speak: cafe, school, directions, home', () =
   }
 });
 
-test('directions, home and school scenarios exist with full fields', () => {
+test('directions, home and school scenarios exist with full fields', async () => {
+  await getScenariosAsync();
   for (const id of ['directions', 'maison', 'ecole']) {
     const s = getScenario(id);
     assert.equal(s.id, id);

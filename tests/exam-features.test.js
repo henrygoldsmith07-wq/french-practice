@@ -12,7 +12,7 @@ function memoryStorage() {
 
 test('exam boundaries, human marks and real results persist locally', async () => {
   globalThis.localStorage = memoryStorage();
-  const storage = await import(`../src/lib/storage.js?exam-features=${Date.now()}`);
+  const storage = await (await import("./helpers/fullStorage.js")).importFullStorage(`exam-features-${Date.now()}`);
 
   storage.saveExamBoundarySet({ id: 'aqa-june-2025', boardId: 'aqa-gcse', tier: 'higher', boundaries: { 9: 85, 8: 76 } });
   storage.recordExaminerMark({ boardId: 'aqa-gcse', appPercent: 72, examinerPercent: 70 });

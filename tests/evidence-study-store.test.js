@@ -14,7 +14,7 @@ async function fresh() {
   globalThis.localStorage = memoryStorage();
   const stamp = `${Date.now()}.${Math.random()}`;
   const studyFlow = await import(`../src/lib/studyFlow.js?f=${stamp}`);
-  const storage = await import(`../src/lib/storage.js?s=${stamp}`);
+  const storage = await (await import("./helpers/fullStorage.js")).importFullStorage(`s-${stamp}`);
   // evidenceStudy WITHOUT a query: storage.js wires the arm-override reader
   // into this exact instance, so tests exercise the app's real wiring.
   const evidenceStudy = await import('../src/lib/evidenceStudy.js');

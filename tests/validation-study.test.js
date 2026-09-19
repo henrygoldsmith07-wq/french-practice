@@ -12,7 +12,7 @@ function memoryStorage() {
 
 test('a fresh install reports honest zeros across every study stream', async () => {
   globalThis.localStorage = memoryStorage();
-  const storage = await import(`../src/lib/storage.js?study-zero-${Date.now()}`);
+  const storage = await (await import("./helpers/fullStorage.js")).importFullStorage(`study-zero-${Date.now()}`);
   const p = storage.getStudyProgress();
   assert.equal(p.totalN, 0);
   assert.ok(p.totalTarget >= 1000);
@@ -24,7 +24,7 @@ test('a fresh install reports honest zeros across every study stream', async () 
 
 test('bundle export → ingest round-trips entries and skips duplicates', async () => {
   globalThis.localStorage = memoryStorage();
-  const storage = await import(`../src/lib/storage.js?study-roundtrip-${Date.now()}`);
+  const storage = await (await import("./helpers/fullStorage.js")).importFullStorage(`study-roundtrip-${Date.now()}`);
 
   // Seed one of each stream through the genuine record paths.
   storage.recordPlacementValidation({ knownLevel: 'B1', placedLevel: 'B1', theta: 0.2, se: 0.4, itemsAsked: 12, rater: 'M. Leroy' });
@@ -64,7 +64,7 @@ test('bundle export → ingest round-trips entries and skips duplicates', async 
 
 test('ingest rejects foreign bundles and schema-invalid entries', async () => {
   globalThis.localStorage = memoryStorage();
-  const storage = await import(`../src/lib/storage.js?study-reject-${Date.now()}`);
+  const storage = await (await import("./helpers/fullStorage.js")).importFullStorage(`study-reject-${Date.now()}`);
 
   const bad = storage.ingestValidationBundle({ format: 'something-else', stores: {} });
   assert.equal(bad.ok, false);
@@ -92,7 +92,7 @@ test('ingest rejects foreign bundles and schema-invalid entries', async () => {
 
 test('progress counts double-marked and per-skill streams correctly', async () => {
   globalThis.localStorage = memoryStorage();
-  const storage = await import(`../src/lib/storage.js?study-counts-${Date.now()}`);
+  const storage = await (await import("./helpers/fullStorage.js")).importFullStorage(`study-counts-${Date.now()}`);
   const entry = storage.recordCorpusEntry({ id: 'w-1', mode: 'writing', prompt: 'P', response: 'R', aiScore: 60 });
   storage.updateCorpusHumanMark(entry.id, { humanScore: 62, rater: 'A' });
   storage.updateCorpusSecondMark(entry.id, { humanScore2: 64, rater2: 'B' });

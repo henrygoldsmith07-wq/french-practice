@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { LISTENING_KINDS, allListeningTracks, getTrack } from '../lib/listening';
-import { recordSkillScore, recordListeningGap, getListeningProgression } from '../lib/storage';
+import { recordSkillScore, recordListeningGap } from '../lib/storage';
+import { getListeningProgression } from '../lib/stores/researchStoreHeavy.js';
 import { speakLines, stopSpeaking } from '../lib/tts';
 import Dictation from './Dictation';
 import AudioCourse from './AudioCourse';

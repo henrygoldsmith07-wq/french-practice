@@ -1,4 +1,5 @@
 import { lazy, Suspense, useState } from 'react';
+import { getSettings } from '../lib/storage';
 import { BarChart, Map, Clock, Target, Layers } from './icons';
 import { ChevronRight } from './icons';
 import { contentLang } from '../lib/content/active.js';
@@ -149,6 +150,20 @@ export default function ProgressHub({
           <span className="inline-block bg-surface border border-line rounded-full px-3.5 py-1.5 text-xs font-semibold text-ink2">Private by architecture</span>
           <span className="inline-block bg-surface border border-line rounded-full px-3.5 py-1.5 text-xs font-semibold text-ink2">Works offline</span>
         </div>
+        {/* Progressive disclosure: study enrolment, evidence experiments and
+            diagnostics serve research operators, not the learner scoreboard.
+            They appear only when the developer panel is enabled in Settings,
+            and open as an overlay so the section grid stays predictable. */}
+        {getSettings().devPanel && (
+          <div className="pt-2 text-center">
+            <button
+              onClick={() => onView('dev')}
+              className="inline-flex items-center gap-1.5 bg-surface border border-line rounded-full px-3.5 py-1.5 text-xs font-semibold text-ink3 hover:text-ink transition"
+            >
+              Research &amp; diagnostics <ChevronRight size={12} />
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );

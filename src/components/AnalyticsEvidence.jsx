@@ -2,13 +2,16 @@ import { useMemo, useRef, useState } from 'react';
 import {
   getSrs, getNotebook, getReviewLog, getXp, getSettings, getReviewEvents, getSessionHistoryMeta,
   getEvidenceLedgerModel, getErrorModelSummary, getLearnerErrors, getLearnerErrorSummary,
-  getPlacementValidationMetrics, getProgressionValidationMetrics,
-  getCorpusMetrics, getAssistanceMetrics, getIntelligibilityBenchmark,
-  getComprehensionValidationMetrics, getStudyProgress, buildValidationBundle, ingestValidationBundle,
   getSelectionTrial, getMistakeGraph as getGraphForTrials,
   getWeaknessMemory, getWeaknessSummary, getGrammarErrors,
-  getExaminerScripts, getRealExamResults,
+  getExaminerScripts, getRealExamResults, getIntelligibilityBenchmark,
 } from '../lib/storage';
+// Measurement-stack metrics/bundles: lazy research module (never the boot graph).
+import {
+  getPlacementValidationMetrics, getProgressionValidationMetrics,
+  getCorpusMetrics, getAssistanceMetrics,
+  getComprehensionValidationMetrics, getStudyProgress, buildValidationBundle, ingestValidationBundle,
+} from '../lib/stores/researchStoreHeavy.js';
 import { allEntries as vocabAllEntries, allEntries } from '../lib/vocab';
 import { notebookAsEntries } from '../lib/memory';
 import { getGrammarTopic } from '../lib/grammar';

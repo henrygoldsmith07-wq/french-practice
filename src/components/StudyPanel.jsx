@@ -10,8 +10,9 @@ import {
 import { poolStudyData } from '../lib/researchAggregation';
 import {
   getStudyOutcomes, getStudyChecks, getStudyState,
-  buildStudyBundle, getImportedStudyBundles,
+  getImportedStudyBundles,
 } from '../lib/storage';
+import { buildStudyBundle } from '../lib/stores/researchStoreHeavy.js';
 import { CONSENT_POINTS } from '../lib/studyConsent';
 
 // Evidence Study panel — the longitudinal study's dashboard.

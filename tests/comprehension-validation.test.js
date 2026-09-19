@@ -12,7 +12,7 @@ function memoryStorage() {
 
 test('listening/reading comprehension validation ships empty and reports it', async () => {
   globalThis.localStorage = memoryStorage();
-  const storage = await import(`../src/lib/storage.js?comp-test-${Date.now()}`);
+  const storage = await (await import("./helpers/fullStorage.js")).importFullStorage(`comp-test-${Date.now()}`);
   const lib = await import(`../src/lib/listeningReadingValidation.js?comp-test-${Date.now()}`);
 
   assert.deepEqual(storage.getComprehensionValidations(), []);
@@ -24,7 +24,7 @@ test('listening/reading comprehension validation ships empty and reports it', as
 
 test('rejects invalid skill, missing item and out-of-range scores', async () => {
   globalThis.localStorage = memoryStorage();
-  const storage = await import(`../src/lib/storage.js?comp-reject-${Date.now()}`);
+  const storage = await (await import("./helpers/fullStorage.js")).importFullStorage(`comp-reject-${Date.now()}`);
   assert.equal(storage.recordComprehensionValidation({ skill: 'speaking', itemId: 'x', aiScore: 50, humanScore: 50 }), null);
   assert.equal(storage.recordComprehensionValidation({ skill: 'reading', itemId: '  ', aiScore: 50, humanScore: 50 }), null);
   // Non-numeric AI score stores as unpaired rather than smuggling a zero in.
@@ -36,7 +36,7 @@ test('rejects invalid skill, missing item and out-of-range scores', async () => 
 
 test('pairs marks, computes agreement maths exactly, and respects per-skill filters', async () => {
   globalThis.localStorage = memoryStorage();
-  const storage = await import(`../src/lib/storage.js?comp-pair-${Date.now()}`);
+  const storage = await (await import("./helpers/fullStorage.js")).importFullStorage(`comp-pair-${Date.now()}`);
   // listening: app 80 / human 70 → |d|=10
   storage.recordComprehensionValidation({ skill: 'listening', itemId: 't1', aiScore: 80, humanScore: 70, rater: 'Mme Roy' });
   // reading: perfect agreement
@@ -61,7 +61,7 @@ test('pairs marks, computes agreement maths exactly, and respects per-skill filt
 
 test('double marking requires a different rater and feeds the reliability check', async () => {
   globalThis.localStorage = memoryStorage();
-  const storage = await import(`../src/lib/storage.js?comp-double-${Date.now()}`);
+  const storage = await (await import("./helpers/fullStorage.js")).importFullStorage(`comp-double-${Date.now()}`);
   const entry = storage.recordComprehensionValidation({ skill: 'listening', itemId: 't2', aiScore: 60, humanScore: 58, rater: 'A' });
   // Same rater re-marking themselves measures nothing — refused.
   assert.equal(storage.updateComprehensionSecondMark(entry.id, { humanScore2: 90, rater2: ' A ' }), null);
@@ -76,7 +76,7 @@ test('double marking requires a different rater and feeds the reliability check'
 
 test('reaching the sample floor flips status to validated', async () => {
   globalThis.localStorage = memoryStorage();
-  const storage = await import(`../src/lib/storage.js?comp-floor-${Date.now()}`);
+  const storage = await (await import("./helpers/fullStorage.js")).importFullStorage(`comp-floor-${Date.now()}`);
   const lib = await import(`../src/lib/listeningReadingValidation.js?comp-floor-${Date.now()}`);
   for (let i = 0; i < lib.MIN_COMPREHENSION_N; i += 1) {
     storage.recordComprehensionValidation({ skill: 'reading', itemId: `r-${i}`, aiScore: 50 + (i % 10), humanScore: 52 + (i % 10) });

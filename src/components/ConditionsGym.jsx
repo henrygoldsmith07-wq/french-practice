@@ -5,7 +5,7 @@ import {
   CONDITIONS, playbackScript, conditionStage, noiseBedConfig,
 } from '../lib/listeningConditions';
 import { recordAttempt } from '../lib/authenticAudio';
-import { getListeningProgression, saveListeningProgression } from '../lib/storage';
+import { getListeningProgression, saveListeningProgression } from '../lib/stores/researchStoreHeavy.js';
 import { Play, Square, Check, X, ChevronLeft } from './icons';
 import { SpeakButton } from './ui';
 

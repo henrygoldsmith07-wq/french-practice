@@ -10,12 +10,11 @@ import { activeLanguage } from '../lib/i18n';
 import {
   getSrs, getSessions, getMetrics, getReviewEvents, getGrammarProgress, getEvidenceLedgerModel,
   getSettings, recordGrammarError, recordWeaknessError, recordWeaknessRepair, getDueWeaknesses, getLearnerBrief,
-  recordAssistanceEvent,
 } from '../lib/storage';
+import { recordAssistanceEvent, recordCorpusEntry } from '../lib/stores/researchStoreHeavy.js';
 import { recordMistake, typeForCategory, mistakeId as graphIdFor } from '../lib/mistakeGraph';
 import { saveMistakeGraph, getMistakeGraph } from '../lib/storage';
 import { addErrorNotebook } from '../lib/errorNotebook';
-import { recordCorpusEntry } from '../lib/storage';
 import { categoryForTopic } from '../lib/errorTaxonomy';
 import { allEntries } from '../lib/vocab';
 import { GRAMMAR_TOPICS, getGrammarTopic } from '../lib/grammar';

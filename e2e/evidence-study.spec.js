@@ -11,7 +11,9 @@ async function boot(page) {
   await expect(page.locator('h1').first()).toBeVisible({ timeout: 30_000 });
   await page.evaluate(() => localStorage.clear());
   await page.evaluate(() => {
-    localStorage.setItem('fp.settings', JSON.stringify({ mockMode: true, level: 'B1', ttsRate: 1 }));
+    // devPanel: research panels live behind the developer-tools setting now
+    // (learner-facing Analytics stays clean); these specs test the study UI.
+    localStorage.setItem('fp.settings', JSON.stringify({ mockMode: true, level: 'B1', ttsRate: 1, devPanel: true }));
     localStorage.setItem('fp.onboarded', '1');
   });
   await page.reload();

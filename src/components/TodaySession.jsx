@@ -9,6 +9,7 @@ import {
 } from '../lib/selectionCalibration';
 import {
   probeCapabilities, nextFallback, resolvePlanCapabilities, buildDrillSlot,
+  ensureGrammarTopics,
 } from '../lib/todayCapabilities';
 import {
   enrolStudyState, studyStatus, daySinceEnrolment, isCheckScheduled,
@@ -28,9 +29,31 @@ import { getErrorNotebook } from '../lib/errorNotebook';
 // must be awaited, never statically imported from the entry graph. The hook
 // centralises the null-means-loading discipline and reloads on language switch.
 import { useAllEntries } from '../lib/vocabAsync';
+import { useScenarios } from '../hooks/useScenarios';
 import { notebookAsEntries, dueEntries, reviewOrder, NEW_CARD_CAP } from '../lib/memory';
 import { getScenarios } from '../lib/data';
-import { allListeningTracks } from '../lib/listening';
+
+// Listening track content is a lazy chunk: the library (mini-podcasts,
+// dialogues, news, scenes, authentic audio) must not ride the entry graph.
+// The session resolves tracks dynamically and re-plans when they arrive.
+let _tracksCache = null;
+function loadListeningTracks() {
+  if (_tracksCache) return Promise.resolve(_tracksCache);
+  return import('../lib/listening').then((m) => {
+    _tracksCache = m.allListeningTracks();
+    return _tracksCache;
+  });
+}
+function useListeningTracks() {
+  const [tracks, setTracks] = useState(_tracksCache);
+  useEffect(() => {
+    if (tracks) return undefined;
+    let on = true;
+    loadListeningTracks().then((t) => { if (on) setTracks(t); });
+    return () => { on = false; };
+  }, [tracks]);
+  return tracks;
+}
 
 // The arena, the held-out check and the track player are heavy (audio, LLM,
 // recording, content) and only rendered mid-session — load them with the
@@ -70,8 +93,37 @@ export default function TodaySession({ open, onClose, minutes = 20, apiKey, mock
   // The vocabulary library lives in its own lazy chunk — awaited before the
   // plan builds. `null` (chunk loading) means no plan and no early return.
   const entries = useAllEntries();
+  // Same discipline for the scenario registry (all languages, FR included,
+  // now lazy-load their corpus): null while the chunk loads → no plan yet.
+  const scenariosReg = useScenarios();
+  // Same discipline for the grammar topic index: the authored-drill library is
+  // a lazy chunk (~160 KB of topic data), loaded once before the plan builds.
+  const [grammarTopicsReady, setGrammarTopicsReady] = useState(false);
+  useEffect(() => {
+    let on = true;
+    ensureGrammarTopics().then(() => { if (on) setGrammarTopicsReady(true); });
+    return () => { on = false; };
+  }, []);
+  // Listening library loads with the session (lazy chunk). The plan waits for
+  // it like the vocab/scenario/grammar chunks so the listen segment can be
+  // planned, and the memo re-runs via `listeningTick` once tracks resolve.
+  const listeningTracksRef = useRef(null);
+  const [listeningTick, setListeningTick] = useState(0);
+  useEffect(() => {
+    if (!open || listeningTracksRef.current) return undefined;
+    let on = true;
+    loadListeningTracks().then((t) => {
+      if (!on) return;
+      listeningTracksRef.current = t;
+      setListeningTick((v) => v + 1);
+    });
+    return () => { on = false; };
+  }, [open]);
   const plan = useMemo(() => {
-    if (!open || !entries) return null;
+    // listeningTick re-runs the memo when the lazy listening chunk resolves;
+    // the variable itself is intentionally unused inside the memo body.
+    void listeningTick;
+    if (!open || !entries || !grammarTopicsReady || !scenariosReg || !listeningTracksRef.current) return null;
     const graph = getMistakeGraph();
     // Conjugation-trainer misses are grammar gaps the mistake graph may never
     // have seen (the trainer writes to the learnerErrors model). A gap that
@@ -156,10 +208,10 @@ export default function TodaySession({ open, onClose, minutes = 20, apiKey, mock
     const notebook = getErrorNotebook();
     const pendingRetypes = notebook.filter((e) => !e.correctedByLearner).length;
     const dayIndex = Math.floor(Date.now() / 86400000);
-    const tracks = allListeningTracks();
+    const tracks = listeningTracksRef.current || [];
     const listeningTrack = tracks.length ? tracks[dayIndex % tracks.length] : null;
     const weakness = (() => { try { return getDueWeaknesses()[0] || null; } catch { return null; } })();
-    const scenarios = getScenarios();
+    const scenarios = scenariosReg;
     const suggested = scenarios.length ? scenarios[dayIndex % scenarios.length] : null;
     const rotationTopic = balancedDrillTopic(dayIndex);
     const hasAi = Boolean(apiKey) || Boolean(mockMode);
@@ -299,7 +351,7 @@ export default function TodaySession({ open, onClose, minutes = 20, apiKey, mock
       startOutcomeRecord({ trial, graph, arm: variant, day: sDay, consistency });
     } catch { /* trial logging must never break the session */ }
     return { ...planResolved, study, heldOut, studyDay: sDay };
-  }, [open, minutes, apiKey, mockMode, level, entries]);
+  }, [open, minutes, apiKey, mockMode, level, entries, listeningTick]);
 
   // The arena and the held-out check are heavy (audio, LLM, recording) —
   // load them with the session, not with the app.
@@ -344,6 +396,9 @@ export default function TodaySession({ open, onClose, minutes = 20, apiKey, mock
 // current segment. All hooks run unconditionally — the early return for the
 // finished state lives in the child below, never here.
 function TodayBody({ plan, segIndex, setSegIndex, close, apiKey, mockMode, level, ttsRate, onTurn, onActivity, award, history, setHistory }) {
+  // Track content lives in the lazy listening chunk; today's payload only
+  // carries ids, so resolve the real track when the listen segment renders.
+  const liveTracks = useListeningTracks();
   const startRef = useRef(Date.now());
   const segStartRef = useRef(Date.now());
   const deliveredRef = useRef([]);
@@ -449,7 +504,7 @@ function TodayBody({ plan, segIndex, setSegIndex, close, apiKey, mockMode, level
     } else if (seg.id === 'review') {
       body = <DelayedReview count={seg.payload.count} onXp={award} onDone={advance} />;
     } else if (seg.id === 'listen' && seg.payload.track) {
-      const track = allListeningTracks().find((t) => t.id === seg.payload.track.id);
+      const track = (liveTracks || []).find((t) => t.id === seg.payload.track.id);
       if (track) body = <TrackPlayer track={track} baseRate={ttsRate} level={level} onXp={award} onActivity={onActivity} onDone={advance} />;
     }
   }
@@ -751,8 +806,8 @@ function AuthoredDrill({ exercises, topicTitle, onXp, onDone }) {
 
 // Listen fallback inside the drill chain.
 function ListenFallback({ track, onDone }) {
-  const tracks = allListeningTracks();
-  const real = tracks.find((t) => t.id === track?.id);
+  const tracks = useListeningTracks();
+  const real = (tracks || []).find((t) => t.id === track?.id);
   useEffect(() => {
     if (!real) onDone();
   }, [real, onDone]);
