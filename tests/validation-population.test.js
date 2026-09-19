@@ -325,7 +325,9 @@ describe('status reporting honesty', () => {
     await writeJsonAtomic(dsPath, ds);
 
     const { stdout } = await run(NODE, ['scripts/validation-status.mjs', '--dataset', dsPath], { cwd: ROOT });
-    assert.match(stdout, /placement\s+24\s+20\s+20\s+validated\s+exact \d+% · ±1 \d+%/);
+    // Headline carries the 95% Wilson interval — small samples wear wide
+    // intervals, not false precision (evidenceUncertainty.js).
+    assert.match(stdout, /placement\s+24\s+20\s+20\s+validated\s+exact \d+% \[\d+%, \d+%\] · ±1 \d+%/);
     assert.match(stdout, /progression\s+0\s+15\s+15\s+no-data\s+—/, 'other tracks stay honest while empty');
 
     const jsonOut = await run(NODE, ['scripts/validation-status.mjs', '--dataset', dsPath, '--json'], { cwd: ROOT });

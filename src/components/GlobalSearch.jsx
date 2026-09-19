@@ -5,6 +5,7 @@ import { GRAMMAR_TOPICS } from '../lib/grammar';
 import { READING_TEXTS } from '../lib/reading';
 import { LISTENING_TRACKS } from '../lib/listening';
 import { contextLabel } from '../lib/fieldNotes';
+import { featureAvailableNow } from '../lib/languages';
 import { saveToNotebook, getNotebook, getFieldNotes } from '../lib/storage';
 import { SpeakButton } from './ui';
 import Mascot from './Mascot';
@@ -41,10 +42,14 @@ export default function GlobalSearch({ open, onClose, onGo }) {
     const query = norm(q.trim());
     if (query.length < 2) return null;
     const hit = (...fields) => fields.some((f) => f && norm(f).includes(query));
+    // Language honesty: French-only corpora (grammar topics) never surface
+    // results — let alone deep links — for a Beta language, whatever the query.
     return {
       words: allEntries().filter((e) => hit(e.fr, e.en)).slice(0, 6),
       scenarios: getScenarios().filter((s) => hit(s.title, s.setup)).slice(0, 4),
-      grammar: GRAMMAR_TOPICS.filter((t) => hit(t.title, t.summary)).slice(0, 4),
+      grammar: featureAvailableNow('grammar')
+        ? GRAMMAR_TOPICS.filter((t) => hit(t.title, t.summary)).slice(0, 4)
+        : [],
       reading: READING_TEXTS.filter((t) => hit(t.title, t.description)).slice(0, 3),
       listening: LISTENING_TRACKS.filter((t) => hit(t.title, t.description)).slice(0, 3),
       fieldNotes: getFieldNotes().filter((note) => hit(note.french, note.meaning, note.source, note.context)).slice(0, 4),
@@ -111,7 +116,7 @@ export default function GlobalSearch({ open, onClose, onGo }) {
                 <div className="grid grid-cols-2 gap-2">
                   {[
                     ['A conversation', jump.scenario && { type: 'scenario', id: jump.scenario.id }, MessageCircle],
-                    ['A grammar topic', jump.grammar && { type: 'grammar', id: jump.grammar.id }, Book],
+                    ['A grammar topic', featureAvailableNow('grammar') && jump.grammar && { type: 'grammar', id: jump.grammar.id }, Book],
                     ['Something to read', jump.reading && { type: 'reading', id: jump.reading.id }, BookOpen],
                     ['Something to hear', jump.listening && { type: 'listening', id: jump.listening.id }, Volume],
                     ['Field Notes', { type: 'field-notes' }, Bookmark],

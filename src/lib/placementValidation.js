@@ -129,6 +129,7 @@ export function placementValidationMetrics(entries = []) {
     n,
     status,
     exactAgreement: Math.round(exact * 100) / 100,
+    exactHits: usable.reduce((a, e) => a + (e.exact ?? (e.knownLevel === e.placedLevel ? 1 : 0)), 0),
     withinOneAgreement: Math.round(withinOne * 100) / 100,
     meanAbilityError: Math.round(mae * 100) / 100,
     rmse: Math.round(rmse * 100) / 100,

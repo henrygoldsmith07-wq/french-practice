@@ -65,7 +65,12 @@ test('recovery states walk Active weakness → Improving → Resolved on real co
   );
   assert.deepEqual(
     recoveryStatus({ status: 'recovering', errorCount: 3, successCount: 1, cleanPasses: 1 }),
-    { state: 'Improving', detail: '1 correct recall so far — one more clean pass resolves it.' },
+    { state: 'Improving', detail: '1 correct recall so far — it needs to hold up later too.' },
+  );
+  // A DELAYED clean recall reads differently: the retention evidence held.
+  assert.deepEqual(
+    recoveryStatus({ status: 'recovering', errorCount: 3, successCount: 1, cleanPasses: 1, lastEvidence: 'delayed' }),
+    { state: 'Improving', detail: 'Clean recall a day later — one more pass and it is yours.' },
   );
   assert.deepEqual(
     recoveryStatus({ status: 'resolved', errorCount: 3, successCount: 3, cleanPasses: 2 }),

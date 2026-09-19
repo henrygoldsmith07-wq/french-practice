@@ -1,0 +1,45 @@
+name: Cross-browser (scheduled)
+
+# Firefox + WebKit run on a schedule, not per-push: the per-push CI stays
+# fast (Chromium + mobile Chromium), while engine-specific risk — MediaRecorder,
+# microphone permissions, speech/audio, service worker, offline PWA — is
+# still exercised daily on the other two engines. Playwright's config already
+# declares firefox/webkit projects (enabled outside CI); this workflow sets
+# PW_CROSS_BROWSER=1 to include them here.
+
+on:
+  schedule:
+    - cron: '0 4 * * *' # daily, 04:00 UTC
+  workflow_dispatch: # manual runs for debugging a browser-specific failure
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  cross-browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - run: npm ci
+      - name: Install Firefox + WebKit (skip Chromium — CI already covers it)
+        run: npx playwright install --with-deps firefox webkit
+      - name: E2E on Firefox + WebKit
+        env:
+          PW_CROSS_BROWSER: '1'
+        run: npx playwright test --reporter=list
+      - name: Upload failure artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cross-browser-failures
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 7

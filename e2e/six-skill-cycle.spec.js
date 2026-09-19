@@ -106,9 +106,13 @@ async function answerItem(page, item) {
       await expect(startBtn, 'speaking runner must present its start action').toBeVisible({ timeout: 10_000 });
       await startBtn.click();
       await page.getByRole('button', { name: /Record my speaking attempt/i }).click();
-      await page.waitForTimeout(600);
+      await page.waitForTimeout(600); // let the capture accumulate audio data
+      // Retrying wait for the stop control: under parallel workers the
+      // recording UI can take longer than the settle wait to switch. A
+      // one-shot isVisible here would race and strand the session mid-recording.
       const stop = page.getByRole('button', { name: /Stop recording/i });
-      if (await stop.isVisible({ timeout: 3_000 }).catch(() => false)) await stop.click();
+      const stopVisible = await stop.waitFor({ state: 'visible', timeout: 8_000 }).then(() => true).catch(() => false);
+      if (stopVisible) await stop.click();
       // Mock transcribe+evaluate resolve quickly; if infrastructure stalls
       // the runner must fall back to unscored — never a dead end.
       await expect(page.getByRole('button', { name: /Record & next|Finish check/i })).toBeVisible({ timeout: 30_000 });

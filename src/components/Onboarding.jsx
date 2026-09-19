@@ -1,18 +1,22 @@
 import { useState } from 'react';
-import { LANGUAGE_LIST, getLanguage, maturityLabel } from '../lib/languages';
+import { LANGUAGE_LIST, getLanguage, maturityLabel, isFullSupport } from '../lib/languages';
 import { syncLanguage } from '../lib/i18n';
 import { SpeakButton } from './ui';
 import { ArrowRight, Check, ChevronLeft, Sparkles } from './icons';
 import Mascot from './Mascot';
 
+// Goals are language-aware: exam preparation is authored for French (UK
+// boards + DELF), so a Beta language never advertises it — the same picker
+// offers the goals the chosen language can actually deliver.
 const GOALS = [
   { id: 'travel', emoji: '🧳', label: 'Travel', topics: ['travel', 'food', 'shopping'] },
   { id: 'work', emoji: '💼', label: 'Work & business', topics: ['work', 'study'] },
-  { id: 'study', emoji: '🎓', label: 'School & exams', topics: ['study', 'culture'] },
+  { id: 'study', emoji: '🎓', label: 'School & exams', topics: ['study', 'culture'], fullOnly: true },
   { id: 'fluency', emoji: '🗣️', label: 'Fluency & confidence', topics: ['daily', 'culture'] },
-  { id: 'culture', emoji: '🎭', label: 'Culture & fun', topics: ['culture', 'food'] },
+  { id: 'culture', emoji: '🎭', label: 'Culture & fun', topics: ['culture', 'food'], fullOnly: true },
   { id: 'family', emoji: '👨‍👩‍👧', label: 'Family & friends', topics: ['daily', 'health'] },
 ];
+const goalsFor = (langId) => GOALS.filter((goal) => isFullSupport(langId) || !goal.fullOnly);
 
 const FIRST_PHRASE = {
   fr: { text: 'Bonjour ! On y va ?', translation: 'Hello! Shall we get going?' },
@@ -54,7 +58,14 @@ export default function Onboarding({ open, onComplete, onSkip, onStartConversati
 
   const chooseLanguage = (id) => {
     syncLanguage(id);
-    set({ language: id, habits: [`Speak ${getLanguage(id).name} out loud`, 'Review my flashcards'] });
+    // Language switch: a goal the new language cannot deliver (exam prep on a
+    // Beta language) must never survive the transition.
+    const patch = { language: id, habits: [`Speak ${getLanguage(id).name} out loud`, 'Review my flashcards'] };
+    if (d.goal && !goalsFor(id).some((goal) => goal.id === d.goal)) {
+      patch.goal = null;
+      patch.favouriteTopics = [];
+    }
+    set(patch);
   };
 
   const chooseGoal = (goal) => set({
@@ -74,8 +85,8 @@ export default function Onboarding({ open, onComplete, onSkip, onStartConversati
             items={LANGUAGE_LIST.map((languageOption) => ({
               id: languageOption.id,
               emoji: languageOption.flag,
-              label: languageOption.name,
-              desc: `${languageOption.nativeName} · ${languageOption.hello} · ${maturityLabel(languageOption.id)}`,
+              label: `${languageOption.name} · ${maturityLabel(languageOption.id)}`,
+              desc: `${languageOption.nativeName} · ${languageOption.hello}`,
             }))}
             selected={d.language}
             onPick={(languageOption) => chooseLanguage(languageOption.id)}
@@ -90,7 +101,11 @@ export default function Onboarding({ open, onComplete, onSkip, onStartConversati
       body: (
         <div className="space-y-3">
           <Cards items={LEVELS} selected={d.level} onPick={(level) => set({ level: level.id })} />
-          <p className="text-center text-[11px] text-ink3">You can take a placement test later from Learning path.</p>
+          <p className="text-center text-[11px] text-ink3">
+            {isFullSupport(d.language)
+              ? 'You can take a placement test later from the Learning path.'
+              : 'No placement test needed — Today adapts to you as you practise.'}
+          </p>
         </div>
       ),
     },
@@ -99,7 +114,7 @@ export default function Onboarding({ open, onComplete, onSkip, onStartConversati
       subtitle: 'Optional — skip this if you just want to speak',
       body: (
         <div className="space-y-3">
-          <Cards items={GOALS} selected={d.goal} onPick={chooseGoal} />
+          <Cards items={goalsFor(d.language)} selected={d.goal} onPick={chooseGoal} />
           <button
             type="button"
             onClick={() => set({ goal: null, favouriteTopics: [] })}
@@ -127,6 +142,15 @@ export default function Onboarding({ open, onComplete, onSkip, onStartConversati
           <p className="text-sm leading-relaxed text-ink2">
             Demo mode is ready now. Name, avatar, reminders, habits, topics and lesson length can wait until you need them.
           </p>
+          {!isFullSupport(d.language) && (
+            <div className="rounded-2xl border border-line bg-surface2 px-4 py-3 text-left" data-testid="beta-note">
+              <p className="text-xs font-bold uppercase tracking-wider text-ink2">{lang.name} · Beta</p>
+              <p className="mt-1 text-xs leading-relaxed text-ink2">
+                The core studio — Today sessions, conversation, vocabulary, dictée and the AI tutor — is ready in {lang.name}.
+                Grammar topics, culture and exam papers are being built next.
+              </p>
+            </div>
+          )}
           <div className="rounded-2xl border border-line bg-surface2 px-4 py-3 text-left">
             {['No API key required', 'No account or sign-in', 'Your data stays on this device'].map((item) => (
               <p key={item} className="inline-flex w-full items-center gap-2 text-xs text-ink">

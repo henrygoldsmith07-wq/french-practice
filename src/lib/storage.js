@@ -1,11 +1,14 @@
-import { rateFsrs as fsrsRate, migrateFromSm2 } from './fsrs.js';
+// Learner-error model persistence lives in stores/learnerErrorStore.js;
+// the facade re-exports it (recordGrammarError and friends below still need
+// the migration priming via getLearnerErrorModel).
 import {
-  createLearnerErrorModel,
-  recordLearnerError as applyLearnerError,
-  recordLearnerSuccess as applyLearnerSuccess,
-  prioritiseLearnerErrors,
-  learnerErrorSummary,
-} from './learnerErrors.js';
+  getLearnerErrorModel as _storeGetLearnerErrorModel,
+  getLearnerErrors, getLearnerErrorSummary,
+  recordLearnerError, recordLearnerSuccess,
+} from './stores/learnerErrorStore.js';
+export { getLearnerErrors, getLearnerErrorSummary, recordLearnerError, recordLearnerSuccess };
+
+import { rateFsrs as fsrsRate, migrateFromSm2 } from './fsrs.js';
 import { applyLanguageEvidence, normaliseLanguageProgress } from './languageModel.js';
 import {
   addFieldNote as _addFieldNote,
@@ -54,22 +57,6 @@ export function getSyncId() {
 export const getLastBackup = () => read(KEYS.lastBackup, null);
 export const markBackup = () => write(KEYS.lastBackup, new Date().toISOString());
 
-
-// Key resolution: a key saved in Settings wins; otherwise a build-time env
-// key (VITE_AI_API_KEY in .env.local) pre-configures the studio so the app
-// is AI-ready out of the box. The env key is never written to localStorage
-// and never included in exports.
-export const getApiKey = () => {
-  const stored = read(KEYS.apiKey, '');
-  if (stored) return stored;
-  try {
-    return import.meta.env?.VITE_AI_API_KEY || import.meta.env?.VITE_OPENROUTER_API_KEY || '';
-  } catch {
-    return '';
-  }
-};
-export const setApiKey = (k) => write(KEYS.apiKey, k);
-export const clearApiKey = () => localStorage.removeItem(KEYS.apiKey);
 
 export const getExamBoundarySets = () => {
   const value = read(KEYS.examBoundaries, []);
@@ -172,13 +159,21 @@ export function importProgress(payload) {
 
 // theme: null = follow the OS preference; 'dark' | 'light' once toggled
 // level: CEFR level used to calibrate the LLM; dailyGoal: XP target per day
-// Settings & prefs persistence lives in stores/settingsStore.js; these
-// facade getters keep the DEFAULT_* merging and every import working.
-import { getSettings as _storeGetSettings, setSettings as _storeSetSettings, getPrefs as _storeGetPrefs, setPrefs as _storeSetPrefs } from './stores/settingsStore.js';
+// Settings, prefs AND the provider key live in stores/settingsStore.js — the
+// store is authoritative (env fallback included); the facade re-exports so
+// every historical import keeps working without a duplicate implementation.
+import {
+  getSettings as _storeGetSettings, setSettings as _storeSetSettings,
+  getPrefs as _storeGetPrefs, setPrefs as _storeSetPrefs,
+  getApiKey as _storeGetApiKey, setApiKey as _storeSetApiKey, clearApiKey as _storeClearApiKey,
+} from './stores/settingsStore.js';
 export const getSettings = () => _storeGetSettings();
 export const setSettings = (s2) => _storeSetSettings(s2);
 export const getPrefs = () => _storeGetPrefs();
 export const setPrefs = (p) => _storeSetPrefs(p);
+export const getApiKey = () => _storeGetApiKey();
+export const setApiKey = (k) => _storeSetApiKey(k);
+export const clearApiKey = () => _storeClearApiKey();
 
 
 // ---- Pulse opt-in ---------------------------------------------------------
@@ -694,11 +689,6 @@ export function recordGrammarError(topicId, { mode = 'conversation', score = nul
   return all[topicId];
 }
 
-// Vocabulary's closed loop: a lapse ('again' rating) is a mistake; a clean
-// recall of a card with an active gap is its success evidence. Resolution
-// still needs two independent clean passes (recordLearnerSuccess's rule),
-// so a single lucky answer never grants mastery. No-op on success for cards
-// without a gap — clean reviews of healthy cards must not fabricate entries.
 export function recordVocabularyOutcome(cardKey, outcome, { mode = 'receptive', score = null, label = null, source = 'srs' } = {}) {
   const entry = getLearnerErrors({ limit: 240 }).find((e) => e.id === `vocabulary:${cardKey}`);
   if (!entry && outcome !== 'error') return null;
@@ -721,106 +711,8 @@ export function recordVocabularyOutcome(cardKey, outcome, { mode = 'receptive', 
   });
 }
 
-function migrateLearnerErrors() {
-  let model = createLearnerErrorModel();
-  const grammarErrors = getGrammarErrors();
-  for (const [topicId, count] of Object.entries(grammarErrors || {})) {
-    if (Number(count) > 0) model = applyLearnerError(model, {
-      category: 'grammar',
-      key: topicId,
-      label: topicId,
-      mode: 'conversation',
-      source: 'legacy-grammar-errors',
-      count: Number(count),
-    });
-  }
-  for (const weakness of getWeaknessMemory()) {
-    if (!weakness?.topicId || Number(weakness.errorCount) <= 0) continue;
-    model = applyLearnerError(model, {
-      category: 'grammar',
-      key: weakness.topicId,
-      label: weakness.topicId,
-      mode: 'conversation',
-      source: 'legacy-weakness-memory',
-      count: Number(weakness.errorCount),
-      recurrenceCount: Number(weakness.recurrenceCount) || 0,
-    });
-  }
-  for (const habit of getHabits()) {
-    if (!habit?.key || Number(habit.count) <= 0) continue;
-    model = applyLearnerError(model, {
-      category: 'grammar',
-      key: `habit:${habit.key}`,
-      label: habit.text || habit.key,
-      mode: 'conversation',
-      source: 'legacy-habit-bank',
-      count: Number(habit.count),
-    });
-  }
-  for (const event of getReviewEvents()) {
-    if (event.rating !== 'again' && event.correct !== false) continue;
-    model = applyLearnerError(model, {
-      category: 'vocabulary',
-      key: `item:${event.itemId}`,
-      label: event.itemLabel || event.itemId,
-      mode: event.mode || 'cards',
-      source: 'legacy-review-events',
-      score: 0,
-    });
-  }
-  const metricGaps = new Map();
-  for (const metric of getMetrics()) {
-    const skill = metric?.skill;
-    if ((skill !== 'listening' && skill !== 'pronunciation') || Number(metric.score) >= 70) continue;
-    const category = skill === 'pronunciation' ? 'pronunciation' : 'listening';
-    const current = metricGaps.get(category) || { count: 0, score: 100 };
-    current.count += 1;
-    current.score = Math.min(current.score, Number(metric.score));
-    metricGaps.set(category, current);
-  }
-  for (const [category, gap] of metricGaps) {
-    model = applyLearnerError(model, {
-      category,
-      key: `skill:${category}`,
-      label: category === 'pronunciation' ? 'Pronunciation clarity' : 'Listening accuracy',
-      mode: category,
-      source: 'legacy-skill-metrics',
-      count: gap.count,
-      score: gap.score,
-    });
-  }
-  return model;
-}
-
 export function getLearnerErrorModel() {
-  const raw = read(KEYS.learnerErrors, null);
-  if (raw && typeof raw === 'object' && Array.isArray(raw.entries)) {
-    return createLearnerErrorModel(raw);
-  }
-  const model = migrateLearnerErrors();
-  write(KEYS.learnerErrors, model);
-  markMigration('learner-errors.v1', { imported: model.entries.length });
-  return model;
-}
-
-export function getLearnerErrors(options = {}) {
-  return prioritiseLearnerErrors(getLearnerErrorModel(), options);
-}
-
-export function getLearnerErrorSummary() {
-  return learnerErrorSummary(getLearnerErrorModel());
-}
-
-export function recordLearnerError(error, options = {}) {
-  const model = applyLearnerError(getLearnerErrorModel(), error, options);
-  write(KEYS.learnerErrors, model);
-  return model.entries[0] || null;
-}
-
-export function recordLearnerSuccess(success, options = {}) {
-  const model = applyLearnerSuccess(getLearnerErrorModel(), success, options);
-  write(KEYS.learnerErrors, model);
-  return model.entries[0] || null;
+  return _storeGetLearnerErrorModel();
 }
 
 // ---- persistent learner weakness memory (moat) ----
@@ -1146,24 +1038,37 @@ export function recordLearningActivity(event = {}) {
     source: 'activity-event',
     detail: event.detail || null,
   };
-  if (event.type === 'dictation' && score != null) {
-    const gap = { ...signal, category: 'listening', key: 'dictation', label: 'Dictée listening accuracy' };
+  // Every scored skill feeds the SAME recovery loop — reading and writing
+  // included — so a weakness surfaced in one mode is repaired by whichever
+  // mode best targets it. Same-session outcomes are marked delayed:false;
+  // spaced modes (cards, retype, weakness retests) mark themselves delayed.
+  const applyGap = (category, key, label) => {
+    if (score == null) return;
+    // No `delayed` stamp: evidenceStrength infers same-session vs delayed
+    // from the entry's last mistake date, so a same-day correction counts as
+    // weaker evidence and a later-day one as the retention proof.
+    const gap = { ...signal, category, key, label };
     if (score < 80) recordLearnerError(gap, { at });
     else recordLearnerSuccess(gap, { at });
-  } else if (event.type === 'listening' && score != null) {
-    const key = `track:${event.trackId || 'listening'}`;
-    const gap = { ...signal, category: 'listening', key, label: event.label || event.trackId || 'Listening comprehension' };
-    if (score < 80) recordLearnerError(gap, { at });
-    else recordLearnerSuccess(gap, { at });
-  } else if (event.type === 'pronunciation' && score != null) {
-    const key = `mode:${event.mode || 'pronunciation'}`;
-    const gap = { ...signal, category: 'pronunciation', key, label: event.label || 'Pronunciation clarity' };
-    if (score < 80) recordLearnerError(gap, { at });
-    else recordLearnerSuccess(gap, { at });
-  } else if (event.type === 'grammar' && score != null) {
-    const gap = { ...signal, category: 'grammar', key: event.topicId || 'grammar', label: event.label || event.topicId || 'Grammar accuracy' };
-    if (score < 80) recordLearnerError(gap, { at });
-    else recordLearnerSuccess(gap, { at });
+  };
+  if (event.type === 'dictation') {
+    applyGap('listening', 'dictation', 'Dictée listening accuracy');
+  } else if (event.type === 'listening') {
+    applyGap('listening', `track:${event.trackId || 'listening'}`, event.label || event.trackId || 'Listening comprehension');
+  } else if (event.type === 'pronunciation') {
+    // Canonical aggregate key: Today's pronunciation drill producer hunts
+    // 'pronunciation:pronunciation' (a per-mode key could never match).
+    applyGap('pronunciation', 'pronunciation', event.label || 'Pronunciation clarity');
+  } else if (event.type === 'speaking' || event.type === 'quickfire') {
+    // Quickfire flows freely (no right/wrong), so it only counts when a score
+    // exists; exam speaking reports come through the same branch.
+    applyGap('speaking', 'speaking', event.label || 'Speaking confidence');
+  } else if (event.type === 'grammar') {
+    applyGap('grammar', event.topicId || 'grammar', event.label || event.topicId || 'Grammar accuracy');
+  } else if (event.type === 'writing') {
+    applyGap('writing', 'writing', event.label || 'Written accuracy');
+  } else if (event.type === 'reading') {
+    applyGap('reading', 'reading', event.label || 'Reading comprehension');
   }
   return stored;
 }
@@ -1836,6 +1741,10 @@ function logReview({ cardId, rating, elapsedMs, skill, intervalDays, mode, itemL
     key: `item:${event.itemId}`,
     label: itemLabel || event.itemId,
     mode: 'cards',
+    // An SRS review is a spaced, independent recall of material the learner
+    // last saw days ago — exactly the delayed evidence the recovery loop
+    // treats as the strong signal (one clean delayed pass resolves).
+    delayed: true,
     score: event.correct ? 100 : 0,
     source: 'per-review-event',
     detail: event.correct ? 'Successful recall.' : 'Card marked again.',

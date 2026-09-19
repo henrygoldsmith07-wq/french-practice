@@ -18,6 +18,7 @@ import { comprehensionAgreement } from './listeningReadingValidation.js';
 import { benchmarkStatus } from './intelligibility.js';
 import { benchmarkExaminer, validateAgainstResults } from './exams/simulator.js';
 import { assistanceMetrics } from './assistanceValidation.js';
+import { formatWithUncertainty } from './evidenceUncertainty.js';
 
 const pct = (v) => (v == null ? '—' : `${Math.round(v * 100)}%`);
 const num = (v) => (v == null ? '—' : String(v));
@@ -87,7 +88,7 @@ export function statusReport(dataset, opts = {}) {
     {
       track: 'placement', n: placement.n, floor: 20, target: 20, status: placement.status,
       headline: placement.status === 'no-data' ? '—'
-        : `exact ${pct(placement.exactAgreement)} · ±1 ${pct(placement.withinOneAgreement)}`,
+        : `exact ${formatWithUncertainty(placement.exactHits ?? Math.round(placement.exactAgreement * placement.n), placement.n)} · ±1 ${pct(placement.withinOneAgreement)}`,
     },
     {
       track: 'progression', n: progression.n, floor: 15, target: 15, status: progression.status,
@@ -132,7 +133,16 @@ export function statusReport(dataset, opts = {}) {
   ];
 }
 
-const HONESTY_NOTE = "'—' means no number is claimed yet. Floors per VALIDATION.md; never fabricate rows to move a status.";
+const HONESTY_NOTE = "'—' means no number is claimed yet. Agreement figures carry their 95% Wilson interval — small samples wear wide intervals, not false precision. Floors per VALIDATION.md; never fabricate rows to move a status.";
+
+// Method note for real-data collection (recruitment readiness): what a
+// researcher needs to know before trusting a track, stated in one place.
+export const METHOD_NOTE = [
+  'Measurement method: agreement/accuracy figures come from real, dated human marks only.',
+  'Every proportion carries a 95% Wilson score interval; a track below its documented floor is reported as provisional.',
+  'Delayed held-out checks (material practised earlier, recalled later) are the evidence that counts; same-session corrections never grant mastery.',
+  'Activity metrics (XP, streaks, time) are reported separately from proficiency and never mixed into agreement figures.',
+].join(' ');
 
 function markdownTable(rows) {
   const header = ['track', 'n', 'floor', 'target', 'status', 'headline'];

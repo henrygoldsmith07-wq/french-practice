@@ -92,17 +92,23 @@ export function successRequirement(kind) {
 // Visible recovery states for the closed loop:
 //   Active weakness → Improving → Resolved
 // Derived ONLY from the learner-error model's own counters (successCount,
-// cleanPasses, status) — never from a single lucky answer, and never
-// fabricated when the model has nothing.
+// cleanPasses, status, lastEvidence) — never from a single lucky answer, and
+// never fabricated when the model has nothing. Evidence-weighted: a clean
+// DELAYED recall (next-day SRS review, scheduled retest) is the strong
+// signal the whole loop wants, so it reads as recovery, while same-session
+// passes honestly stay "so far" until they hold up later.
 export function recoveryStatus(entry) {
   if (!entry || typeof entry !== 'object') return null;
   const successes = Number(entry.successCount) || 0;
   const clean = Number(entry.cleanPasses) || 0;
   if (entry.status === 'resolved' || clean >= 2) {
-    return { state: 'Resolved', detail: `${Math.max(clean, successes)} independent correct recalls.` };
+    return { state: 'Resolved', detail: `${Math.max(clean, successes)} independent correct recall${Math.max(clean, successes) === 1 ? '' : 's'}.` };
   }
   if (entry.status === 'recovering' || successes > 0) {
-    return { state: 'Improving', detail: `${successes} correct recall${successes === 1 ? '' : 's'} so far — one more clean pass resolves it.` };
+    if (entry.lastEvidence === 'delayed') {
+      return { state: 'Improving', detail: 'Clean recall a day later — one more pass and it is yours.' };
+    }
+    return { state: 'Improving', detail: `${successes} correct recall${successes === 1 ? '' : 's'} so far — it needs to hold up later too.` };
   }
   const mistakes = Number(entry.errorCount) || 0;
   return { state: 'Active weakness', detail: `${mistakes} recent mistake${mistakes === 1 ? '' : 's'} · due for retrieval` };

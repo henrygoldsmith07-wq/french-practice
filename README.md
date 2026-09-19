@@ -1,314 +1,194 @@
-# Le Studio 🗣️ — French Speaking Practice
+# Le Studio
 
-A single-page React + Tailwind app for practicing intermediate French speaking.
-The interface is English-first; only the practice material (conversation, topics,
-examples) is in French, always with translations on hand.
-100% client-side by default — no backend required. Your AI provider key (NVIDIA
-NIM, integrate.api.nvidia.com) lives only in `localStorage`. For a shared/public
-deployment, an optional authenticated relay (`server/relay.js`) holds the
-provider key server-side and proxies NVIDIA NIM, so the secret never reaches the
-browser.
+An adaptive language-practice studio — **French (Full)** today, with **German**
+and **Spanish** in **Beta** — built as a single-page React + Tailwind PWA.
+Everything runs client-side: no backend, no account, learner data stays in the
+browser's own storage. AI features (conversation partner, corrections, drills)
+use the learner's own provider key by default; a shared deployment can point the
+app at an authenticated relay that holds the key server-side instead.
 
-## Run
+The product is organised around one idea: **Today**. A learner presses one
+button and gets a composed session — listen, speak, repair a weakness, recall —
+instead of choosing from a feature catalogue.
+
+## 1. What Le Studio is
+
+Le Studio practices real language use across speaking, listening, reading and
+writing, and models what a learner *can do* — not what they have tapped.
+The interface is English-first; practice material is in the target language,
+always with translations on hand. Core loop: **Today · Speak · Review ·
+Learn · Progress** — five tabs, with everything else folded underneath.
+
+## 2. The adaptive Today loop
+
+Today is a single composed session, not a mode picker. A typical plan:
+listen to something, hold a short conversation, then a **targeted repair**
+segment built from the learner's own error model, then a retrieval step.
+Segments are capability-aware (offline → authored drills replace AI drills) and
+every segment explains itself: **what you're practising, why it was chosen**
+(real evidence: recurring mistakes, due cards), **what success requires**, and
+the current recovery state. Learners never see internal ids, engine names or
+research vocabulary — copy is test-enforced (`tests/segment-explain.test.js`).
+
+## 3. How learner modelling works
+
+Every scored activity feeds one shared **error model** (`src/lib/learnerErrors.js`,
+persisted via `src/lib/stores/learnerErrorStore.js`): a mistake classifies into
+a category + key, becomes an *active weakness*, and is prioritised by
+recurrence and error count the next time practice is planned. The model spans
+grammar, vocabulary, listening, pronunciation, speaking, writing and reading —
+a weakness found in one mode is repaired by whichever mode best targets it.
+
+Separate, deliberately smaller systems: the **mistake graph** (structural
+conversation mistakes with a retest ladder), the **weakness memory**
+(repair → spaced retest → recurrence), the **phoneme profile** (pronunciation
+attempts by sound), and the **FSRS-based SRS** for vocabulary scheduling.
+XP, streaks and coins track *activity* and are never inputs to proficiency.
+
+## 4. Speaking / listening / reading / writing
+
+- **Speak** — scenario voice chat with per-turn corrections and scores, a
+  fluency mode with a post-session debrief, pronunciation read-aloud scoring,
+  shadowing, and a 45-second improv drill. Audio is MediaRecorder + on-device
+  analysis; transcription and marking use the AI provider (or mock mode).
+- **Listening** — dictée, number drills, and TTS-narrated tracks with
+  comprehension quizzes. All audio is synthesised locally, so it works offline.
+- **Reading** — graded texts, an interactive story, tap-to-translate into a
+  personal notebook, comprehension quizzes that feed the error model.
+- **Writing** — copy drills, sentence completion, free writing and an essay
+  studio with structured AI feedback; every correction seeds a retype task.
+
+## 5. SRS and error recovery
+
+Vocabulary scheduling is **FSRS** (importing legacy SM-2 data), with a
+most-forgotten-first, interleaved due queue. Error recovery follows one
+documented loop:
+
+> mistake → classify → prioritise → targeted repair → clean success →
+> delayed retest → improving → resolved → recurrence detection
+
+Two evidence rules are enforced and tested: **one correct answer never implies
+mastery** (same-session passes need two independent clean passes to resolve),
+and **delayed recall is the strong signal** (a clean recall on a later day —
+an SRS review, a scheduled retest — resolves on its own). A mistake after a
+repair reactivates the weakness and counts as a recurrence. The visible
+states are **Active weakness → Improving → Resolved**, with a dated recovery
+history in Progress.
+
+## 6. Supported languages and maturity
+
+| Language | Maturity | What that means |
+|---|---|---|
+| 🇫🇷 French | **Full** | Everything: grammar topics, culture, exam boards, learning path |
+| 🇩🇪 German | **Beta** | Core loop: Today, conversations, vocabulary, dictée, phrasebook, AI tutor |
+| 🇪🇸 Spanish | **Beta** | Core loop, as above |
+
+French-only features are gated by one registry (`FULL_ONLY_FEATURES` in
+`src/lib/languages.js`). For Beta languages those surfaces are hidden — not
+half-working — across hubs, onboarding, search results and deep links, with
+honest copy about what *is* available (`tests/maturity-gating.test.js`).
+
+## 7. Exam support (French)
+
+Timed speaking/writing/listening/reading papers for **WJEC GCSE & A-level**,
+**AQA GCSE** and **Edexcel GCSE**, with supervised preparation, real clocks,
+band-descriptor marking that leads with time shortfall, and honest grade
+handling (indicative band + learner-entered real boundaries). Results feed the
+examiner-benchmark validation track.
+
+## 8. AI / privacy architecture
+
+- **Bring your own key.** The provider key lives in `localStorage`
+  (`fp.groqKey`) via the settings store; it is never exported, and a build-time
+  guard (`npm run check:secrets`) fails the build if a provider secret is ever
+  exposed through a `VITE_*` variable.
+- **Optional relay** for shared hosting: `VITE_GROQ_RELAY_URL` routes AI calls
+  through an authenticated server that holds the key (`server/relay.js`).
+- **Mock mode** makes the whole studio workable with no key at all.
+- **Pulse sharing is opt-in and transcript-free**; turning it off deletes the
+  mirror immediately. The evidence study writes only anonymised, local data and
+  never enrols without explicit consent.
+
+## 9. Offline / PWA behaviour
+
+Installable PWA with a service worker (network-first, cache-fallback) caching
+the whole app. Content libraries are per-language lazy chunks. All practice
+content, SRS, drills and TTS audio work offline; only live AI conversation and
+marking need the network. Progress moves between devices via JSON export/import
+(household namespacing preserved), and the OS badge/reminders use the shared
+live due count (`src/hooks/useStudioBoot.js`).
+
+## 10. Validation and evidence status
+
+Validation tracks (placement, progression, writing/speaking corpus,
+comprehension, pronunciation, examiner agreement, real exam results, assistance,
+FSRS) report **only real, dated human marks**. Empty tracks read "no-data" —
+nothing is invented. Every proportion now carries a **95% Wilson interval**
+(`src/lib/evidenceUncertainty.js`), so small samples wear wide intervals rather
+than false precision; tracks below their documented floor are "provisional".
+Method note: `METHOD_NOTE` in `src/lib/validationStatusReport.js`; live status
+via `npm run validation:status`. XP/streaks/activity are reported separately
+from proficiency and never mixed into agreement figures. **No external results
+are claimed beyond what the dataset contains.**
+
+## 11. Development and testing
 
 ```bash
 npm install
-npm run dev      # local dev server
-npm run build    # static build in dist/ (runs the shared-secret guard first)
+npm run dev            # local dev server
+npm test               # node:test unit suites (689 tests)
+npm run lint:content   # copy honesty lint
+npm run lint:code      # eslint (react-hooks + no-undef)
+npm run type-check     # tsc over critical domain logic
+npm run build          # secret guard → vite build → SW versioning → budget gate
+npm run validation:status
 ```
 
-Add an AI provider key via the settings modal, and pick
-your CEFR level (A1–C2) — it calibrates the AI's complexity and scoring — it is
-validated against the provider's `/models` endpoint before being stored. Or flip on
-**Mock Mode** in settings → Dev Panel to explore the whole app offline.
+- **Per-push CI** (`.github/workflows/french-practice.yml`): lint, tests,
+  type-check, build, size budget, and Playwright E2E on **Chromium + mobile
+  Chromium** (fast, single browser install).
+- **Scheduled cross-browser CI** (`.github/workflows/cross-browser.yml`): daily
+  **Firefox + WebKit** run targeting the risky engine-specific paths
+  (MediaRecorder, mic permissions, speech/audio, service worker/PWA, offline,
+  Today session, language switching). The config picks its project set from
+  `PW_CROSS_BROWSER=1`; `tests/e2e-config-consistency.test.js` pins the
+  workflow↔config agreement.
+- Playwright config: `playwright.config.js`; E2E specs in `e2e/`.
 
-### Optional authenticated relay (shared/public hosting)
+## 12. Architecture overview
 
-Direct, bring-your-own-key mode is fine for a private tool. For a public launch,
-set `VITE_GROQ_RELAY_URL` to the relay endpoint so the browser calls the relay
-instead of the provider directly; the relay holds the key server-side
-(`NVIDIA_API_KEY`, or the legacy `GROQ_API_KEY`), enforces per-user quotas, and
-validates every request. A build-time guard (`npm run check:secrets`) refuses to
-build if a shared/provider secret is ever exposed through a `VITE_*` variable —
-Vite inlines those into the public bundle.
+```
+src/
+  App.jsx                 composition only: tabs, overlays, callbacks
+  hooks/                  useStudioBoot (warm-up, reminder, badge, clock),
+                          usePwaInstall, useOverlayNav, useScenarios
+  lib/
+    storageCore.js        physical layer: key map, learner (household) routing
+    storage.js            compat facade over the domain stores
+    stores/               domain stores: settings, learnerError, study,
+                          research (light/heavy split)
+    learnerErrors.js      pure recovery-loop model (evidence-weighted)
+    fsrs.js mistakeGraph.js segmentExplain.js content/ ...
+  components/             screens + hubs (all heavy screens lazy-loaded)
+e2e/                      Playwright specs
+scripts/                  budget gate, content lint, validation tooling
+```
 
-## Pulse connection
+**Store boundaries.** `storageCore.js` is the only code that touches
+`localStorage`: canonical `fp.*` key map plus transparent per-learner
+namespacing (households), lazy claim migration and quota pruning. Domain
+stores (`stores/*.js`) own their keys, shapes and caps and never import the
+facade (no cycles). `storage.js` remains a facade re-exporting the historical
+surface so older imports keep working; contract tests
+(`tests/storage-stores.test.js`) pin store↔facade agreement, the key map and
+the legacy-data migration.
 
-Le Studio can share a transcript-free history of its sessions and reviews with
-Pulse, the personal evidence engine in this ecosystem, when both apps are
-served from one origin. Sharing is **opt-in** and controlled here, where the
-data originates: Settings has a "Share with Pulse" switch. While it is on, the
-app writes the derived history (`fp.pulse-history.v2`) where Pulse's
-same-origin connector can read it. Turning it off deletes that copy immediately
-and clears the flag (`fp.pulse-opt-in`) Pulse's connector checks, so the flow
-stops at the source — even a stale mirror is refused.
+**Performance budgets** (enforced post-build by `scripts/check-performance.mjs`):
+first-load JS (entry + statically imported chunks) **≤ 450 kB** — currently
+~422 kB — with a 600 kB per-chunk ceiling and 1800 kB total. Heavy content
+(vocab packs, grammar topics, listening tracks, scenario corpora) is shipped as
+per-language lazy chunks and must never enter the boot graph.
 
-## Features
+## Licence
 
-- **Learning Path** — pick a goal (travel, school, business, fluency), take a
-  adaptive placement test (A1–C2), and follow a personal roadmap of
-  **twelve units (60 lessons)** whose lessons span every activity in the app:
-  conversations, dictée, SRS cards, quick fire, grammar-topic quizzes,
-  reading comprehension and listening comprehension — each unit mixes
-  speaking with at least one grammar/reading/listening lesson, from
-  "order lunch" through stories & classics, listening immersion and free
-  conversation to a near-native finale. Each unit ends in a scored
-  conversation checkpoint; two strong checkpoints in a row move your CEFR
-  level up, and every LLM prompt tracks it. When flashcards pile up, a
-  smart-review step is suggested before the lesson. A **knowledge stats**
-  panel on the path card gamifies the long haul: a weighted knowledge score
-  (words known, grammar mastered, lessons and checkpoints), an 8-week
-  growth chart rebuilt from dated activity records, and stat tiles showing
-  your knowledge increase over time.
-- **Home dashboard** — the daily loop: XP goal ring, streak, a personalized
-  "Today's focus" carried over from your last session report, the count of
-  flashcards due for review, and a suggested (least-practiced) scenario.
-
-- **Roleplay Arena** — scenario-based voice chat (bistro, post office, flight
-  rescheduling…) with a surprise curveball on your 3rd turn, 3-step hint
-  engine, per-turn corrections, native alternatives, and scores
-  (`S = 0.30·grammar + 0.30·naturalness + 0.20·relevance + 0.20·fluency`).
-- **Audio engine** — MediaRecorder (webm/mp4-safari), live canvas frequency
-  waveform (AnalyserNode), dB peak meter, DynamicsCompressor AGC, and VAD
-  auto-submit after 3.5 s of silence.
-- **Micro-feedback loop** — Whisper `whisper-large-v3-turbo` transcription
-  (editable before sending) → `llama-3.1-8b-instant` strict-JSON evaluation.
-- **Session report card** — "End Session" compiles the conversation
-  into a graded report: strengths, stubborn habits, tomorrow's focus, progress
-  rings, canvas radar chart, full-session trend line, streaks, and a shareable
-  PNG progress card.
-- **Durable learning memory** — completed sessions migrate from the old
-  last-10 store into full local history; every review is an event, and a
-  cross-mode error model carries recurring grammar, vocabulary, listening and
-  pronunciation gaps into the next practice and the analytics/revision views.
-- **Speaking hub** — drills for the mouth (under the Skills tab):
-  - **Pronunciation** — read a sentence aloud; Whisper transcribes it and a
-    word-level diff scores how much was recognized, with unrecognized words
-    underlined as trouble spots and an LLM "accent coach" naming the exact
-    sounds to work on (French r, nasals, u/ou, liaison…).
-  - **Shadowing** — listen to the native TTS rhythm first (recording is
-    gated until you have), then repeat and get the same scoring.
-  - **Quick Fire** — 45-second improv challenges with WPM flow tracking.
-  - **Dictée** — pure listening drill: type what you hear, word-diff scored.
-- **Free Talk** — an open-ended Arena scenario with no script: your partner
-  follows your lead, asks open questions, and still scores every turn.
-- **Listening hub** — TTS-narrated tracks with listen-first transcripts,
-  per-line highlighting, a 0.5–1.5× speed slider and comprehension quizzes:
-  mini-podcasts (monologues), two-voice dialogues (distinct French voices or
-  pitch-shifted speakers), radio-style news bulletins, and movie-style scenes.
-  Dictée lives here too. All audio is synthesized locally — no external media.
-- **Writing hub** — a typing drill (copy sentences exactly, accents and all),
-  sentence completion judged by the AI, free writing from prompts with full
-  correction, and an essay studio with structured feedback (corrections,
-  strengths, suggestions, grammar/vocabulary/structure scores). Handwriting
-  support is intentionally omitted — French uses the Latin script.
-- **Reading hub** — graded readers, a branching interactive story ("La porte
-  bleue" — you choose what happens), magazine articles, news items, and
-  public-domain classics (La Fontaine). Dual-language toggle, per-word
-  tap-to-translate (text gloss → vocabulary dictionary → cached LLM lookup)
-  with one-tap save to the notebook, and comprehension quizzes.
-- **CEFR curriculum** — the spine everything else maps onto. Five level packs
-  (A1–C1) of level-banded core vocabulary sit at the front of the library, a
-  grammar inventory names every point a learner is expected to control at each
-  level, and a **coverage report** says what is actually written versus what is
-  merely promised (currently 100% of the A1–C1 grammar inventory). A
-  **promotion gate** requires four independent signals — words known, grammar
-  mastered, speaking average and passed checkpoints — before a level moves, so
-  no single lucky run can promote anyone.
-- **Proficiency score** — one 0–100 number over five components (vocabulary,
-  grammar, speaking, listening, writing), each drawn from something actually
-  done. Evidence decays on a 45-day half-life, missing components read as
-  *unknown* rather than zero, and the score reports its own confidence. XP and
-  streaks are deliberately excluded: attendance is not proficiency.
-- **Adaptive placement test** — a computer-adaptive test over a 43-item bank
-  spanning grammar, vocabulary, reading and listening. Each answer moves a
-  Rasch ability estimate, the next item is chosen where it is most informative,
-  and the test stops on a standard-error rule. It reports a **range** (±1 SE)
-  rather than a false point estimate, because a short test cannot place anyone
-  more precisely than about half a band.
-- **Exam simulator** — timed speaking papers for **WJEC GCSE**, **WJEC
-  A-level**, **AQA GCSE** and **Edexcel GCSE**: role-play, photo card / picture
-  task, reading aloud and conversation, each on a real clock with supervised
-  preparation and push-to-talk recording. Notes are allowed where the exam
-  allows them and blocked in the conversation. Marking runs against
-  plain-English band descriptors, and the report leads with **shortfall against
-  the allowance** — running short is the commonest lost mark. Grades are *not*
-  guessed: boundaries are published per series, so the app shows an indicative
-  band and lets you enter real boundaries. Task material is original, written
-  against the published theme lists.
-- **Accents** — six varieties (France, Québec, Belgium, Suisse romande, West
-  Africa, the Midi) with pronunciation features and vocabulary differences.
-  Audio routes to the best matching voice installed on the device and **says so
-  when there is no match**, rather than passing a Parisian voice off as
-  Québécois. Listening progresses along two independent axes — speed and accent
-  variety — because ramping both at once is why advanced listening feels like a
-  wall.
-- **Conversation memory** — the partner remembers you between sessions: facts
-  (replaced, not accumulated, so it never insists you are still a nurse),
-  topics already covered, and open threads worth following up. You can **steer
-  it mid-conversation** in plain English or French ("slower", "be stricter",
-  "on se tutoie", "parlons de la politique"), and every conversation feeds a
-  **recycling loop** — corrections become retry drills that need two clean
-  passes before they retire, new words come back until they have been met three
-  times, and missed grammar points steer later questions.
-- **Field Notes — your life becomes the syllabus** — capture a line from a
-  message, menu, film or work chat with the situation that made it matter. The
-  app turns that moment into a private four-step loop (capture → rehearse →
-  recall later → reuse in life), keeps it offline, and never calls a saved
-  phrase “mastered” until you have brought it back yourself.
-- **Vocabulary** — forty-two themed packs (520+ rich cards) alongside the CEFR
-  packs: food, travel, work, feelings,
-  family & people, the body, animals, clothing & colours, city & transport,
-  health, home & household, nature & weather, time / numbers / money, a
-  picture deck of everyday objects, idioms, slang & argot, regional French
-  (Québec/Belgium/South) and filler words. Every card has a
-  frequency rank (Top 100 → Niche), example sentence with translation, TTS
-  pronunciation (word, sentence, 0.75× slow), synonyms/antonyms,
-  collocations and register notes — plus an LLM-verified "use it in a
-  sentence" challenge. One-click save any word to a personal notebook (with
-  your own custom entries), and review everything through a cross-pack
-  spaced-repetition queue.
-- **Grammar** — a reference library of **sixty** CEFR-tagged topics (A1
-  present tense through C1 modalisation, litote and the literary tenses), each an
-  interactive lesson: explanation with spoken
-  examples and a "watch out" note, drills with instant feedback, tap-to-order
-  sentence building, and a scored quiz (best kept; 80+ = mastered). After a
-  conversation mistake, the Arena shows a grammar tip that deep-links into
-  the matching lesson.
-- **AI studio** — five tools built straight on the LLM: an **AI tutor** you
-  can ask anything (grammar, nuance, culture, study advice — answers pitched
-  to your CEFR level), **AI characters** with distinct personalities (a Lyon
-  grandmother, a Marseille fisherman, a Parisian actress, a space-mad
-  ten-year-old) who chat in French with inline translations, an **instant
-  translator** (both directions, with TTS on French output), an **exercise
-  generator** that writes a three-question drill on any topic you name, and
-  **personalized lessons** generated from your own recurring-mistake bank.
-  In the Arena, every corrected turn also gets a "Why? Explain the rule"
-  button for an on-demand grammar explanation of that specific mistake.
-- **Memory & revision (evidence-based)** — the review engine is built on the
-  learning-science findings that most reliably speed acquisition:
-  - **Spaced repetition — the SM-2 algorithm** (SuperMemo/Anki): each card
-    carries an ease factor that grows on easy recalls and shrinks on hard
-    ones, with the interval compounding by ease once a card graduates
-    (1 → 6 → interval×ease days); a lapse drops the ease and restarts the
-    ladder.
-  - **Most-forgotten-first, interleaved review**: the due queue is ordered by
-    ascending predicted recall from an exponential forgetting curve
-    (R(t)=e^(−t/S)) — you review each word right as it nears the forgetting
-    threshold, where one repetition does the most — mixed across packs, with
-    ties broken toward higher-frequency words.
-  - Plus retention buckets (strong/fading/at-risk/new), a plotted forgetting
-    curve, **weak-word review**, **mistake review**, **custom flashcards**, a
-    **review heatmap**, a daily outlook, opt-in **smart reminders**, and a
-    "the science behind this" panel that explains the method.
-- **Gamification (single-player)** — a profile behind the header avatar:
-  XP feeds **levels** with French titles (Débutant → Légende) and a progress
-  bar; **coins** accrue with every XP gain and buy **avatars** (others are
-  achievement gifts); 12 **achievements** with coin rewards unlock
-  automatically from your stats; 3 deterministic **daily challenges** rotate
-  each day (clear all three for a postcard); a 12-piece **postcard
-  collection** is earned — never bought — via challenges, achievement
-  milestones and date-windowed **seasonal events** (one per season, XP goal
-  → exclusive postcard). Daily streaks were already in the header. No
-  leaderboards or leagues by design: the app is a solo studio with no
-  backend to rank against.
-- **Motivation** — daily and **weekly XP goals** (both configurable, shown as
-  rings/bars on Home and in the profile), **encouraging feedback** on Home
-  that adapts to your progress and streak, a full **learning-statistics**
-  grid (total XP, active days, sessions, reviews, saved words, mastered
-  grammar, badges, postcards), a month **learning calendar** shaded by daily
-  XP, **streak freezes** (buy with coins, max 2, auto-consumed to cover one
-  missed day), a **milestones** timeline, and downloadable **certificates**
-  (Bronze/Argent/Or/Assiduité) rendered to PNG on demand.
-- **Culture** — a dedicated tab with eight themed sections of authored,
-  factual content: cultural notes (la bise, tu/vous, laïcité), customs (the
-  apéro, bread etiquette, host gifts, la galette des rois), etiquette
-  (always «bonjour», table manners, le quart d’heure), festivals (le 14
-  juillet, Fête de la Musique, Noël, la Chandeleur), food (meal order, the
-  cheese course, the boulangerie, café culture), history (the Gauls, 1789,
-  Napoléon, la Résistance), geography (l’Hexagone, rivers & regions,
-  outre-mer, Paris vs la province) and regional differences (regional
-  languages, chocolatine vs pain au chocolat, septante/nonante, north vs
-  south). Each note carries a spoken French phrase (TTS) and a "did you
-  know" tip, and a shuffled **culture quiz** pays XP into the motivation
-  loop.
-- **Real-world practice** — a survival hub (opened from Home) with a
-  phrasebook grouped by situation — travel phrases, restaurant, airport,
-  shopping, medical emergencies, business communication and interviews —
-  each phrase spoken via TTS. Situations that map to an Arena roleplay have
-  a "rehearse this live" jump straight into the matching conversation (a new
-  **pharmacie / medical-emergency** scenario was added for this), and a
-  10-question **mock exam** across grammar, vocabulary and usage returns an
-  estimated CEFR band and pays XP.
-- **Personalisation** — a "Personalise" panel (from Home) where you choose a
-  **learning style** (balanced / conversation-first / grammar-focused /
-  vocabulary-builder / immersion), a **lesson length** (short/medium/long,
-  which sets how many activities a plan holds), and **favourite topics**
-  (which bias the suggested conversation scenarios). A local **weakness
-  analysis** ranks your weak spots from your own data — recurring mistakes,
-  low grammar scores, weak words and due cards, and low session sub-scores —
-  each with a one-tap jump to drill it. **Daily recommendations** are then
-  ordered by your style with a boost toward those weaknesses and capped to
-  your lesson length. **Adaptive difficulty** (toggle) nudges the CEFR level
-  fed to the AI up or down from your recent session scores.
-- **Offline & devices** — Le Studio is an installable **PWA**: a service
-  worker (network-first, cache-fallback) caches the whole app so lessons,
-  stories, drills and grammar all work with no connection, and audio is
-  generated on-device by the browser's speech engine so listening and
-  pronunciation work offline too (only the live AI conversation/correction
-  features need the network). An **Offline & devices** panel shows online
-  status and offline readiness, lets you **download any story or podcast
-  transcript** as a text file, and — since there's no backend — moves
-  progress **across devices** by exporting a JSON backup and importing it on
-  another device (the API key is never included). The app is **installable**:
-  a full manifest (maskable PNG icons at 192/512, apple-touch-icon) plus an
-  in-app **Install** affordance — a Home banner and an "Install the app"
-  section in this panel that fire the browser's native install prompt, with
-  Add-to-Home-Screen instructions on iOS and an "already installed" state
-  once it's running standalone.
-- **Analytics** — a dashboard (from Home) built from locally-recorded data:
-  headline metrics for **time studied** (a visible-time tracker), **words
-  learned** (SRS), **grammar mastered**, **retention rate** (forgetting-curve
-  recall), **speaking accuracy**, **pronunciation** and **listening** scores;
-  a six-way **skill breakdown**; **weekly** and **monthly reports** (time,
-  XP, activities, average score, best day); and an **XP heatmap**. Scored
-  drills (pronunciation, dictée, listening & reading quizzes, writing
-  feedback) now log a per-skill score so these numbers reflect real practice.
-- **Reference & tools** — a hub (from Home) of advanced offline reference
-  tools: **verb conjugation tables** (ten key verbs across présent, passé
-  composé, imparfait, futur, conditionnel and subjonctif, hand-verified,
-  with IPA and TTS on every form); a **minimal pairs** ear-training drill
-  (play a word, pick which of a tricky sound-contrast pair you heard);
-  **cloze tests** (grammar-in-context gap-fill with explanations); and an
-  **offline dictionary / frequency list** — a ~2,000-word frequency-ranked
-  core lexicon (real-app scale: the most common French words, banded 1–10 by
-  frequency and grouped by theme, many with IPA), merged live with the
-  vocabulary library and your notebook into one searchable, TTS-enabled
-  dictionary — plus **import custom word lists** (paste «French, English»
-  lines straight into your notebook and SRS queue). Selected from a longer
-  "advanced features" wishlist; camera/PDF/web-page OCR, a browser
-  extension and multi-language support were left out as out-of-scope for a
-  single-file, French-only, no-backend app.
-- **Focus & habits** — a hub (from Home) for building the study habit: a
-  **Pomodoro timer** (25-minute focus blocks, short breaks, a long break
-  every four) and a count-up **study timer**, both with a distraction-free
-  full-screen **focus mode** and a chime/vibration/notification on phase
-  change; a **habit tracker** where you define daily habits, tick them off
-  and watch each one's streak; and a **goal-streak calendar** marking every
-  day you hit your daily XP goal. Daily notifications already exist as the
-  opt-in review reminders. (OS home-screen widgets and lock-screen reminders
-  aren't included — a web PWA can't create those.)
-- **Onboarding** — a 17-step first-run wizard for new visitors: welcome,
-  **languages to learn** (pick any of French, German and Spanish, and which
-  one to start in), name, why-you're-learning, CEFR level, practice rhythm,
-  daily goal, learning style, favourite topics, lesson length, avatar, habit
-  picks, reminders opt-in, streak explainer, AI key / demo mode, a feature
-  tour and a personalised sign-off — writing all
-  of it (settings, preferences, avatar, habits, key) on the final step. It
-  shows only for genuinely new users (no key, XP or sessions), sets a flag so
-  it never nags again, has a Skip at every step, and can be replayed any time
-  from Settings.
-- **Dev Panel** — token totals, latency pings, raw payload log, Mock Mode.
-
-TTS uses the browser's `speechSynthesis` with the best available `fr-FR`
-voice and a 0.5×–1.5× speed slider. Haptics via `navigator.vibrate` on mobile.
+See `LICENSE`.

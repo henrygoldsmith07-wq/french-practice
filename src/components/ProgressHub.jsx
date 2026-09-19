@@ -3,7 +3,7 @@ import { getSettings } from '../lib/storage';
 import { BarChart, Map, Clock, Target, Layers } from './icons';
 import { ChevronRight } from './icons';
 import { contentLang } from '../lib/content/active.js';
-import { isFullSupport } from '../lib/languages';
+import { featureAvailableNow } from '../lib/languages';
 
 const LazyProfile = lazy(() => import('./Profile'));
 const LazyAnalytics = lazy(() => import('./Analytics'));
@@ -31,8 +31,9 @@ const SECTIONS_ALL = [
 
 // The 12-unit learning path is authored for French only; beta languages get
 // the core loop and honest progress surfaces instead of a half-built path.
+// Gated via the shared FULL_ONLY_FEATURES registry (languages.js).
 const SECTIONS = (lang) => SECTIONS_ALL.filter(
-  (s) => isFullSupport(lang) || s.id !== 'path',
+  (s) => featureAvailableNow(s.id),
 );
 
 export default function ProgressHub({

@@ -5,6 +5,8 @@ import {
   getReviewEvents, getSessionHistoryMeta, getEvidenceLedgerModel, getErrorModelSummary,
   getLearnerErrors, getLearnerErrorSummary, getIntelligibilityBenchmark,
 } from '../lib/storage';
+import { recoveryHistory } from '../lib/learnerErrors';
+import { getLearnerErrorModel } from '../lib/storage';
 // Measurement-stack metrics/bundles: lazy research module (never the boot graph).
 import {
   getPlacementValidationMetrics, getProgressionValidationMetrics,
@@ -94,6 +96,7 @@ export default function Analytics({ open, onClose }) {
       weeklyGoal: getSettings().weeklyGoal,
       learnerErrors: getLearnerErrors({ limit: 8 }),
       learnerErrorSummary: getLearnerErrorSummary(),
+      recoveryHistory: recoveryHistory({ entries: getLearnerErrorModel().entries }, { limit: 6 }),
     };
   }, [open]);
 
@@ -190,12 +193,12 @@ export default function Analytics({ open, onClose }) {
             </>
           )}
           <ErrorNotebookStats />
-          <LearnerErrorModel entries={d.learnerErrors} summary={d.learnerErrorSummary} />
+          <LearnerErrorModel entries={d.learnerErrors} summary={d.learnerErrorSummary} history={d.recoveryHistory} />
           <SessionHistory sessions={d.sessions} />
           {showResearch && <ExamBenchmark />}
           {/* period reports */}
           <WeaknessMemory />
-          <ErrorCategories />
+          {showResearch && <ErrorCategories />}
 
 
           <section className="space-y-2.5">

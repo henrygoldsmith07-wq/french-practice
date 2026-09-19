@@ -26,6 +26,7 @@ import {
   MIN_VARIANT_N, MIN_TRANSFER_N,
 } from '../lib/selectionCalibration';
 import { mistakeGraphStats } from '../lib/mistakeGraph';
+import RecoveryBadge from './RecoveryBadge';
 import { TrendingUp } from './icons';
 
 // Analytics evidence sections, split out of Analytics.jsx so each concern
@@ -398,13 +399,13 @@ export function ErrorNotebookStats(){
   );
 }
 
-export function LearnerErrorModel({ entries, summary }) {
-  const labels = { grammar: 'Grammar', vocabulary: 'Vocabulary', listening: 'Listening', pronunciation: 'Pronunciation' };
+export function LearnerErrorModel({ entries, summary, history }) {
+  const labels = { grammar: 'Grammar', vocabulary: 'Vocabulary', listening: 'Listening', pronunciation: 'Accents', reading: 'Reading', speaking: 'Speaking', writing: 'Writing' };
   return (
     <section className="space-y-2.5">
-      <h3 className="text-[11px] font-bold uppercase tracking-wider text-ink2">Persistent learner error model</h3>
+      <h3 className="text-[11px] font-bold uppercase tracking-wider text-ink2">Recovery tracker</h3>
       <div className="bg-surface border border-line rounded-2xl p-4 space-y-3">
-        <div className="grid grid-cols-4 gap-2 text-center">
+        <div className="grid grid-cols-4 min-[430px]:grid-cols-7 gap-2 text-center">
           {Object.entries(labels).map(([key, label]) => (
             <div key={key}>
               <p className="text-base font-bold text-ink tabular-nums">{summary.byCategory[key].entries}</p>
@@ -412,12 +413,12 @@ export function LearnerErrorModel({ entries, summary }) {
             </div>
           ))}
         </div>
-        <p className="text-[11px] text-ink3">{summary.active} active · {summary.recovering} recovering · {summary.resolved} resolved · {summary.recurrences} recurrences. Gaps persist across the mode where they first appeared.</p>
+        <p className="text-[11px] text-ink3">{summary.active} active · {summary.recovering} improving · {summary.resolved} resolved · {summary.recurrences} came back. Gaps persist across every practice mode, and a weakness that returns is practised again.</p>
         {entries.length > 0 && (
           <div className="space-y-2">
             {entries.map((entry) => (
               <div key={entry.id} className="flex items-center gap-2">
-                <span className="shrink-0 px-1.5 py-0.5 rounded border border-line bg-surface2 text-[9px] font-bold uppercase tracking-wider text-ink3">{entry.category}</span>
+                <RecoveryBadge entry={entry} />
                 <span className="flex-1 min-w-0 text-xs text-ink truncate">{entry.label}</span>
                 <span className="shrink-0 text-[10px] text-ink3 tabular-nums">{entry.errorCount}×</span>
               </div>
@@ -426,6 +427,23 @@ export function LearnerErrorModel({ entries, summary }) {
         )}
         {!entries.length && <p className="text-xs text-ink3">No persistent gaps yet. Every low-scoring drill will feed this model.</p>}
       </div>
+      {history?.length > 0 && (
+        <div className="bg-surface border border-line rounded-2xl p-4 space-y-2">
+          <h4 className="text-[11px] font-bold uppercase tracking-wider text-ink2">Recent recovery history</h4>
+          {history.map((event, index) => (
+            <div key={`${event.at}-${event.kind}-${index}`} className="flex items-start gap-2 text-xs">
+              <span className={`shrink-0 mt-0.5 w-1.5 h-1.5 rounded-full ${event.kind === 'success' ? 'bg-success' : 'bg-warning'}`} aria-hidden="true" />
+              <span className="flex-1 min-w-0">
+                <span className="text-ink font-semibold">{event.label}</span>
+                <span className="text-ink2"> — {event.detail}</span>
+              </span>
+              <span className="shrink-0 text-ink3 tabular-nums text-[10px]">
+                {new Date(event.at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
     </section>
   );
 }

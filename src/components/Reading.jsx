@@ -205,8 +205,11 @@ function TextReader({ text, apiKey, mockMode, onXp, onActivity, onBack }) {
     else {
       const gained = Math.max(1, quiz.correct * 5);
       onXp(gained);
-      recordSkillScore('reading', Math.round((quiz.correct / quiz.questions.length) * 100));
-      onActivity?.({ type: 'reading', textId: text.id });
+      const score = Math.round((quiz.correct / quiz.questions.length) * 100);
+      recordSkillScore('reading', score);
+      // Feed the shared recovery loop: a weak reading comprehension is a gap
+      // the next session targets, exactly like a listening or grammar slip.
+      onActivity?.({ type: 'reading', textId: text.id, score, label: text.title || 'Reading comprehension' });
       setQuiz({ ...quiz, done: true, gained });
     }
   };

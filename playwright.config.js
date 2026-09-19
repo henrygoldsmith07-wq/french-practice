@@ -1,13 +1,17 @@
 import { defineConfig, devices } from '@playwright/test';
 
-// CI vs local: CI installs ONLY the browsers CI exercises — chromium, which is
-// also the engine behind the mobile (Pixel 7) project. Firefox and WebKit
-// projects run locally, where their browsers are installed. CI used to run the
-// full matrix with only chromium installed, which surfaced as phantom
-// "failures" on every push.
+// Which browsers run where:
+//   · local dev        — every declared engine (their browsers are installed)
+//   · per-push CI      — chromium + mobile-chromium only (fast, one install)
+//   · scheduled CI     — PW_CROSS_BROWSER=1 → firefox + webkit, exercised
+//     daily by .github/workflows/cross-browser.yml against the risky
+//     engine-specific paths (MediaRecorder, mic permissions, speech/audio,
+//     service worker/PWA, offline, Today session, language switching).
+// CI used to run the full matrix with only chromium installed, which surfaced
+// as phantom "failures" on every push.
 //
-// tests/e2e-config-consistency.test.mjs pins the agreement between this file
-// and the workflow's install step — do not break it.
+// tests/e2e-config-consistency.test.js pins the agreement between this file
+// and both workflows' install steps — do not break it.
 export const PROJECT_ENGINES = {
   chromium: 'chromium',
   firefox: 'firefox',
@@ -15,8 +19,13 @@ export const PROJECT_ENGINES = {
   mobile: 'chromium', // Pixel 7 emulation runs on chromium
 };
 export const CI_PROJECTS = ['chromium', 'mobile'];
+export const CROSS_BROWSER_PROJECTS = ['firefox', 'webkit'];
 
-const enabled = new Set(process.env.CI ? CI_PROJECTS : Object.keys(PROJECT_ENGINES));
+const enabled = new Set(
+  process.env.PW_CROSS_BROWSER === '1'
+    ? CROSS_BROWSER_PROJECTS
+    : process.env.CI ? CI_PROJECTS : Object.keys(PROJECT_ENGINES),
+);
 
 export default defineConfig({
   testDir: './e2e',

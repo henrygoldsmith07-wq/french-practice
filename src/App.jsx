@@ -26,12 +26,14 @@ import { getPath, applyActivity } from './lib/path';
 import { getScenarios } from './lib/data';
 import usePwaInstall from './hooks/usePwaInstall';
 import useOverlayNav from './hooks/useOverlayNav';
+import useStudioBoot from './hooks/useStudioBoot';
+import useSessionLifecycle from './hooks/useSessionLifecycle';
+import useAppearance from './hooks/useAppearance';
 import {
   getApiKey, getSettings, setSettings as persistSettings, getStreak, getXp, addXp,
-  getActiveSession, setActiveSession, clearActiveSession,
-  shouldRemindToday, markRemindedToday, getTodayXp,
+  getTodayXp,
   getCoins, addCoins, getAvatar, bumpChallengeMetric, addEventXp,
-  getPrefs, setPrefs, getSessions, addStudyTime,
+  getPrefs, setPrefs, getSessions,
   setApiKey as persistApiKey, setAvatar as persistAvatar, ownAvatar, setHabitList,
   setOnboarded, setLastActivity, getLastActivity, recordSpeakingGap, recordLearningActivity,
 } from './lib/storage';
@@ -41,9 +43,8 @@ import {
 // below and inside their own screens' chunks.
 import { adaptiveLevel } from './lib/personalise';
 import { AVATARS, activeEvent, levelFromXp } from './lib/game';
-import { syncLanguage } from './lib/i18n';
 import { useDueCount, loadAllEntries, warmScenarios } from './lib/vocabAsync';
-import { getLanguage } from './lib/languages';
+import { getLanguage, featureAvailableNow } from './lib/languages';
 import { relayEnabled } from './lib/relay';
 import { Flame, Bolt, Sun, Moon, Gear, Key, ArrowRight, Home, MessageCircle, Layers, BookOpen, BarChart, Search, Target, Coins as CoinsIcon, X, Download } from './components/icons';
 import Mascot from './components/Mascot';
@@ -79,31 +80,14 @@ export default function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [dashboardOpen, setDashboardOpen] = useState(false);
-  // The active scenario may legitimately be null: every language's scenario
-  // corpus is a per-language registry chunk now, so it resolves a beat after
-  // first render (App's boot prefetch warms it). The warm-then-heal effect
-  // below reselects once the registry lands, and every consumer here
-  // tolerates null rather than crashing on `.id` of undefined.
-  const [scenario, setScenario] = useState(() => {
-    const saved = getActiveSession();
-    return (saved && getScenarios().find((s) => s.id === saved.scenarioId)) || getScenarios()[0] || null;
-  });
-  useEffect(() => {
-    if (scenario) return undefined;
-    let on = true;
-    warmScenarios().then(() => {
-      if (!on) return;
-      const saved = getActiveSession();
-      setScenario((saved && getScenarios().find((s) => s.id === saved.scenarioId)) || getScenarios()[0] || null);
-    });
-    return () => { on = false; };
-  }, [scenario]);
-  const [history, setHistory] = useState(() => {
-    const saved = getActiveSession();
-    return saved && Array.isArray(saved.history) ? saved.history : [];
-  });
+  // In-flight session lifecycle (persist/restore, warm-then-heal scenario
+  // resolution, language switching) and document appearance live in focused
+  // hooks; App stays composition.
+  const {
+    scenario, setScenario, history, setHistory, switchLanguage,
+  } = useSessionLifecycle();
+  const { isDark } = useAppearance(settings);
   const [lastScores, setLastScores] = useState(null);
-  const [telemetry, setTelemetry] = useState([]);
   // Fluency mode state: the debrief is produced once, after the session.
   const [conversationMode, setConversationMode] = useState(() => {
     try { return localStorage.getItem('fp.conversationMode') === 'fluency' ? 'fluency' : 'coach'; } catch { return 'coach'; }
@@ -145,19 +129,6 @@ export default function App() {
   const [speakingMode, setSpeakingMode] = useState(null);
   const [listeningMode, setListeningMode] = useState(null);
 
-  useEffect(() => {
-    let cancelled = false;
-    let mod = null;
-    import('./lib/groq').then((m) => {
-      mod = m;
-      if (!cancelled) m.setTelemetrySink((entry) => setTelemetry((t) => [...t.slice(-49), entry]));
-    });
-    return () => {
-      cancelled = true;
-      mod?.setTelemetrySink(null);
-    };
-  }, []);
-
   // Boot prefetches: the vocabulary library loads in its own chunk
   // (per-language registries — only the active language's dictionaries
   // download), and loadAllEntries warms its sync facade so lazy screens can
@@ -170,32 +141,9 @@ export default function App() {
     warmScenarios().catch(() => {});
   }, []);
 
-  useEffect(() => {
-    const warm = () => {
-      import('./components/ChatArena');
-      import('./components/Skills');
-      import('./components/Vocabulary');
-      import('./components/Grammar');
-      import('./components/AiHub');
-      import('./components/Culture');
-      import('./components/Reference');
-      import('./components/Analytics');
-      import('./components/Profile');
-      import('./components/GlobalSearch');
-      import('./components/Focus');
-      import('./components/RealWorld');
-      import('./components/Personalise');
-      import('./components/Offline');
-      import('./components/PathSetup');
-      import('./components/LearningPath');
-      import('./components/FieldNotes');
-      import('./components/SettingsModal');
-      import('./components/SessionDashboard');
-    };
-    const ric = window.requestIdleCallback;
-    const id = ric ? ric(warm, { timeout: 4000 }) : setTimeout(warm, 2500);
-    return () => { (window.cancelIdleCallback || clearTimeout)(id); };
-  }, []);
+  // Non-rendering boot work (chunk warm-up, smart reminder, OS badge,
+  // study clock, telemetry sink) lives in one hook; App stays composition.
+  const { telemetry, clearTelemetry } = useStudioBoot({ dueCount, smartReminders: settings.smartReminders });
 
   const overlayClosers = [
     [searchOpen, () => setSearchOpen(false)],
@@ -213,70 +161,8 @@ export default function App() {
   ];
   useOverlayNav(overlayClosers);
 
-  // Smart reminder: reads the shared live due count — one due computation
-  // for the whole app. shouldRemindToday/markRemindedToday keep it to one
-  // notification per day; the extra effect runs are no-ops.
-  useEffect(() => {
-    if (dueCount === null || !settings.smartReminders || !shouldRemindToday()) return;
-    if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
-    const streak = getStreak().count;
-    const streakAtRisk = streak >= 3 && getTodayXp() === 0 && new Date().getHours() >= 17;
-    if (dueCount === 0 && !streakAtRisk) return;
-    markRemindedToday();
-    const body = streakAtRisk
-      ? `Your ${streak}-day streak is at risk — two minutes today keeps it alive.`
-      : `${dueCount} card${dueCount > 1 ? 's are' : ' is'} due for review — a few minutes now beats relearning later.`;
-    notify('Le Studio', body);
-  }, [dueCount, settings.smartReminders]);
-
-  // The OS badge: same live count. (The old hand-rolled copy was missing the
-  // language-switch signal — switching FR→DE kept advertising the previous
-  // language's due cards until an unrelated tick.)
-  useEffect(() => {
-    if (!('setAppBadge' in navigator)) return;
-    try {
-      if (dueCount !== null && dueCount > 0) navigator.setAppBadge(dueCount);
-      else navigator.clearAppBadge?.();
-    } catch { /* badging unsupported */ }
-  }, [dueCount]);
-
-  useEffect(() => {
-    const STEP = 20;
-    const id = setInterval(() => {
-      if (document.visibilityState === 'visible') addStudyTime(STEP);
-    }, STEP * 1000);
-    return () => clearInterval(id);
-  }, []);
-
-  useEffect(() => {
-    if (!scenario) return; // registry still resolving (DE/ES cold start)
-    if (history.length > 0) setActiveSession(scenario.id, history);
-    else clearActiveSession();
-  }, [scenario, history]);
-
-  const isDark = settings.theme
-    ? settings.theme === 'dark'
-    : window.matchMedia('(prefers-color-scheme: dark)').matches;
-
-  useEffect(() => {
-    document.documentElement.classList.toggle('dark', isDark);
-  }, [isDark]);
-
-  useEffect(() => {
-    const el = document.documentElement;
-    el.classList.toggle('reduce-motion', !!settings.reduceMotion);
-    el.classList.toggle('large-text', !!settings.largeText);
-    el.classList.toggle('dyslexia', !!settings.dyslexiaFont);
-    el.classList.toggle('high-contrast', !!settings.highContrast);
-  }, [settings.reduceMotion, settings.largeText, settings.dyslexiaFont, settings.highContrast]);
-
   const updateSettings = (s) => {
-    if (s.language !== settings.language) {
-      syncLanguage(s.language);
-      clearActiveSession();
-      setScenario(getScenarios()[0]);
-      setHistory([]);
-    }
+    if (s.language !== settings.language) switchLanguage(s.language);
     setSettings(s);
     persistSettings(s);
   };
@@ -305,7 +191,6 @@ export default function App() {
       smartReminders: d.reminders,
       mockMode: relayEnabled ? false : (d.mock || (!d.apiKey.trim() && settings.mockMode)),
     });
-    syncLanguage(d.language);
     updatePrefs({ learningStyle: d.learningStyle, lessonLength: d.lessonLength, favouriteTopics: d.favouriteTopics });
     persistAvatar(d.avatarId);
     ownAvatar(d.avatarId);
@@ -423,7 +308,12 @@ export default function App() {
     }
     if (lesson.type === 'dictation') { setSkillArea('listening'); setListeningMode('dictation'); setLearnView('skills'); setTab('learn'); return; }
     if (lesson.type === 'quickfire') { setSkillArea('speaking'); setSpeakingMode('quickfire'); setLearnView('skills'); setTab('learn'); return; }
-    if (lesson.type === 'grammar') { setGrammarFocus(lesson.topicId); setLearnView('grammar'); setTab('learn'); return; }
+    if (lesson.type === 'grammar') {
+      if (featureAvailableNow('grammar')) { setGrammarFocus(lesson.topicId); setLearnView('grammar'); }
+      else setLearnView('skills');
+      setTab('learn');
+      return;
+    }
     if (lesson.type === 'reading') { setSkillArea('reading'); setLearnView('skills'); setTab('learn'); return; }
     if (lesson.type === 'listening') { setSkillArea('listening'); setListeningMode(lesson.trackId); setLearnView('skills'); setTab('learn'); return; }
     if (lesson.type === 'cards') { setTab('review'); return; }
@@ -453,6 +343,10 @@ export default function App() {
 
   const goFromSearch = (hit) => {
     setSearchOpen(false);
+    // Final gate for French-only features: search results, stale links and
+    // any future caller can never land a Beta language on them. The hub also
+    // hides the entry points — this closes the loop behind them.
+    if (hit.type === 'grammar' && !featureAvailableNow('grammar')) return;
     if (hit.type === 'scenario') {
       const sc = getScenarios().find((x) => x.id === hit.id);
       if (sc && sc.id !== scenario.id) { setScenario(sc); setHistory([]); setLastScores(null); }
@@ -629,6 +523,7 @@ export default function App() {
               onTurn={handleTurn}
               onXp={awardXp}
               onGrammarTip={(topicId) => {
+                if (!featureAvailableNow('grammar')) return;
                 setGrammarFocus(topicId);
                 setLearnView('grammar');
                 setTab('learn');
@@ -688,7 +583,10 @@ export default function App() {
               onPrefsChange={updatePrefs}
               baseLevel={settings.level}
               onRun={runRecommendation}
-              onOpenGrammar={(topicId) => { setGrammarFocus(topicId); setLearnView('grammar'); setTab('learn'); }}
+              onOpenGrammar={(topicId) => {
+                if (!featureAvailableNow('grammar')) return;
+                setGrammarFocus(topicId); setLearnView('grammar'); setTab('learn');
+              }}
               onOpenSpeaking={() => setTab('speak')}
             />
           )}
@@ -718,7 +616,7 @@ export default function App() {
           overlay — never inline in a tab, where its height would push layout
           around and intercept the tab grid's clicks. */}
       {devPanelOpen && (
-        <DevPanel open onClose={() => setDevPanelOpen(false)} telemetry={telemetry} apiKey={apiKey} mockMode={settings.mockMode} onMockMode={(v) => updateSettings({ ...settings, mockMode: v })} onClear={() => setTelemetry([])} />
+        <DevPanel open onClose={() => setDevPanelOpen(false)} telemetry={telemetry} apiKey={apiKey} mockMode={settings.mockMode} onMockMode={(v) => updateSettings({ ...settings, mockMode: v })} onClear={clearTelemetry} />
       )}
       {learningPathOpen && (
         <div className="fixed inset-0 z-[55] overflow-y-auto bg-bg" role="dialog" aria-modal="true" aria-label="Learning path">
@@ -792,19 +690,6 @@ function Celebration({ data, onDone }) {
       </div>
     </div>
   );
-}
-
-function notify(title, body) {
-  const options = { body, icon: `${import.meta.env.BASE_URL}icon-192.png`, badge: `${import.meta.env.BASE_URL}icon-192.png`, tag: 'le-studio-reminder' };
-  try {
-    if (navigator.serviceWorker?.ready) {
-      navigator.serviceWorker.ready
-        .then((reg) => reg.showNotification(title, options))
-        .catch(() => { try { new Notification(title, options); } catch { /* unsupported */ } });
-    } else {
-      new Notification(title, options);
-    }
-  } catch { /* notifications unsupported */ }
 }
 
 function ScreenLoader() {

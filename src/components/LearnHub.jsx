@@ -1,7 +1,7 @@
 import { lazy, Suspense } from 'react';
 import { Book, Mic, Volume, BookOpen, Pencil, Sparkles, Landmark, Compass, Search, ChevronRight, GraduationCap, Bookmark } from './icons';
 import { contentLang } from '../lib/content/active.js';
-import { isFullSupport } from '../lib/languages';
+import { isFullSupport, featureAvailableNow } from '../lib/languages';
 
 const LazyGrammar = lazy(() => import('./Grammar'));
 const LazySkills = lazy(() => import('./Skills'));
@@ -33,10 +33,11 @@ const SECTIONS_ALL = [
 // Language honesty: grammar topics, culture and exam boards are authored in
 // French only. For beta languages those tools hide instead of showing
 // half-working content — the core loop (Today, Speak, vocab, dictée,
-// phrasebook, AI tutor) is what beta covers.
-const FRENCH_ONLY_SECTIONS = new Set(['grammar', 'culture', 'exams']);
+// phrasebook, AI tutor) is what beta covers. The gate is the shared
+// FULL_ONLY_FEATURES registry (languages.js), also used by onboarding,
+// search and deep links.
 const SECTIONS = (lang) => SECTIONS_ALL.filter(
-  (s) => isFullSupport(lang) || !FRENCH_ONLY_SECTIONS.has(s.id),
+  (s) => featureAvailableNow(s.id),
 );
 
 export default function LearnHub({

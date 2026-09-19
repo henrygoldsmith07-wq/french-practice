@@ -2,6 +2,7 @@
 // speaker; everything language-specific (TTS voice, speech-recognition code,
 // AI prompt language, branding, CEFR level titles) is looked up from here so
 // the whole studio can switch between French, German and Spanish.
+import { contentLang } from './content/active.js';
 
 export const LANGUAGES = {
   fr: {
@@ -64,6 +65,28 @@ export const getLanguage = (id) => LANGUAGES[id] || LANGUAGES[DEFAULT_LANG];
 // half-working content.
 export const isFullSupport = (id) => getLanguage(id).maturity === 'full';
 export const maturityLabel = (id) => (getLanguage(id).maturity === 'full' ? 'Full' : 'Beta');
+
+// Surfaces authored for the full studio only (French today). Every gate —
+// hub cards, onboarding, deep links, search — checks THIS list instead of
+// re-declaring its own, so a feature moves to beta coverage by editing one
+// set, never by chasing copies across components.
+//   grammar     — 60 CEFR topics authored in French
+//   culture     — customs/food/regions/history essays
+//   exams       — UK exam boards + DELF papers
+//   path        — the 12-unit Learning Path (French-authored content)
+export const FULL_ONLY_FEATURES = Object.freeze(new Set(['grammar', 'culture', 'exams', 'path']));
+
+/** True when `feature` (a FULL_ONLY_FEATURES id) is offered for language `id`. */
+export const featureAvailable = (feature, id) =>
+  !(FULL_ONLY_FEATURES.has(String(feature)) && !isFullSupport(id));
+
+/** Same, for the language currently being studied (content/active.js). */
+export const featureAvailableNow = (feature) => featureAvailable(feature, contentLang());
+
+// The honest one-liner beta learners see where a French-only surface would
+// have been: what IS available now, and what is still being built — never a
+// dead end, never a claim that a French-only feature is ready.
+export const betaAlternativeCopy = 'The core studio — Today sessions, conversation practice, vocabulary, dictée and the AI tutor — is ready for this language. Still coming: grammar topics, culture and exam preparation.';
 
 // A learner signs up for one or more languages and studies one at a time.
 // This keeps that pair honest wherever it is edited (onboarding, Settings):
