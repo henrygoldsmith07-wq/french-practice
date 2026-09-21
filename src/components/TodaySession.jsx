@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { buildDailyCurriculum } from '../lib/dailyCurriculum';
 import { takeawayPhrase } from '../lib/takeaway';
 import {
@@ -9,55 +9,39 @@ import {
 } from '../lib/selectionCalibration';
 import {
   probeCapabilities, nextFallback, resolvePlanCapabilities, buildDrillSlot,
-  ensureGrammarTopics,
 } from '../lib/todayCapabilities';
 // Study glue is measurement infrastructure: it loads WITH the session (the
 // lazy ChatArena/HeldOutCheck chunks pull the same module), never with the
-// app — same discipline as the listening library. The module lands in
-// _studyFlow (file-wide, so every component here can reach it); plan
-// construction GATES on it, so study instrumentation (enrolment, variant,
-// held-out checks) is never silently skipped, and study CALLS are safe no-ops
-// in the beat before it resolves.
-let _studyFlowMod = null;
-let _studyFlow = null;
-const loadStudyFlow = () => (_studyFlowMod ||= import('../lib/studyFlow').then((m) => { _studyFlow = m; return m; }));
-const callStudy = (name, ...args) => _studyFlow?.[name]?.(...args);
-import { getPracticeAssignment, balancedDrillTopic } from '../lib/assignment';
+// app — same discipline as the listening library. Plan construction GATES on
+// it while it resolves (instrumentation is never silently skipped), a FAILED
+// load degrades to a no-measurement plan (practice is never blocked), and
+// study CALLS are safe no-ops in the beat before it resolves. The loader
+// itself — with its never-cache-a-rejection retry semantics — lives in
+// lib/studyFlowAsync.js; the whole dependency lifecycle lives in
+// hooks/useTodayDeps.js.
+import { callStudy } from '../lib/studyFlowAsync';
+import { balancedDrillTopic } from '../lib/assignment';
 import { recordSelectionTrial, getSelectionTrial, saveSelectionTrial } from '../lib/storage';
 import {
   getSrs, getNotebook, getDueWeaknesses, rateCard,
-  getMistakeGraph, saveMistakeGraph, getSyncId, getStudyChecks, getLearnerErrors,
+  getMistakeGraph, saveMistakeGraph, getStudyChecks, getLearnerErrors,
 } from '../lib/storage';
 import { getErrorNotebook } from '../lib/errorNotebook';
 // The vocab library is a separate lazy chunk (per-language registries) — it
 // must be awaited, never statically imported from the entry graph. The hook
 // centralises the null-means-loading discipline and reloads on language switch.
 import { useAllEntries } from '../lib/vocabAsync';
-import { useScenarios } from '../hooks/useScenarios';
+import { useTodayDeps } from '../hooks/useTodayDeps';
+import { hasCapabilityNow } from '../lib/capabilities';
+import { langName } from '../lib/i18n';
 import { notebookAsEntries, dueEntries, reviewOrder, NEW_CARD_CAP } from '../lib/memory';
 import { getScenarios } from '../lib/data';
 
 // Listening track content is a lazy chunk: the library (mini-podcasts,
 // dialogues, news, scenes, authentic audio) must not ride the entry graph.
-// The session resolves tracks dynamically and re-plans when they arrive.
-let _tracksCache = null;
-function loadListeningTracks() {
-  if (_tracksCache) return Promise.resolve(_tracksCache);
-  return import('../lib/listening').then((m) => {
-    _tracksCache = m.allListeningTracks();
-    return _tracksCache;
-  });
-}
-function useListeningTracks() {
-  const [tracks, setTracks] = useState(_tracksCache);
-  useEffect(() => {
-    if (tracks) return undefined;
-    let on = true;
-    loadListeningTracks().then((t) => { if (on) setTracks(t); });
-    return () => { on = false; };
-  }, [tracks]);
-  return tracks;
-}
+// The session resolves tracks dynamically; loader, cache and React binding
+// live in lib/listeningAsync.js (failures are never cached there).
+import { useListeningTracks } from '../lib/listeningAsync';
 
 // The arena, the held-out check and the track player are heavy (audio, LLM,
 // recording, content) and only rendered mid-session — load them with the
@@ -93,75 +77,71 @@ import RecoveryBadge from './RecoveryBadge';
 // Hooks live in the two sub-components below (TodayBody / SessionComplete)
 // so the early-return structure can never reorder them.
 
-export default function TodaySession({ open, onClose, minutes = 20, apiKey, mockMode, level, ttsRate, onTurn, onXp, onActivity }) {
-  // The vocabulary library lives in its own lazy chunk — awaited before the
-  // plan builds. `null` (chunk loading) means no plan and no early return.
-  const entries = useAllEntries();
-  // Same discipline for the scenario registry (all languages, FR included,
-  // now lazy-load their corpus): null while the chunk loads → no plan yet.
-  const scenariosReg = useScenarios();
-  // Same discipline for the grammar topic index: the authored-drill library is
-  // a lazy chunk (~160 KB of topic data), loaded once before the plan builds.
-  const [grammarTopicsReady, setGrammarTopicsReady] = useState(false);
-  useEffect(() => {
-    let on = true;
-    ensureGrammarTopics().then(() => { if (on) setGrammarTopicsReady(true); });
-    return () => { on = false; };
-  }, []);
-  // Listening library loads with the session (lazy chunk). The plan waits for
-  // it like the vocab/scenario/grammar chunks so the listen segment can be
-  // planned, and the memo re-runs via `listeningTick` once tracks resolve.
-  const listeningTracksRef = useRef(null);
-  const [listeningTick, setListeningTick] = useState(0);
-  useEffect(() => {
-    if (!open || listeningTracksRef.current) return undefined;
-    let on = true;
-    loadListeningTracks().then((t) => {
-      if (!on) return;
-      listeningTracksRef.current = t;
-      setListeningTick((v) => v + 1);
-    });
-    return () => { on = false; };
-  }, [open]);
-  // Study glue loads with the session like the listening library; the plan
-  // gates on it too, so study instrumentation (enrolment, variant, held-out
-  // checks) is resolved rather than silently skipped, and the memo re-runs
-  // via `studyTick` when the module lands.
-  const [studyTick, setStudyTick] = useState(0);
-  useEffect(() => {
-    if (!open || _studyFlow) return undefined;
-    let on = true;
-    loadStudyFlow().then(() => { if (on) setStudyTick((v) => v + 1); });
-    return () => { on = false; };
-  }, [open]);
+export default function TodaySession({ open, onClose, minutes = 20, apiKey, mockMode, level, ttsRate, onTurn, onXp, onActivity, depsImpl }) {
+  // EVERY async dependency — vocabulary, scenarios, grammar index, listening
+  // library, study module — settles through ONE hook. Each arrival changes
+  // the deps object's identity, so the plan memo below replans regardless of
+  // the order modules resolve in (the old hand-wired per-dep state missed its
+  // readiness signals in the memo's dependency array, and Today could stay
+  // blank whenever the last chunk landed after first render). Failures land
+  // in deps.failed with an explicit retry — a failed import never hangs the
+  // session and is never permanently cached. `depsImpl` is a test seam:
+  // tests inject per-dependency loaders to force resolution orders and
+  // import failures deterministically.
+  const deps = useTodayDeps(depsImpl);
+  const { entries, retry } = deps;
+  const scenariosReg = deps.scenarios;
+  const grammarReady = deps.grammar;       // true = ready (or not needed)
+  const listeningTracks = deps.listening;  // null = loading
+  const studyModule = deps.study;          // null = loading
+  const studyFailed = deps.failed.includes('study');
+  const studyReady = Boolean(studyModule);
+
+  // Capability rows for the ACTIVE language (registry: lib/capabilities.js):
+  // French-authored drill producers and the listening library never enter a
+  // German or Spanish plan.
+  const conjCap = hasCapabilityNow('conjugation');
+  const authoredCap = hasCapabilityNow('grammar');
+  const accentCap = hasCapabilityNow('writing-authored');
+
   const plan = useMemo(() => {
-    // listeningTick/studyTick re-run the memo when their lazy chunks resolve;
-    // the variables themselves are intentionally unused in the memo body.
-    void listeningTick;
-    void studyTick;
-    if (!open || !entries || !grammarTopicsReady || !scenariosReg || !listeningTracksRef.current || !_studyFlow) return null;
-    const {
-      enrolStudyState, effectiveVariant, daySinceEnrolment, isCheckScheduled,
-      buildHeldOutPool, makeCheckRecord, saveCheckRecord,
-      verifyTreatmentConsistency, startOutcomeRecord,
-    } = _studyFlow;
+    if (!open || !entries || !scenariosReg || !grammarReady || !listeningTracks) return null;
+    // Study measurement: wait while it resolves (never silently skipped), but
+    // when it has FAILED, continue without measurement — study tooling must
+    // never block ordinary learning.
+    if (!studyReady && !studyFailed) return null;
+    const studyApi = studyReady ? studyModule : null;
     const graph = getMistakeGraph();
     // Conjugation-trainer misses are grammar gaps the mistake graph may never
     // have seen (the trainer writes to the learnerErrors model). A gap that
     // failed twice and has never been repaired competes for today's drill —
     // zero mastery, so it goes first. Formal recovery happens in the trainer
     // (recordLearnerSuccess flips the entry to recovering/resolved).
-    // Evidence Study: keep enrolment fresh (idempotent, consent-gated).
-    const study = enrolStudyState({ startLevel: level || null });
+    // Evidence Study: keep enrolment fresh (idempotent, consent-gated). When
+    // the study module failed to load (or misbehaves), `study` stays null and
+    // every measurement branch below is skipped — the learning plan is
+    // unchanged. Study tooling must never break ordinary practice.
+    let study = null;
+    if (studyApi) {
+      try {
+        study = studyApi.enrolStudyState({ startLevel: level || null });
+      } catch { study = null; }
+    }
     // ONE authoritative treatment: study arm when enrolled+active, else
     // adaptive. Nonparticipants always get the fully personalised product.
-    const variant = effectiveVariant({ study });
+    let variant = 'adaptive';
+    if (study && studyApi) {
+      try { variant = studyApi.effectiveVariant({ study }); } catch { variant = 'adaptive'; }
+    }
     const balanced = variant === 'balanced';
     // Study validity: the trainer gap is learner-specific targeting. It is
     // built UNCONDITIONALLY here and gated by the drill-slot registry
     // (buildDrillSlot skips learner-specific producers in the balanced arm) —
     // the gate lives in ONE place instead of at every construction site.
-    const trainerGap = (() => {
+    // Conjugation content (verb tables) is French-authored — a beta language
+    // never schedules the trainer even if stale French errors linger in the
+    // learner-error model from an earlier French period.
+    const trainerGap = !conjCap ? null : (() => {
       try {
         const due = getLearnerErrors({ limit: 12 }).find((e) =>
           e.key.startsWith('conjugation:') && e.status === 'active' && e.errorCount > 1);
@@ -195,7 +175,10 @@ export default function TodaySession({ open, onClose, minutes = 20, apiKey, mock
         e.key === 'dictation' && e.status === 'active' && e.errorCount > 1);
       return gap ? { id: gap.id, concept: 'Dictée listening accuracy', label: gap.label, type: 'listening', mastery: 0, recurrence: gap.recurrenceCount, source: 'learner-errors' } : null;
     })();
-    const pronunciationGap = (() => {
+    // The accent-drill repair retypes French accents (é/è/ç/œ) — French-
+    // authored orthography, so it exists only under the writing-authored
+    // capability row; other languages fall through to the next producer.
+    const pronunciationGap = !accentCap ? null : (() => {
       const gap = dueLearnerErrors.find((e) =>
         e.key === 'pronunciation' && e.status === 'active' && e.errorCount > 1);
       return gap ? { id: gap.id, concept: 'Pronunciation clarity', label: gap.label, type: 'pronunciation', mastery: 0, recurrence: gap.recurrenceCount, source: 'learner-errors' } : null;
@@ -229,7 +212,7 @@ export default function TodaySession({ open, onClose, minutes = 20, apiKey, mock
     const notebook = getErrorNotebook();
     const pendingRetypes = notebook.filter((e) => !e.correctedByLearner).length;
     const dayIndex = Math.floor(Date.now() / 86400000);
-    const tracks = listeningTracksRef.current || [];
+    const tracks = Array.isArray(listeningTracks) ? listeningTracks : [];
     const listeningTrack = tracks.length ? tracks[dayIndex % tracks.length] : null;
     const weakness = (() => { try { return getDueWeaknesses()[0] || null; } catch { return null; } })();
     const scenarios = scenariosReg;
@@ -248,6 +231,9 @@ export default function TodaySession({ open, onClose, minutes = 20, apiKey, mock
       srsDue,
       listeningTrack: listeningTrack ? { id: listeningTrack.id, title: listeningTrack.title, audioSrc: listeningTrack.audioSrc || null } : null,
       recentCorrections: notebook.filter((e) => e.correctedByLearner && Date.now() - Date.parse(e.at || e.lastSeenAt || 0) <= 48 * 3600000).length,
+      // Capability gating for French-authored drill producers: conj/accent/
+      // authored links exist only where the registry offers them (fr).
+      languageCaps: { conj: conjCap, authored: authoredCap, accent: accentCap },
     });
     const planBuilt = buildDailyCurriculum({
       minutes,
@@ -310,8 +296,8 @@ export default function TodaySession({ open, onClose, minutes = 20, apiKey, mock
     // a brief, unscaffolded, CEFR-matched check rides at the END of the
     // session — measurement only, never practice, never mastery input.
     const today = new Date();
-    const sDay = daySinceEnrolment(study, today);
-    const checkDue = isCheckScheduled(study, sDay);
+    const sDay = study ? studyApi.daySinceEnrolment(study, today) : null;
+    const checkDue = study ? studyApi.isCheckScheduled(study, sDay) : false;
     let heldOut = null;
     if (checkDue) {
       // Study instrumentation must never take down practice: any failure in
@@ -324,7 +310,7 @@ export default function TodaySession({ open, onClose, minutes = 20, apiKey, mock
         const seenIds = new Set(
           getStudyChecks().flatMap((c) => (c.items || []).map((it) => it.sourceItemId))
         );
-        const pool = buildHeldOutPool({
+        const pool = studyApi.buildHeldOutPool({
           participantId: study.participantId,
           day: sDay,
           level: level || study.startLevel || 'B1',
@@ -341,7 +327,7 @@ export default function TodaySession({ open, onClose, minutes = 20, apiKey, mock
       if (existing) {
         if (!existing.results) heldOut = existing;
       } else if (pool.words.length || pool.track) {
-        const saved = saveCheckRecord(makeCheckRecord({
+        const saved = studyApi.saveCheckRecord(studyApi.makeCheckRecord({
           participantId: study.participantId, day: sDay, level: level || study.startLevel || 'B1', pool,
         }));
         if (saved && !saved.results) heldOut = saved;
@@ -350,6 +336,9 @@ export default function TodaySession({ open, onClose, minutes = 20, apiKey, mock
     }
     // P1 selection-trial record: frozen before any practice happens, with
     // the resolved activity so analysis knows what was actually delivered.
+    // This is the product's own scheduler diagnostic (fp.selectionTrial.v1),
+    // not fp.study.* research data — it is recorded with or without study
+    // enrolment, so scheduler quality is observable for every learner.
     try {
       const drillSeg = planResolved.segments.find((s) => s.id === 'drill');
       const trial = recordSelectionTrial({
@@ -365,32 +354,65 @@ export default function TodaySession({ open, onClose, minutes = 20, apiKey, mock
         variant,
         calibrationReady: Boolean(calibration.ready),
       });
-      // Longitudinal outcome skeleton for this selection (study only).
-      // Validity invariant: the label recorded MUST equal the delivered
-      // treatment; a mismatch is flagged, never silently relabelled.
-      const consistency = verifyTreatmentConsistency({ deliveredVariant: variant, study });
-      startOutcomeRecord({ trial, graph, arm: variant, day: sDay, consistency });
+      // Longitudinal outcome skeleton for this trial: a genuine fp.study.*
+      // research write, so it happens only for an enrolled participant
+      // (startOutcomeRecord additionally self-guards on consent/protocol).
+      if (study) {
+        const consistency = studyApi.verifyTreatmentConsistency({ deliveredVariant: variant, study });
+        studyApi.startOutcomeRecord({ trial, graph, arm: variant, day: sDay, consistency });
+      }
     } catch { /* trial logging must never break the session */ }
     return { ...planResolved, study, heldOut, studyDay: sDay };
-  }, [open, minutes, apiKey, mockMode, level, entries, listeningTick]);
+  // deps: every async dependency's arrival (or failure, or retry) changes the
+  // deps object → these primitives change → the plan replans no matter what
+  // order modules resolve in.
+  }, [open, minutes, apiKey, mockMode, level, entries, scenariosReg, grammarReady,
+    listeningTracks, studyReady, studyFailed, studyModule, conjCap, authoredCap, accentCap]);
 
-  // The arena and the held-out check are heavy (audio, LLM, recording) —
-  // load them with the session, not with the app.
-  const [arenaReady, setArenaReady] = useState(false);
+  // Warm the heavy mid-session chunks (arena, held-out check) with the
+  // session, not the app. Fire-and-forget: the lazy() imports render via
+  // Suspense regardless, so no state is needed here — and a failed warm-up
+  // must not throw an unhandled rejection.
   useEffect(() => {
     if (!open) return undefined;
-    let on = true;
-    Promise.all([import('./ChatArena'), import('./HeldOutCheck')]).then(() => { if (on) setArenaReady(true); });
-    return () => { on = false; };
+    Promise.all([import('./ChatArena'), import('./HeldOutCheck')]).catch(() => { /* lazy() surfaces its own fallback */ });
+    return undefined;
   }, [open]);
 
   const [segIndex, setSegIndex] = useState(0);
-  const [xp, setXp] = useState(0);
+  const [, setXp] = useState(0);
   const [history, setHistory] = useState([]);
   const award = (n) => { setXp((x) => x + n); onXp?.(n); };
 
-  if (!open || !plan) return null;
+  if (!open) return null;
   const close = () => { onClose(); setSegIndex(0); setHistory([]); setXp(0); };
+  // Loading: genuine learning dependencies (vocab, scenarios, grammar,
+  // listening) still resolving. Never more than the actual chunk downloads —
+  // and never a timer: deps resolve as soon as their chunks land.
+  if (!plan && !deps.failed.length) {
+    return (
+      <div className="fixed inset-0 z-[60] bg-bg grid place-items-center" role="dialog" aria-modal="true" aria-label="Loading today's session">
+        <div className="text-center space-y-3 px-6">
+          <span className="inline-block w-7 h-7 rounded-full border-2 border-line border-t-ink animate-spin" aria-hidden="true" />
+          <p className="text-sm text-ink2">Preparing today's session…</p>
+        </div>
+      </div>
+    );
+  }
+  // One or more dependencies failed to load (offline, quota, transient
+  // error). Retry re-runs the real imports — never a timed blind retry.
+  if (!plan) {
+    return (
+      <div className="fixed inset-0 z-[60] bg-bg grid place-items-center" role="dialog" aria-modal="true" aria-label="Today's session unavailable">
+        <div className="text-center space-y-3 px-6 max-w-sm">
+          <p className="text-lg font-bold text-ink">Today's session couldn't load</p>
+          <p className="text-sm text-ink2">Some practice material didn't download. Check your connection and try again.</p>
+          <button onClick={retry} className="btn btn-primary min-h-11 px-6 rounded-xl text-sm">Try again</button>
+          <button onClick={close} className="block mx-auto text-xs text-ink3 hover:text-ink underline">Close</button>
+        </div>
+      </div>
+    );
+  }
   return (
     <Suspense fallback={null}>
     <TodayBody
@@ -439,7 +461,7 @@ function TodayBody({ plan, segIndex, setSegIndex, close, apiKey, mockMode, level
     segStartRef.current = Date.now();
     setSegIndex((i) => i + 1);
   };
-  const skip = () => {
+  const skip = useCallback(() => {
     const seg = plan.segments[segIndex];
     if (seg) {
       deliveredRef.current.push({
@@ -451,7 +473,7 @@ function TodayBody({ plan, segIndex, setSegIndex, close, apiKey, mockMode, level
     }
     segStartRef.current = Date.now();
     setSegIndex((i) => i + 1);
-  };
+  }, [plan, segIndex, setSegIndex]);
   // Persist the delivery record onto the newest selection trial once the
   // session ends (the trial was frozen at start; outcomes join later).
   useEffect(() => {
@@ -470,7 +492,7 @@ function TodayBody({ plan, segIndex, setSegIndex, close, apiKey, mockMode, level
         callStudy('updateOutcomeDelivery', { trialAt: last.at, timeSpent: last.timeSpent, completed: last.completed, delivered: last.delivered });
       }
     } catch { /* delivery logging must never break the close */ }
-  }, [segIndex, plan]);
+  }, [segIndex, plan, totalSteps]);
 
   const done = segIndex >= totalSteps;
   // The held-out check is an implicit extra step after the last normal segment.
@@ -523,7 +545,7 @@ function TodayBody({ plan, segIndex, setSegIndex, close, apiKey, mockMode, level
         ? { ...seg.payload }
         : (seg.payload?.chain || []).find((p) => p.kind === 'conj-drill') || null;
     } else if (seg.id === 'review') {
-      body = <DelayedReview count={seg.payload.count} onXp={award} onDone={advance} />;
+      body = <DelayedReview count={seg.payload.count} onXp={award} />;
     } else if (seg.id === 'listen' && seg.payload.track) {
       const track = (liveTracks || []).find((t) => t.id === seg.payload.track.id);
       if (track) body = <TrackPlayer track={track} baseRate={ttsRate} level={level} onXp={award} onActivity={onActivity} onDone={advance} />;
@@ -556,14 +578,14 @@ function TodayBody({ plan, segIndex, setSegIndex, close, apiKey, mockMode, level
     missingRef.current = segIndex;
     const t = setTimeout(skip, 0);
     return () => clearTimeout(t);
-  }, [done, body, segIndex]);
+  }, [done, body, segIndex, skip]);
 
   if (done) {
     const speakSeg = plan.segments.find((s) => s.id === 'speak');
     const speakScenario = speakSeg ? getScenarios().find((x) => x.id === speakSeg.payload.scenarioId) : null;
     const takeaway = takeawayPhrase(history, speakScenario);
     return (
-      <div className="fixed inset-0 z-[65] overflow-y-auto bg-bg" role="dialog" aria-modal="true" aria-label="Today's French complete">
+      <div className="fixed inset-0 z-[65] overflow-y-auto bg-bg" role="dialog" aria-modal="true" aria-label={`Today's ${langName()} complete`}>
         <div className="mx-auto min-h-full max-w-lg px-4 py-10 text-center space-y-5">
           <p className="text-3xl font-black text-ink">C'est tout.</p>
           {takeaway ? (
@@ -583,10 +605,10 @@ function TodayBody({ plan, segIndex, setSegIndex, close, apiKey, mockMode, level
   }
 
   return (
-    <div className="fixed inset-0 z-[60] bg-bg flex flex-col" role="dialog" aria-modal="true" aria-label="Today's French">
+    <div className="fixed inset-0 z-[60] bg-bg flex flex-col" role="dialog" aria-modal="true" aria-label={`Today's ${langName()}`}>
       <header className="shrink-0 border-b border-line bg-surface px-4 py-2.5">
         <div className="max-w-lg mx-auto flex items-center gap-3">
-          <span className="text-sm font-bold text-ink whitespace-nowrap">Aujourd'hui</span>
+          <span className="text-sm font-bold text-ink whitespace-nowrap">{langName() === 'French' ? 'Aujourd\'hui' : 'Today'}</span>
           <span className="text-[11px] text-ink3 tabular-nums">{plan.totalMinutes} min</span>
           <div className="flex-1 flex gap-1.5">
             {(plan.heldOut ? [...plan.segments, { id: 'held-out' }] : plan.segments).map((s, i) => (
@@ -598,6 +620,9 @@ function TodayBody({ plan, segIndex, setSegIndex, close, apiKey, mockMode, level
         <p className="max-w-lg mx-auto mt-1 text-[11px] text-ink3">
           {seg ? seg.why : 'A short, unscaffolded check on material you haven\'t practised — measurement only.'}
         </p>
+        {!plan.study && (
+          <p className="max-w-lg mx-auto text-[11px] text-ink3">Practising without research measurement today — your session is unaffected.</p>
+        )}
       </header>
       {seg?.explain && (
         <WhyPanel explain={seg.explain} recovery={seg.recovery} />
@@ -651,14 +676,14 @@ function DrillChainRunner({ payload, level, apiKey, mockMode, ttsRate, onXp, onD
     // sessionMode: the segment ends when the repair lands — a clean pass
     // repairs the gap (recordLearnerSuccess), 'Done' hands back to the session.
     return (
-      <SessionDrillShell title="Dictée — train your ear" onXp={onXp} onDone={onDone}>
+      <SessionDrillShell title="Dictée — train your ear" onDone={onDone}>
         <Dictation ttsRate={ttsRate} onXp={onXp} sessionMode onDone={onDone} />
       </SessionDrillShell>
     );
   }
   if (kind === 'accent-drill') {
     return (
-      <SessionDrillShell title="Accent drill — retype with the accents" onXp={onXp} onDone={onDone}>
+      <SessionDrillShell title="Accent drill — retype with the accents" onDone={onDone}>
         <AccentDrill onXp={onXp} sessionMode onDone={onDone} />
       </SessionDrillShell>
     );
@@ -683,7 +708,7 @@ function DrillChainRunner({ payload, level, apiKey, mockMode, ttsRate, onXp, onD
     return <ListenFallback track={current.track} onDone={onDone} />;
   }
   if (kind === 'review') {
-    return <DelayedReview count={current.count} onXp={onXp} onDone={onDone} />;
+    return <DelayedReview count={current.count} onXp={onXp} />;
   }
   // Default: the AI targeted drill (first link of the chain).
   return (
@@ -702,7 +727,7 @@ function DrillChainRunner({ payload, level, apiKey, mockMode, ttsRate, onXp, onD
   );
 }
 
-function FallbackBridge({ onEmpty }) {
+function FallbackBridge() {
   return <div className="h-full grid place-items-center px-4"><p className="text-sm text-ink2">Preparing the next drill…</p></div>;
 }
 
@@ -711,7 +736,7 @@ function FallbackBridge({ onEmpty }) {
 // session the segment needs a title and an explicit end. `canFinish` gates
 // the button to after the first completed round — ending the segment before
 // any repair attempt would just leave the gap active with nothing gained.
-function SessionDrillShell({ title, canFinish, onXp, onDone, children }) {
+function SessionDrillShell({ title, canFinish, onDone, children }) {
   return (
     <div className="h-full overflow-y-auto nice-scroll px-4 py-6">
       <div className="max-w-md mx-auto space-y-4">
@@ -782,7 +807,7 @@ function AiDrillRunner({ concept, level, apiKey, mockMode, onXp, onDone, onEmpty
   if (!state.exercises?.length) {
     // Walk the fallback chain instead of a dead end. The parent swaps the
     // runner for the next chain link; the brief pause avoids a flash.
-    return <FallbackBridge onEmpty={onEmpty} />;
+    return <FallbackBridge />;
   }
   return (
     <div className="h-full overflow-y-auto nice-scroll px-4 py-6">
@@ -902,7 +927,7 @@ export function RecallRunner({ cardCap, onDone, onXp, onActivity }) {
 
 // Delayed review: recent corrections replayed as retrieval prompts. A
 // self-marked "said it right" feeds the mistake graph's mastery lifecycle.
-export function DelayedReview({ count, onXp, onDone }) {
+export function DelayedReview({ count, onXp }) {
   const items = useMemo(
     () => getErrorNotebook().filter((e) => e.correctedByLearner).slice(0, Math.max(1, count)),
     [count],

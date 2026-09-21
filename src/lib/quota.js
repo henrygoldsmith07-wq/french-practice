@@ -43,7 +43,7 @@ export function canCall(n = 1) {
   return q.count + n <= q.limit;
 }
 
-export function consume(n = 1, label = 'call') {
+export function consume(n = 1) {
   const q = read();
   // day rollover handled in read()
   if (q.count + n > q.limit) return { ok: false, quota: q, reason: 'daily quota exhausted' };

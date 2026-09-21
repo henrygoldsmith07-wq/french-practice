@@ -66,7 +66,7 @@ export function pickTopCorrections(history, { max = MAX_CORRECTIONS } = {}) {
       b.recurrences - a.recurrences ||
       b.weakness - a.weakness)
     .slice(0, max)
-    .map(({ severity, weakness, ...keep }) => keep);
+    .map(({ severity: _severity, weakness: _weakness, ...keep }) => keep);
 }
 
 /** What genuinely carried the conversation — real positives, never filler. */

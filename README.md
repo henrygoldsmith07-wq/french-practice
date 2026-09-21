@@ -136,13 +136,18 @@ are claimed beyond what the dataset contains.**
 ```bash
 npm install
 npm run dev            # local dev server
-npm test               # node:test unit suites (689 tests)
+npm test               # node:test unit suites
 npm run lint:content   # copy honesty lint
 npm run lint:code      # eslint (react-hooks + no-undef)
 npm run type-check     # tsc over critical domain logic
 npm run build          # secret guard → vite build → SW versioning → budget gate
 npm run validation:status
 ```
+
+Test counts and bundle sizes are deliberately **not** written here — they
+change with every commit and go stale fast. Run the commands above for the
+current numbers; the budgets below are the contract, the measured values are
+CI's job.
 
 - **Per-push CI** (`.github/workflows/french-practice.yml`): lint, tests,
   type-check, build, size budget, and Playwright E2E on **Chromium + mobile
@@ -181,13 +186,15 @@ stores (`stores/*.js`) own their keys, shapes and caps and never import the
 facade (no cycles). `storage.js` remains a facade re-exporting the historical
 surface so older imports keep working; contract tests
 (`tests/storage-stores.test.js`) pin store↔facade agreement, the key map and
-the legacy-data migration.
-
-**Performance budgets** (enforced post-build by `scripts/check-performance.mjs`):
-first-load JS (entry + statically imported chunks) **≤ 450 kB** — currently
-~422 kB — with a 600 kB per-chunk ceiling and 1800 kB total. Heavy content
-(vocab packs, grammar topics, listening tracks, scenario corpora) is shipped as
-per-language lazy chunks and must never enter the boot graph.
+the legacy-data migration.**Performance budgets** (enforced post-build by `scripts/check-performance.mjs`):
+first-load JS (entry + statically imported chunks) **≤ 450 kB**, per-chunk
+ceiling 600 kB, 1800 kB total. The measured sizes are reported by the gate on
+every build — never hand-copied here. Boot prefetching is signal-based
+(`src/lib/prefetch.js`): connection quality and the active language decide
+what warms up, so early-session transfer stays close to first-load on slow
+links and Beta languages never download French-authored chunks. Heavy content
+(vocab packs, grammar topics, listening tracks, scenario corpora) is shipped
+as per-language lazy chunks and must never enter the boot graph.
 
 ## Licence
 

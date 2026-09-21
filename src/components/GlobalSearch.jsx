@@ -5,7 +5,7 @@ import { GRAMMAR_TOPICS } from '../lib/grammar';
 import { READING_TEXTS } from '../lib/reading';
 import { LISTENING_TRACKS } from '../lib/listening';
 import { contextLabel } from '../lib/fieldNotes';
-import { featureAvailableNow } from '../lib/languages';
+import { featureAvailableNow, hasCapabilityNow } from '../lib/languages';
 import { saveToNotebook, getNotebook, getFieldNotes } from '../lib/storage';
 import { SpeakButton } from './ui';
 import Mascot from './Mascot';
@@ -50,8 +50,14 @@ export default function GlobalSearch({ open, onClose, onGo }) {
       grammar: featureAvailableNow('grammar')
         ? GRAMMAR_TOPICS.filter((t) => hit(t.title, t.summary)).slice(0, 4)
         : [],
-      reading: READING_TEXTS.filter((t) => hit(t.title, t.description)).slice(0, 3),
-      listening: LISTENING_TRACKS.filter((t) => hit(t.title, t.description)).slice(0, 3),
+      // French-authored corpora (reading texts, listening tracks) never
+      // surface for a beta language — same honesty as grammar above.
+      reading: hasCapabilityNow('reading-library')
+        ? READING_TEXTS.filter((t) => hit(t.title, t.description)).slice(0, 3)
+        : [],
+      listening: hasCapabilityNow('listening-library')
+        ? LISTENING_TRACKS.filter((t) => hit(t.title, t.description)).slice(0, 3)
+        : [],
       fieldNotes: getFieldNotes().filter((note) => hit(note.french, note.meaning, note.source, note.context)).slice(0, 4),
     };
   }, [q]);
@@ -117,8 +123,8 @@ export default function GlobalSearch({ open, onClose, onGo }) {
                   {[
                     ['A conversation', jump.scenario && { type: 'scenario', id: jump.scenario.id }, MessageCircle],
                     ['A grammar topic', featureAvailableNow('grammar') && jump.grammar && { type: 'grammar', id: jump.grammar.id }, Book],
-                    ['Something to read', jump.reading && { type: 'reading', id: jump.reading.id }, BookOpen],
-                    ['Something to hear', jump.listening && { type: 'listening', id: jump.listening.id }, Volume],
+                    ['Something to read', hasCapabilityNow('reading-library') && jump.reading && { type: 'reading', id: jump.reading.id }, BookOpen],
+                    ['Something to hear', hasCapabilityNow('listening-library') && jump.listening && { type: 'listening', id: jump.listening.id }, Volume],
                     ['Field Notes', { type: 'field-notes' }, Bookmark],
                   ].map(([label, go, Icon]) => (
                     <button key={label} onClick={() => go && onGo(go)} disabled={!go}

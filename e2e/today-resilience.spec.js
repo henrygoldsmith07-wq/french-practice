@@ -12,15 +12,23 @@ async function seedLocalStorage(page, seed) {
   await page.goto('/');
   await expect(page.locator('h1').first()).toBeVisible({ timeout: 30_000 });
   // WebKit quirk: writes made in the same task as localStorage.clear() are
-  // dropped, so the wipe and the seed must run in separate tasks.
+  // dropped, so the wipe and the seed must run in separate tasks. Seed
+  // functions must NOT clear again — clear-then-write in one task is exactly
+  // the dropped-write pattern.
   await page.evaluate(() => localStorage.clear());
   await page.evaluate(seed);
   await page.reload();
   await expect(page.locator('h1').first()).toBeVisible({ timeout: 30_000 });
+  // Vite dev-server artifact (not an app race): the first import of a lazy
+  // chunk can trigger dependency pre-optimisation, which full-reloads the
+  // page — swallowing the overlay state a click sets immediately after.
+  // Warm the Today chunk graph here, during seeding, so the click lands on
+  // an already-optimised server and the overlay opens deterministically.
+  await page.evaluate(() => import('/src/components/TodaySession.jsx').catch(() => {})).catch(() => {});
+  await expect(page.locator('h1').first()).toBeVisible({ timeout: 30_000 });
 }
 
 const MISTAKE_SEED = () => {
-  localStorage.clear();
   localStorage.setItem('fp.settings', JSON.stringify({ mockMode: false, level: 'B1', ttsRate: 1 }));
   localStorage.setItem('fp.onboarded', '1');
   // A mistake-graph node makes the drill segment appear, and a matching
@@ -47,8 +55,7 @@ test('offline Today session stays complete: authored drill replaces the AI drill
   await expect(page.getByText(/Aujourd'hui/i).first()).toBeVisible({ timeout: 10_000 });
   // Either the authored drill rendered questions, or the chain walked on to
   // retype/SRS — but never an unavailable hole.
-  const unavailable = await page.getByText(/Nothing available for this segment/i).count();
-  expect(unavailable).toBe(0);
+  expect(await page.getByText(/Nothing available for this segment/i).count()).toBe(0);
 });
 
 test('service worker serves the app shell offline (Chromium only)', async ({ page, browserName }) => {
@@ -81,19 +88,12 @@ test('service worker serves the app shell offline (Chromium only)', async ({ pag
   await page.context().setOffline(false);
 });
 
-test('in-flight conversation survives a reload (active-session restore)', async ({ page }, testInfo) => {
-  test.skip(testInfo.project.name === 'webkit',
-    // Headless WebKit under automation intermittently loses localStorage
-    // commits across reload (seeded keys read true in-page, then vanish).
-    // An engine artefact, not app behaviour: restore passes on Chromium,
-    // Firefox and mobile, and Safari is covered by manual QA.
-    'WebKit automation storage-commit race');
-  await page.goto('/');
-  await expect(page.locator('h1').first()).toBeVisible({ timeout: 30_000 });
-  // WebKit quirk: clear() and subsequent writes must share ONE task, or the
-  // writes are dropped — so wipe + seed happen together here.
-  await page.evaluate(() => {
-    localStorage.clear();
+test('in-flight conversation survives a reload (active-session restore)', async ({ page }) => {
+  // The historical WebKit-only skip is gone for good: the two app bugs it
+  // inherited from (seeded fp.onboarded parsed as number 1 vs the '1' string
+  // check; the wizard overlay intercepting clicks) are fixed, and restore
+  // now passes on every engine with task-separated seeding.
+  await seedLocalStorage(page, () => {
     localStorage.setItem('fp.settings', JSON.stringify({ mockMode: true, level: 'A1', ttsRate: 1 }));
     localStorage.setItem('fp.onboarded', '1');
     localStorage.setItem('fp.activeSession', JSON.stringify({
@@ -113,7 +113,9 @@ test('in-flight conversation survives a reload (active-session restore)', async 
       }],
     }));
   });
-  await page.reload();
+  // seedLocalStorage already warmed the Today chunk graph, so the click
+  // lands on the already-optimised dev server and the overlay opens
+  // deterministically — no mid-click full reload.
   await page.getByRole('button', { name: 'Speak', exact: true }).click();
   // The restored turn must still be on screen after reload.
   await expect(page.getByText(/je voudrais un café/i).first()).toBeVisible({ timeout: 10_000 });
@@ -122,7 +124,6 @@ test('in-flight conversation survives a reload (active-session restore)', async 
 
 test('Today delivery is recorded on the selection trial after a run', async ({ page }) => {
   await seedLocalStorage(page, () => {
-    localStorage.clear();
     localStorage.setItem('fp.settings', JSON.stringify({ mockMode: true, level: 'B1', ttsRate: 1 }));
     localStorage.setItem('fp.onboarded', '1');
     localStorage.setItem('fp.mistakeGraph.v1', JSON.stringify([{

@@ -335,7 +335,7 @@ export function weakestMistakes(graph, limit = 3) {
  * after prior delayed evidence; delay = time since that evidence.
  * Constants like +35/+12/-20 are hypotheses until these curves justify them.
  */
-export function mistakeGraphStats(graph, now = Date.now()) {
+export function mistakeGraphStats(graph) {
   const nodes = (Array.isArray(graph) ? graph : []).filter((m) => !m.asrUncertain);
   const n = nodes.length;
   if (!n) return { n: 0, message: 'No mistake-graph data yet — stats populate from genuine use.' };

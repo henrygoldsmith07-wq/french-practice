@@ -1,7 +1,9 @@
 // useStudioBoot — App.jsx's non-rendering boot responsibilities, extracted:
 //
-//   1. lazy chunk warm-up  — idle-time prefetch of every screen chunk so the
-//      first navigation never stalls on a download;
+//   1. intelligent prefetch — signal-based chunk warm-up (lib/prefetch.js):
+//      active language, connection quality and two idle tiers replace the
+//      old "download every screen a beat after boot" warm-up; the nav bar
+//      adds hover/focus intent on top;
 //   2. smart reminder      — the one-notification-per-day nudge, driven by
 //      the shared live due count;
 //   3. OS badge            — the dock/home-screen badge mirrors the due count;
@@ -15,6 +17,7 @@ import { useEffect, useState } from 'react';
 import {
   shouldRemindToday, markRemindedToday, getStreak, getTodayXp, addStudyTime,
 } from '../lib/storage';
+import { scheduleBootPrefetch } from '../lib/prefetch';
 
 export default function useStudioBoot({ dueCount, smartReminders }) {
   const [telemetry, setTelemetry] = useState([]);
@@ -34,34 +37,12 @@ export default function useStudioBoot({ dueCount, smartReminders }) {
     };
   }, []);
 
-  // Warm every lazy screen chunk during idle time. One bounded prefetch —
-  // not per-tab — so the first tap into any hub never shows a spinner.
-  useEffect(() => {
-    const warm = () => {
-      import('../components/ChatArena');
-      import('../components/Skills');
-      import('../components/Vocabulary');
-      import('../components/Grammar');
-      import('../components/AiHub');
-      import('../components/Culture');
-      import('../components/Reference');
-      import('../components/Analytics');
-      import('../components/Profile');
-      import('../components/GlobalSearch');
-      import('../components/Focus');
-      import('../components/RealWorld');
-      import('../components/Personalise');
-      import('../components/Offline');
-      import('../components/PathSetup');
-      import('../components/LearningPath');
-      import('../components/FieldNotes');
-      import('../components/SettingsModal');
-      import('../components/SessionDashboard');
-    };
-    const ric = window.requestIdleCallback;
-    const id = ric ? ric(warm, { timeout: 4000 }) : setTimeout(warm, 2500);
-    return () => { (window.cancelIdleCallback || clearTimeout)(id); };
-  }, []);
+  // Intelligent prefetch across two idle tiers (see lib/prefetch.js): the
+  // Speak/Review dependencies first, the rest of the core loop later, and
+  // French-authored screens only when the active language offers them.
+  // Connection quality (saveData / effectiveType) can skip the speculation
+  // entirely; the nav bar's hover/focus intent prefetches on demand.
+  useEffect(() => scheduleBootPrefetch(), []);
 
   // Smart reminder: reads the shared live due count — one due computation
   // for the whole app. shouldRemindToday/markRemindedToday keep it to one

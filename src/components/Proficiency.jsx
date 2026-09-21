@@ -17,13 +17,15 @@ export default function Proficiency({ onXp }) {
   const [placing, setPlacing] = useState(false);
   const [level, setLevel] = useState(() => getSettings().level || 'A1');
 
+  // Evidence re-reads when the level changes; `placing` would wrongly reset
+  // `evidence` (and the score below) on every placement open/close.
   const evidence = useMemo(() => ({
     level,
     srs: safe(getSrs, {}),
     topicScores: safe(getGrammarProgress, {}),
     sessions: safe(getSessions, []),
     metrics: safe(getMetrics, []),
-  }), [level, placing]);
+  }), [level]);
 
   const result = useMemo(() => proficiency(evidence), [evidence]);
   const profile = profileFor(level);
@@ -235,7 +237,7 @@ function PlacementTest({ seedLevel, onDone, onCancel }) {
         <section className="bg-surface border border-line rounded-2xl p-4 space-y-3">
           <p className="text-base font-semibold">{item.q}</p>
           <div className="space-y-2">
-            {shown.map((originalIdx, i) => (
+            {shown.map((originalIdx) => (
               <button
                 key={originalIdx}
                 onClick={() => setState(answerItem(state, item, originalIdx))}

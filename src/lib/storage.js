@@ -10,6 +10,10 @@ export { getLearnerErrors, getLearnerErrorSummary, recordLearnerError, recordLea
 
 import { rateFsrs as fsrsRate, migrateFromSm2 } from './fsrs.js';
 import { applyLanguageEvidence, normaliseLanguageProgress } from './languageModel.js';
+// Evidence identity for the recovery loop (lib/evidenceIdentity.js): the
+// session/encounter provenance that makes "independent mastery evidence"
+// mean one drill presentation, not one more tap.
+import { currentSessionId, newEncounterId } from './evidenceIdentity.js';
 import {
   addFieldNote as _addFieldNote,
   normaliseFieldNotes,
@@ -84,7 +88,13 @@ export function removeExamBoundarySet(id) {
 // ---- first-run onboarding gate ----
 // New visitors (no key, no XP, no sessions, no explicit flag) see the wizard.
 
-export const isOnboarded = () => read(KEYS.onboarded, null) === '1';
+export const isOnboarded = () => {
+  // The flag round-trips as the string '1' when written through write(), but
+  // seeds/older builds can hold the bare number 1 (JSON.parse('1')). Accept
+  // both shapes: a seeded learner must never be greeted by the wizard again.
+  const flag = read(KEYS.onboarded, null);
+  return flag === '1' || flag === 1;
+};
 export const setOnboarded = () => write(KEYS.onboarded, '1');
 
 export function shouldOnboard() {
@@ -689,7 +699,7 @@ export function recordGrammarError(topicId, { mode = 'conversation', score = nul
   return all[topicId];
 }
 
-export function recordVocabularyOutcome(cardKey, outcome, { mode = 'receptive', score = null, label = null, source = 'srs' } = {}) {
+export function recordVocabularyOutcome(cardKey, outcome, { mode = 'receptive', score = null, label = null, source = 'srs', sessionId = null, encounterId = null, activityId = null } = {}) {
   const entry = getLearnerErrors({ limit: 240 }).find((e) => e.id === `vocabulary:${cardKey}`);
   if (!entry && outcome !== 'error') return null;
   if (outcome === 'error') {
@@ -708,6 +718,11 @@ export function recordVocabularyOutcome(cardKey, outcome, { mode = 'receptive', 
     mode,
     score,
     source,
+    // Evidence identity: distinct encounters accumulate toward resolution;
+    // re-answering the same presentation never does (see learnerErrors.js).
+    sessionId,
+    encounterId,
+    activityId: activityId || cardKey,
   });
 }
 
@@ -724,12 +739,41 @@ const RETEST_LADDER_DAYS = [1, 3, 7, 14]; // spaced retests after a repair
 function clampTopicId(id) { return String(id || '').slice(0, 64); }
 export const getWeaknessMemory = () => {
   const raw = read(KEYS.weaknessMemory, []);
-  return Array.isArray(raw) ? raw : [];
+  if (!Array.isArray(raw)) return [];
+  // Status is always DERIVED from the retest evidence at read time, never
+  // trusted from storage. This is what makes the legacy migration safe: an
+  // old build could store status 'resolved' from two same-session passes —
+  // under the identity-aware rule that evidence is not independent, so the
+  // entry reads back as 'recovering' (legacy data is preserved, but unknown
+  // identity never invents independence).
+  return raw.map((e) => (e && typeof e === 'object' ? { ...e, status: weaknessRecoveryStatus(e) } : e));
 };
 function writeWeakness(list) { write(KEYS.weaknessMemory, list.slice(0, WEAKNESS_CAP)); }
 function nextRetestDelay(repairCount) {
   const i = Math.min(Math.max(0, (repairCount || 0) - 1), RETEST_LADDER_DAYS.length - 1);
   return RETEST_LADDER_DAYS[i] * 86400000;
+}
+// Recovery status from a weakness's retest history, under the independence
+// rule: a weakness resolves only from ONE genuine delayed independent recall
+// (a scheduled retest that came due) or from successful recalls of DISTINCT
+// encounters (different presentations, never re-answers of the same drill).
+// Legacy retest records carry no identity — they are real dated successes, so
+// they keep the weakness 'recovering', but they can never be combined into a
+// resolution: unknown evidence must never invent independence. `recoverySeq`
+// bounds the window (a monotonic per-entry counter, immune to same-
+// millisecond timestamp collisions): a recurrence restarts recovery, so only
+// retests recorded AFTER the last error can count.
+function weaknessRecoveryStatus(e) {
+  const fromSeq = e.recoverySeq || 0;
+  // Legacy records carry no seq — they predate the window counter entirely,
+  // so they are always inside it (a pre-identity pass is real dated success
+  // evidence; it keeps the weakness 'recovering' but can never resolve, see
+  // below). Sealed windows only exclude records the counter has actually seen.
+  const passes = (e.retests || []).filter((r) => r && r.passed && (r.seq == null || r.seq > fromSeq));
+  if (passes.some((r) => r.delayed === true)) return 'resolved';
+  const encounters = new Set(passes.map((r) => r.encounterId).filter(Boolean));
+  if (encounters.size >= 2) return 'resolved';
+  return passes.length ? 'recovering' : 'active';
 }
 export function recordWeaknessError(topicId, { scenarioId = null } = {}) {
   const id = clampTopicId(topicId);
@@ -739,7 +783,7 @@ export function recordWeaknessError(topicId, { scenarioId = null } = {}) {
   const list = getWeaknessMemory();
   let e = list.find((x) => x.topicId === id);
   if (!e) {
-    e = { topicId: id, firstSeen: now, lastErrorAt: now, errorCount: 1, lastRepairAt: null, repairCount: 0, retestDueAt: null, retests: [], status: 'active', lastScenarioId: scenarioId };
+    e = { topicId: id, firstSeen: now, lastErrorAt: now, errorCount: 1, lastRepairAt: null, repairCount: 0, retestDueAt: null, retests: [], status: 'active', lastScenarioId: scenarioId, recoveryFrom: now, recoverySeq: 0, seq: 0 };
     list.unshift(e);
   } else {
     e.lastErrorAt = now;
@@ -751,28 +795,35 @@ export function recordWeaknessError(topicId, { scenarioId = null } = {}) {
       if (last && last.passed) e.recurrenceCount = (e.recurrenceCount || 0) + 1;
     }
     if (scenarioId) e.lastScenarioId = scenarioId;
-    e.retestDueAt = null; // new slip cancels any scheduled retest until repaired again
+    // A new slip cancels any scheduled retest AND restarts recovery: earlier
+    // passes must never re-resolve a weakness that just recurred.
+    e.recoveryFrom = now;
+    e.recoverySeq = e.seq || 0;
+    e.retestDueAt = null;
   }
   writeWeakness(list);
   return e;
 }
-export function recordWeaknessRepair(topicId, { scenarioId = null, passed = true } = {}) {
+export function recordWeaknessRepair(topicId, { scenarioId = null, sessionId = null, encounterId = null, activityId = null, passed = true } = {}) {
   const id = clampTopicId(topicId);
   if (!id) return null;
   const now = new Date().toISOString();
   const list = getWeaknessMemory();
   let e = list.find((x) => x.topicId === id);
   if (!e) {
-    e = { topicId: id, firstSeen: now, lastErrorAt: now, errorCount: 0, lastRepairAt: now, repairCount: 1, retestDueAt: new Date(Date.now() + nextRetestDelay(1)).toISOString(), retests: [{ at: now, scenarioId, passed }], status: passed ? 'recovering' : 'active' };
+    e = { topicId: id, firstSeen: now, lastErrorAt: now, errorCount: 0, lastRepairAt: now, repairCount: 1, retestDueAt: new Date(Date.now() + nextRetestDelay(1)).toISOString(), retests: [{ at: now, seq: 1, scenarioId, sessionId, encounterId, activityId, passed, delayed: false }], status: passed ? 'recovering' : 'active', recoveryFrom: now, recoverySeq: 0, seq: 1 };
     list.unshift(e);
   } else {
     e.lastRepairAt = now;
     e.repairCount = (e.repairCount || 0) + 1;
     e.retestDueAt = new Date(Date.now() + nextRetestDelay(e.repairCount)).toISOString();
-    e.retests = [...(e.retests || []), { at: now, scenarioId, passed }].slice(-12);
-    // Two consecutive passed retests after repair → resolved
-    const tail = e.retests.slice(-2);
-    e.status = tail.length === 2 && tail.every((r) => r.passed) ? 'resolved' : (passed ? 'recovering' : 'active');
+    // A repair is a same-session re-answer of the drill that produced the
+    // error: real success evidence (it schedules the spaced retest), but its
+    // independence comes only from a DISTINCT encounterId — re-answers of
+    // the same encounter dedupe in weaknessRecoveryStatus.
+    e.retests = [...(e.retests || []), { at: now, seq: (e.seq || 0) + 1, scenarioId, sessionId, encounterId, activityId, passed, delayed: false }].slice(-12);
+    e.seq = (e.seq || 0) + 1;
+    e.status = passed ? weaknessRecoveryStatus(e) : 'active';
   }
   writeWeakness(list);
   if (passed) {
@@ -784,11 +835,14 @@ export function recordWeaknessRepair(topicId, { scenarioId = null, passed = true
       source: 'weakness-retest',
       score: 80,
       detail: scenarioId ? `Repair in scenario ${scenarioId}.` : 'Repair attempt.',
+      sessionId,
+      encounterId,
+      activityId: activityId || scenarioId,
     });
   }
   return e;
 }
-export function recordWeaknessRetestResult(topicId, passed, { scenarioId = null } = {}) {
+export function recordWeaknessRetestResult(topicId, passed, { scenarioId = null, sessionId = null, encounterId = null, activityId = null, delayed = true } = {}) {
   const id = clampTopicId(topicId);
   if (!id) return null;
   getLearnerErrorModel();
@@ -796,23 +850,28 @@ export function recordWeaknessRetestResult(topicId, passed, { scenarioId = null 
   const list = getWeaknessMemory();
   const e = list.find((x) => x.topicId === id);
   if (!e) return null;
-  e.retests = [...(e.retests || []), { at: now, scenarioId, passed }].slice(-12);
+  // A scheduled retest is a genuine delayed independent recall by
+  // construction (delayed defaults true); callers may pass encounter identity
+  // so repeated answers to the same retest presentation cannot double-count.
+  e.retests = [...(e.retests || []), { at: now, seq: (e.seq || 0) + 1, scenarioId, sessionId, encounterId, activityId, passed, delayed: Boolean(delayed) }].slice(-12);
+  e.seq = (e.seq || 0) + 1;
   if (passed) {
     e.repairCount = (e.repairCount || 0) + 1;
     e.lastRepairAt = now;
     e.retestDueAt = new Date(Date.now() + nextRetestDelay(e.repairCount)).toISOString();
-    const tail = e.retests.slice(-2);
-    e.status = tail.length === 2 && tail.every((r) => r.passed) ? 'resolved' : 'recovering';
+    e.status = weaknessRecoveryStatus(e);
   } else {
     e.lastErrorAt = now;
     e.errorCount = (e.errorCount || 0) + 1;
     e.recurrenceCount = (e.recurrenceCount || 0) + 1;
     e.status = 'active';
     e.retestDueAt = null;
+    e.recoveryFrom = now; // recurrence restarts recovery
+    e.recoverySeq = e.seq || 0;
   }
   writeWeakness(list);
   if (passed) {
-    recordLearnerSuccess({ category: 'grammar', key: id, label: id, mode: 'conversation', source: 'weakness-retest', score: 80 });
+    recordLearnerSuccess({ category: 'grammar', key: id, label: id, mode: 'conversation', source: 'weakness-retest', score: 80, sessionId, encounterId, activityId: activityId || scenarioId });
   } else {
     recordLearnerError({ category: 'grammar', key: id, label: id, mode: 'conversation', source: 'weakness-retest', score: 0 });
   }
@@ -1643,6 +1702,11 @@ export function rateCard(cardId, rating, opts={}) {
       score: rating === 'again' ? 0 : null,
       label: opts.itemLabel || cardId,
       source: 'srs',
+      // Evidence identity: the caller's encounter for this one presentation
+      // (or a fresh one when the caller doesn't track presentations).
+      sessionId: opts.sessionId || currentSessionId(),
+      encounterId: opts.encounterId || newEncounterId(),
+      activityId: opts.activityId || cardId,
     });
     return next;
   }

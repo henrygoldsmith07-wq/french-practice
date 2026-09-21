@@ -314,7 +314,6 @@ export const CORRECTNESS_SKILLS = ['vocabulary', 'vocabulary-prod', 'grammar', '
  *  invents 0 for missing numbers), reasons clamped, no coercion of status. */
 export function sanitizePerItemEntry(entry, now = Date.now()) {
   const e = entry && typeof entry === 'object' ? entry : {};
-  const numOrNull = (v) => (v != null && Number.isFinite(Number(v)) ? Number(v) : null);
   return {
     sourceItemId: typeof e.sourceItemId === 'string' && e.sourceItemId ? e.sourceItemId : null,
     skill: PROTOCOL.transfer.reportedPerSkill.includes(e.skill) ? e.skill : null,

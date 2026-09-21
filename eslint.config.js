@@ -7,7 +7,8 @@
 //
 //   no-undef                  — dangling/typo'd identifiers (the Memory.jsx crash)
 //   react-hooks/rules-of-hooks— conditional/loop hook calls
-//   react-hooks/exhaustive-deps — missing effect deps (the async-race bug class)
+//   react-hooks/exhaustive-deps — missing effect deps (the async-race bug class:
+//                               TodaySession's studyTick replan bug shipped this way)
 //
 // It is NOT a style linter; formatting stays unopinionated.
 
@@ -38,7 +39,11 @@ export default [
       // are the gate.
       'no-unused-vars': ['warn', { argsIgnorePattern: '^_', varsIgnorePattern: '^_', caughtErrors: 'none' }],
       'react-hooks/rules-of-hooks': 'error',
-      'react-hooks/exhaustive-deps': 'warn',
+      // Stale/missing hook deps caused the TodaySession studyTick bug (Today
+      // could stay blank depending on module resolution order). Every site is
+      // now either genuinely fixed or carries an explicit refresh-signal
+      // `void tick` inside the hook body, so this is enforced as an error.
+      'react-hooks/exhaustive-deps': 'error',
       // `try {} catch {}` swallows are an accepted idiom in this codebase
       // (localStorage guards, optional telemetry).
       'no-empty': ['error', { allowEmptyCatch: true }],

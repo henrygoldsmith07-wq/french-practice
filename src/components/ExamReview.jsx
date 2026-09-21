@@ -8,7 +8,7 @@ import {
   EXAM_MODE, EXAM_MODES, TIER, TASK_CRITERIA, CRITERIA,
 } from '../lib/exams/boards.js';
 import { getExaminerScripts, getRealExamResults } from '../lib/storage';
-import { GraduationCap, Check } from './icons';
+import { Check } from './icons';
 
 // Shared time formatter (same shape as the setup stage's local fmt).
 const fmt = (s) => {

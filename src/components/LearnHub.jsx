@@ -1,7 +1,7 @@
 import { lazy, Suspense } from 'react';
-import { Book, Mic, Volume, BookOpen, Pencil, Sparkles, Landmark, Compass, Search, ChevronRight, GraduationCap, Bookmark } from './icons';
+import { Book, Mic, Sparkles, Landmark, Compass, Search, ChevronRight, GraduationCap, Bookmark } from './icons';
 import { contentLang } from '../lib/content/active.js';
-import { isFullSupport, featureAvailableNow } from '../lib/languages';
+import { featureAvailableNow, betaAlternativeCopy, getLanguage } from '../lib/languages';
 
 const LazyGrammar = lazy(() => import('./Grammar'));
 const LazySkills = lazy(() => import('./Skills'));
@@ -36,7 +36,7 @@ const SECTIONS_ALL = [
 // phrasebook, AI tutor) is what beta covers. The gate is the shared
 // FULL_ONLY_FEATURES registry (languages.js), also used by onboarding,
 // search and deep links.
-const SECTIONS = (lang) => SECTIONS_ALL.filter(
+const SECTIONS = () => SECTIONS_ALL.filter(
   (s) => featureAvailableNow(s.id),
 );
 
@@ -59,6 +59,21 @@ export default function LearnHub({
   onCloseReference,
   onOpenSpeaking,
 }) {
+  // Defensive deep-link gate: even if a stale link, a recommendation or a
+  // future caller routes here, a French-authored screen can never render for
+  // a beta language — the hub shows the honest beta note instead.
+  if (view && ['grammar', 'culture', 'exams'].includes(view) && !featureAvailableNow(view)) {
+    return (
+      <div className="h-full overflow-y-auto nice-scroll">
+        <HubBack onBack={() => onView(null)} label="Learn" />
+        <div className="max-w-lg mx-auto px-4 py-10 space-y-4 text-center">
+          <p className="text-lg font-bold text-ink">Not available for {getLanguage(contentLang()).name} yet</p>
+          <p className="text-sm text-ink2 leading-relaxed">{betaAlternativeCopy(contentLang())}</p>
+          <button onClick={() => onView(null)} className="btn btn-primary min-h-11 px-6 rounded-xl text-sm">Back to Learn</button>
+        </div>
+      </div>
+    );
+  }
   if (view === 'grammar') {
     return (
       <div className="h-full flex flex-col min-h-0">
@@ -164,7 +179,7 @@ export default function LearnHub({
           <p className="text-ink2 mt-1.5 text-sm max-w-xl mx-auto">Grammar, skills and reference — one calm place. Pick what you need today; the rest waits.</p>
         </div>
         <div className="grid gap-3.5 sm:grid-cols-2">
-          {SECTIONS(contentLang()).map((s) => (
+          {SECTIONS().map((s) => (
             <button
               key={s.id}
               onClick={() => onView(s.id)}
@@ -178,7 +193,9 @@ export default function LearnHub({
           ))}
         </div>
         <div className="flex flex-wrap justify-center gap-2 pt-2">
-          <span className="inline-block bg-surface border border-line rounded-full px-3.5 py-1.5 text-xs font-semibold text-ink2">A1 → C1 grammar library</span>
+          {featureAvailableNow('grammar') && (
+            <span className="inline-block bg-surface border border-line rounded-full px-3.5 py-1.5 text-xs font-semibold text-ink2">A1 → C1 grammar library</span>
+          )}
           <span className="inline-block bg-surface border border-line rounded-full px-3.5 py-1.5 text-xs font-semibold text-ink2">Your life → your curriculum</span>
           <span className="inline-block bg-surface border border-line rounded-full px-3.5 py-1.5 text-xs font-semibold text-ink2">4 skills · PWA offline</span>
           <span className="inline-block bg-surface border border-line rounded-full px-3.5 py-1.5 text-xs font-semibold text-ink2">Search with ⌘K</span>

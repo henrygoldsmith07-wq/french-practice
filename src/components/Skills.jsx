@@ -2,17 +2,20 @@ import Speaking from './Speaking';
 import Listening from './Listening';
 import Reading from './Reading';
 import Writing from './Writing';
+import { hasCapabilityNow } from '../lib/capabilities';
 import { Mic, Volume, BookOpen, Pencil, ChevronLeft, ChevronRight } from './icons';
 
 // Skills hub: the four skill areas behind one tab so the bottom nav stays
 // usable. Deep links (Home cards, path lessons) jump straight to an area.
-
-const AREAS = [
-  { id: 'speaking', icon: Mic, title: 'Speaking', subtitle: 'Pronunciation, shadowing, quick-fire improv' },
-  { id: 'listening', icon: Volume, title: 'Listening', subtitle: 'Podcasts, dialogues, news, dictée' },
-  { id: 'reading', icon: BookOpen, title: 'Reading', subtitle: 'Stories, articles, classics, tap-to-translate' },
-  { id: 'writing', icon: Pencil, title: 'Writing', subtitle: 'Typing, completion, free writing, essays' },
+// The READING library is French-authored, so the area exists for French only
+// (capability matrix) — beta languages see the areas that genuinely work.
+const AREAS_ALL = [
+  { id: 'speaking', icon: Mic, title: 'Speaking', subtitle: 'Pronunciation, shadowing, quick-fire improv', cap: null },
+  { id: 'listening', icon: Volume, title: 'Listening', subtitle: 'Podcasts, dialogues, news, dictée', cap: null },
+  { id: 'reading', icon: BookOpen, title: 'Reading', subtitle: 'Stories, articles, classics, tap-to-translate', cap: 'reading-library' },
+  { id: 'writing', icon: Pencil, title: 'Writing', subtitle: 'Typing, completion, free writing, essays', cap: null },
 ];
+const AREAS = () => AREAS_ALL.filter((a) => !a.cap || hasCapabilityNow(a.cap));
 
 export default function Skills({ area, onAreaChange, speaking, listening, common }) {
   if (!area) {
@@ -24,7 +27,7 @@ export default function Skills({ area, onAreaChange, speaking, listening, common
             <p className="text-xs text-ink2 mt-1">Drills for each of the four skills. Conversations live in the Arena.</p>
           </div>
           <div className="space-y-2.5">
-            {AREAS.map((a) => (
+            {AREAS().map((a) => (
               <button
                 key={a.id}
                 onClick={() => onAreaChange(a.id)}
@@ -75,7 +78,7 @@ export default function Skills({ area, onAreaChange, speaking, listening, common
             onActivity={common.onActivity}
           />
         )}
-        {area === 'reading' && (
+        {area === 'reading' && hasCapabilityNow('reading-library') && (
           <Reading apiKey={common.apiKey} mockMode={common.mockMode} onXp={common.onXp} onActivity={common.onActivity} />
         )}
         {area === 'writing' && (

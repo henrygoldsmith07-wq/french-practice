@@ -6,11 +6,19 @@
 //   mistake → classify (category+key) → prioritise → targeted repair
 //   → clean success → delayed retest → improving → resolved → recurrence
 // Evidence rules encoded here:
-//   · one correct answer never implies mastery (two clean passes to resolve)
+//   · one correct answer never implies mastery
 //   · same-session success is weaker evidence than delayed recall — a
-//     delayed clean pass counts toward resolution on its own; same-session
-//     passes only ever count toward "improving" (see recordLearnerSuccess)
+//     delayed clean pass resolves on its own; same-session passes need
+//     INDEPENDENT encounters (see below)
+//   · success carries evidence identity (sessionId / encounterId /
+//     activityId, lib/evidenceIdentity.js): same-session passes resolve
+//     only from DISTINCT encounters — re-answering the same drill (same
+//     encounterId) never increments independent mastery twice, and
+//     identity-less (legacy/unknown) evidence can extend "improving" but
+//     must never invent the independence a resolution requires
 //   · a mistake after a repair reactivates the entry and tallies recurrence
+
+import { evidenceIdentity, encounterKeyOf } from './evidenceIdentity.js';
 
 export const LEARNER_ERROR_CATEGORIES = ['grammar', 'vocabulary', 'listening', 'pronunciation', 'reading', 'speaking', 'writing'];
 
@@ -97,7 +105,8 @@ export const evidenceStrength = (success, entry) => {
 };
 
 const DELAYED_PASSES_TO_RESOLVE = 1; // a delayed clean recall resolves on its own
-const SAME_SESSION_PASSES_TO_RESOLVE = 2; // same-session evidence needs an extra pass
+const INDEPENDENT_PASSES_TO_RESOLVE = 2; // same-session evidence needs two DISTINCT encounters
+const MAX_ENCOUNTER_KEYS = 16; // bounded distinct-encounter tally per entry
 
 const STATUSES = new Set(['active', 'recovering', 'resolved']);
 const MAX_ENTRIES = 240;
@@ -138,14 +147,27 @@ function entryId(category, key) {
 
 function normaliseEvidence(evidence, fallbackAt) {
   if (!evidence || typeof evidence !== 'object') return null;
+  const pick = (v, max) => {
+    const s = String(v || '').trim();
+    return s ? s.slice(0, max) : null;
+  };
   return {
     at: iso(evidence.at, fallbackAt),
     mode: String(evidence.mode || 'unknown').slice(0, 40),
     score: clampScore(evidence.score),
     source: String(evidence.source || '').slice(0, 60) || null,
     detail: String(evidence.detail || '').slice(0, 180) || null,
+    // Evidence identity (lib/evidenceIdentity.js): provenance that lets the
+    // model tell distinct encounters apart. Optional — legacy evidence has
+    // none, and absence is treated as "independence unknown", never "independent".
+    sessionId: pick(evidence.sessionId, 80),
+    encounterId: pick(evidence.encounterId, 80),
+    activityId: pick(evidence.activityId, 80),
   };
 }
+
+const clampEncounterKeys = (keys) =>
+  [...new Set((Array.isArray(keys) ? keys : []).filter((k) => typeof k === 'string' && k).slice(-MAX_ENCOUNTER_KEYS))];
 
 function normaliseEntry(input, fallbackAt = new Date().toISOString()) {
   if (!input || typeof input !== 'object') return null;
@@ -180,6 +202,12 @@ function normaliseEntry(input, fallbackAt = new Date().toISOString()) {
     successCount,
     recurrenceCount: Math.max(0, Math.floor(Number(input.recurrenceCount) || 0)),
     cleanPasses,
+    // Independent-encounter tally since the last mistake. Legacy entries
+    // (no field) default to 0: unknown legacy evidence must never invent
+    // the independence a resolution requires — recovery is re-earned under
+    // the identity-aware rule with fresh evidence.
+    independentPasses: Math.max(0, Math.floor(Number(input.independentPasses) || 0)),
+    encounterKeys: clampEncounterKeys(input.encounterKeys),
     status,
     lastEvidence: ['same-session', 'delayed', 'unknown'].includes(input.lastEvidence) ? input.lastEvidence : null,
     lastScore: clampScore(input.lastScore),
@@ -241,6 +269,10 @@ export function recordLearnerError(model, error = {}, { at = new Date().toISOStr
     errorCount: starter.errorCount + count,
     recurrenceCount: starter.recurrenceCount + recurrence + (wasRepaired && count > 0 ? 1 : 0),
     cleanPasses: 0,
+    // Recurrence resets recovery: the independent-encounter tally restarts
+    // so old passes can never re-resolve a weakness that just recurred.
+    independentPasses: 0,
+    encounterKeys: [],
     status: 'active', // recurrence reactivates a resolved/recovering weakness
     lastEvidence: null,
     lastScore: clampScore(error.score),
@@ -264,12 +296,30 @@ export function recordLearnerSuccess(model, success = {}, { at = new Date().toIS
   const { evidence, modes } = withEvidence(previous, success, at);
   const mode = String(success.mode || '').slice(0, 40);
   const strength = evidenceStrength({ ...success, at }, previous);
+  // Independence accounting. A DELAYED clean pass is itself the retention
+  // evidence the loop asks for and resolves on its own. Same-session passes  // resolve only from DISTINCT encounters: the encounter key dedupes
+  // re-answers of the same drill, and identity-less evidence never advances
+  // the tally — it can extend "improving" but must never imply mastery.
+  const identity = evidenceIdentity(success);
+  const encounterKey = encounterKeyOf(identity);
+  const keys = previous.encounterKeys || [];
+  const sameEncounterAgain = Boolean(encounterKey && keys.includes(encounterKey));
+  let independentPasses = previous.independentPasses || 0;
+  let nextKeys = keys;
+  if (strength === 'delayed') {
+    // Legacy delayed evidence (mode/date separation, no ids) is still
+    // structurally independent — a scheduled retest is a separate encounter
+    // by construction. A delayed pass whose encounter was already counted
+    // adds nothing new.
+    if (!sameEncounterAgain) independentPasses = INDEPENDENT_PASSES_TO_RESOLVE;
+  } else if (encounterKey && !sameEncounterAgain) {
+    independentPasses = Math.min(independentPasses + 1, INDEPENDENT_PASSES_TO_RESOLVE);
+    nextKeys = [...keys, encounterKey].slice(-MAX_ENCOUNTER_KEYS);
+  }
   // One correct answer never implies mastery: same-session passes need two
-  // independent clean passes to resolve; a DELAYED clean pass is itself the
-  // retention evidence the loop asks for and resolves on its own.
+  // distinct encounters; a delayed clean pass resolves on its own.
   const cleanPasses = strength === 'delayed' ? DELAYED_PASSES_TO_RESOLVE : previous.cleanPasses + 1;
-  const needed = strength === 'delayed' ? DELAYED_PASSES_TO_RESOLVE : SAME_SESSION_PASSES_TO_RESOLVE;
-  const status = cleanPasses >= needed ? 'resolved' : 'recovering';
+  const status = independentPasses >= INDEPENDENT_PASSES_TO_RESOLVE ? 'resolved' : 'recovering';
   return {
     version: 1,
     updatedAt: at,
@@ -279,6 +329,8 @@ export function recordLearnerSuccess(model, success = {}, { at = new Date().toIS
       lastSuccessAt: at,
       successCount: previous.successCount + 1,
       cleanPasses,
+      independentPasses,
+      encounterKeys: nextKeys,
       lastEvidence: strength,
       status,
       lastScore: clampScore(success.score),

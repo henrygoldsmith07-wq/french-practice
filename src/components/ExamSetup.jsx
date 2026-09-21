@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useState } from 'react';
 import {
   getExaminerScripts, saveExamBoundarySet,
 } from '../lib/storage';
@@ -7,7 +7,7 @@ import {
 } from '../lib/exams/boards.js';
 import { benchmarkExaminer } from '../lib/exams/simulator.js';
 import { parseBoundaryImport } from '../lib/exams/boundaries.js';
-import { GraduationCap, ChevronRight } from './icons';
+import { GraduationCap } from './icons';
 
 // Shared time formatter (same shape as the simulator stage's local fmt).
 const fmt = (s) => {

@@ -3,7 +3,7 @@
 
 import { ALL_LEVELS, assistancePolicy, levelIndex, profileFor } from './cefr.js';
 import { fsrsRetention } from './fsrs.js';
-import { LISTENING_STAGES, listeningStage } from './accents.js';
+import { listeningStage } from './accents.js';
 import { dictationSpeed, levelForSrs } from './dictationProgression.js';
 import { calibration, MIN_SAMPLES, samplesFrom } from './fsrsValidation.js';
 

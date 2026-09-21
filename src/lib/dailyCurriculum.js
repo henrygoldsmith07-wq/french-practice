@@ -37,7 +37,7 @@ export function buildDailyCurriculum(input = {}) {
   const {
     minutes = 20, srsDue = 0, topMistake = null, pendingRetypes = 0,
     recentCorrections = 0, weaknessScenarioId = null, suggestedScenarioId = null,
-    examSoon = false, listeningTrack = null, dayIndex = 0,
+    examSoon = false, listeningTrack = null,
     balanced = false, balancedDrillTopic = null,
   } = input;
   const total = Math.max(5, Math.min(45, Math.round(minutes)));

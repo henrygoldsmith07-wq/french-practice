@@ -3,6 +3,7 @@
 // AI prompt language, branding, CEFR level titles) is looked up from here so
 // the whole studio can switch between French, German and Spanish.
 import { contentLang } from './content/active.js';
+import { FEATURE_CAPABILITY, capabilityLanguages, featureOffered } from './capabilities.js';
 
 export const LANGUAGES = {
   fr: {
@@ -15,6 +16,7 @@ export const LANGUAGES = {
     flag: '🇫🇷',
     studio: 'Le Studio',
     hello: 'Bonjour',
+    greetings: { morning: 'Bonjour !', afternoon: 'Bon après-midi !', evening: 'Bonsoir !' },
     voiceHint: /natural|premium|enhanced|amélior/i,
     // Content maturity: 'full' = the complete studio (grammar topics, culture,
     // exam boards, verb tables, learning path). 'beta' = core loop (Today,
@@ -34,6 +36,7 @@ export const LANGUAGES = {
     flag: '🇩🇪',
     studio: 'Das Studio',
     hello: 'Hallo',
+    greetings: { morning: 'Guten Morgen!', afternoon: 'Guten Tag!', evening: 'Guten Abend!' },
     voiceHint: /natural|premium|enhanced/i,
     maturity: 'beta',
     levelTitles: ['Anfänger', 'Lehrling', 'Schüler', 'Sprecher', 'Redner', 'Rhetoriker', 'Gewandt', 'Kenner', 'Meister', 'Legende'],
@@ -48,6 +51,7 @@ export const LANGUAGES = {
     flag: '🇪🇸',
     studio: 'El Estudio',
     hello: 'Hola',
+    greetings: { morning: '¡Buenos días!', afternoon: '¡Buenas tardes!', evening: '¡Buenas noches!' },
     voiceHint: /natural|premium|enhanced/i,
     maturity: 'beta',
     levelTitles: ['Principiante', 'Aprendiz', 'Estudiante', 'Hablante', 'Conversador', 'Orador', 'Elocuente', 'Hispanohablante', 'Maestro', 'Leyenda'],
@@ -66,27 +70,36 @@ export const getLanguage = (id) => LANGUAGES[id] || LANGUAGES[DEFAULT_LANG];
 export const isFullSupport = (id) => getLanguage(id).maturity === 'full';
 export const maturityLabel = (id) => (getLanguage(id).maturity === 'full' ? 'Full' : 'Beta');
 
-// Surfaces authored for the full studio only (French today). Every gate —
-// hub cards, onboarding, deep links, search — checks THIS list instead of
-// re-declaring its own, so a feature moves to beta coverage by editing one
-// set, never by chasing copies across components.
-//   grammar     — 60 CEFR topics authored in French
-//   culture     — customs/food/regions/history essays
-//   exams       — UK exam boards + DELF papers
-//   path        — the 12-unit Learning Path (French-authored content)
-export const FULL_ONLY_FEATURES = Object.freeze(new Set(['grammar', 'culture', 'exams', 'path']));
+// Surfaces authored for the full studio only (French today). The rows live
+// in the ONE authoritative capability registry (capabilities.js) — this file
+// keeps the legacy feature-id API and derives its set from the matrix, so a
+// feature moves to beta coverage by editing ONE row, never by chasing copies
+// across components.
+export { CAPABILITIES, CAPABILITY_IDS, hasCapability, hasCapabilityNow, capabilityLanguages, FEATURE_CAPABILITY } from './capabilities.js';
 
-/** True when `feature` (a FULL_ONLY_FEATURES id) is offered for language `id`. */
-export const featureAvailable = (feature, id) =>
-  !(FULL_ONLY_FEATURES.has(String(feature)) && !isFullSupport(id));
+// Features offered to French only — DERIVED from the capability matrix: a
+// feature id is French-only when the capability row it maps to lists French
+// alone. Keyed by FEATURE id (the legacy API), not capability id.
+export const FULL_ONLY_FEATURES = Object.freeze(
+  new Set(Object.entries(FEATURE_CAPABILITY)
+    .filter(([, cap]) => capabilityLanguages(cap).join(',') === 'fr')
+    .map(([feature]) => feature)),
+);
+
+/** True when feature id `feature` is offered for language `id`. */
+export const featureAvailable = (feature, id) => featureOffered(feature, id);
 
 /** Same, for the language currently being studied (content/active.js). */
 export const featureAvailableNow = (feature) => featureAvailable(feature, contentLang());
 
 // The honest one-liner beta learners see where a French-only surface would
 // have been: what IS available now, and what is still being built — never a
-// dead end, never a claim that a French-only feature is ready.
-export const betaAlternativeCopy = 'The core studio — Today sessions, conversation practice, vocabulary, dictée and the AI tutor — is ready for this language. Still coming: grammar topics, culture and exam preparation.';
+// dead end, never a claim that a French-only feature is ready. The language
+// name is dynamic: the same sentence serves every beta language.
+export const betaAlternativeCopy = (id) => {
+  const name = getLanguage(id).name;
+  return `The core studio — Today sessions, conversation practice, vocabulary, dictée and the AI tutor — is ready for ${name}. Still coming for ${name}: grammar topics, culture and exam preparation.`;
+};
 
 // A learner signs up for one or more languages and studies one at a time.
 // This keeps that pair honest wherever it is edited (onboarding, Settings):

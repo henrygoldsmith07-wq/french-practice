@@ -572,7 +572,6 @@ export async function evaluateRedoTurn(apiKey, { scenario, historyBefore, origin
   }
   // Judge only the retry — same history prefix, same system — but include the
   // original + its correction so the model can reward incorporation.
-  const originalEv = historyBefore.length ? null : null; // placeholder — caller threads it via prompt
   const json = await chatJson(apiKey, [
     {
       role: 'system',

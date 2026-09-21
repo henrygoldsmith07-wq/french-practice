@@ -131,7 +131,6 @@ export function recordAttempt(progression, { itemId, stage, correct }) {
 
 // ── Catalog ──────────────────────────────────────────────────────────────────
 
-import { AUTHENTIC_AUDIO_SEED } from './content/authenticAudioSeed.js';
 
 /** Merge built-in seed + imported packs; validates every entry. Returns {assets, rejected}. */
 export function mergeCatalogs(...catalogs) {

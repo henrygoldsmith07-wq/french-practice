@@ -1,8 +1,7 @@
 // Adaptive practice — listening/speech/dictation/conversation difficulty,
 // weak recycling, active vocabulary targets, controlled new-vocab introduction.
 
-import { levelForSrs, dictationSpeed } from './dictationProgression.js';
-import { fsrsRetention } from './fsrs.js';
+import { levelForSrs } from './dictationProgression.js';
 
 export function listeningDifficulty(srs, entries){
   const lvl = levelForSrs(srs, entries);

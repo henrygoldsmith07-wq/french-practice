@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   getXp, getStreak, getSessions, getReviewLog, getGrammarProgress, getNotebook,
   getCoins, addCoins, spendCoins,
@@ -60,7 +60,8 @@ export default function Profile({ open, onClose, onXp, onHeaderChange, weeklyGoa
   }, [open]);
 
   const data = useMemo(() => {
-    void tick;
+    void tick; // refresh signal: profile earns XP/coins while open
+    void open; // reopening the overlay re-reads the stored profile
     return {
       xp: getXp(),
       coins: getCoins(),
@@ -73,8 +74,13 @@ export default function Profile({ open, onClose, onXp, onHeaderChange, weeklyGoa
     };
   }, [tick, open]);
 
+  // Latest-ref: App passes an inline callback (new identity each render),
+  // so listing it as a dep would re-fire on every parent render. The effect
+  // still always observes the freshest callback.
+  const headerCbRef = useRef(onHeaderChange);
+  headerCbRef.current = onHeaderChange;
   useEffect(() => {
-    onHeaderChange?.({ coins: data.coins, avatarId: data.avatarId });
+    headerCbRef.current?.({ coins: data.coins, avatarId: data.avatarId });
   }, [data.coins, data.avatarId]);
 
   if (!open) return null;

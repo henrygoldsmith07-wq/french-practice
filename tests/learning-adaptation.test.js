@@ -34,6 +34,10 @@ describe('learning adaptation', () => {
       ],
       srs: { known: rateFsrs(rateFsrs(initFsrs(), 'good', NOW - 2 * 86400000), 'good', NOW) },
       newWordLimit: 2,
+      // Pin the clock: the fixture's retention decays below the "known"
+      // confidence threshold ~33 days after NOW, so an un-pinned Date.now()
+      // made this test start failing purely with the passage of time.
+      now: NOW,
     });
     assert.deepEqual(result.newWords, ['la gare', 'le quai']);
     assert.equal(knownVocabularyCoverage('Je prends le pain à la gare.', result.knownWords).known, 1);

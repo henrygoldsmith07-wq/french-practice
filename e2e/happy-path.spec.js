@@ -31,6 +31,7 @@ test.describe('Le Studio happy path', () => {
     await page.goto('/');
     await page.evaluate(() => {
       localStorage.setItem('fp.settings', JSON.stringify({ mockMode: true, level: 'A1', ttsRate: 1 }));
+      localStorage.setItem('fp.onboarded', '1');
       // simulate a review
       localStorage.setItem('fp.srs', JSON.stringify({
         'test-word': { interval: 1, due: new Date(Date.now() - 1000).toISOString(), reps: 1, ease: 2.5, lastReviewed: new Date().toISOString() }
@@ -71,6 +72,10 @@ test.describe('Le Studio happy path', () => {
     await page.evaluate(() => {
       localStorage.clear();
       localStorage.setItem('fp.settings', JSON.stringify({ mockMode: true, level: 'A1', ttsRate: 1, theme: null }));
+      // A seeded learner is a RETURNING learner: mark onboarding done so the
+      // first-run greeting (which auto-opens for a genuinely fresh learner)
+      // does not cover the studio while this test drives a conversation.
+      localStorage.setItem('fp.onboarded', '1');
     });
     await page.reload();
     const speak = page.getByRole('button', { name: 'Speak', exact: true });

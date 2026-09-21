@@ -3,7 +3,7 @@ import {
   getHabitTracker, addHabit, removeHabit, toggleHabit, getXpLog, getSettings,
 } from '../lib/storage';
 import { POMODORO, habitStreak, goalCalendar, goalStreak, fmtClock } from '../lib/focus';
-import { X, Play, Square, RefreshCw, Check, Plus, Trash, Clock, Flame, Target } from './icons';
+import { X, Play, Square, RefreshCw, Check, Plus, Trash, Flame, Target } from './icons';
 
 // Focus & habits (full-screen): a study/Pomodoro timer with a distraction-free
 // focus mode, a daily habit tracker with streaks, and a goal-streak calendar.

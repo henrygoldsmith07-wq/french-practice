@@ -1,25 +1,25 @@
 import { useMemo, useRef, useState } from 'react';
-import {
-  getSrs, getNotebook, getReviewLog, getXp, getSettings, getReviewEvents, getSessionHistoryMeta,
-  getEvidenceLedgerModel, getErrorModelSummary, getLearnerErrors, getLearnerErrorSummary,
-  getSelectionTrial, getMistakeGraph as getGraphForTrials,
-  getWeaknessMemory, getWeaknessSummary, getGrammarErrors,
-  getExaminerScripts, getRealExamResults, getIntelligibilityBenchmark,
-} from '../lib/storage';
+import { getSrs,
+  getSelectionTrial,
+  getMistakeGraph as getGraphForTrials,
+  getWeaknessMemory,
+  getWeaknessSummary,
+  getGrammarErrors,
+  getExaminerScripts,
+  getRealExamResults,
+  getIntelligibilityBenchmark, } from '../lib/storage';
 // Measurement-stack metrics/bundles: lazy research module (never the boot graph).
 import {
   getPlacementValidationMetrics, getProgressionValidationMetrics,
   getCorpusMetrics, getAssistanceMetrics,
   getComprehensionValidationMetrics, getStudyProgress, buildValidationBundle, ingestValidationBundle,
 } from '../lib/stores/researchStoreHeavy.js';
-import { allEntries as vocabAllEntries, allEntries } from '../lib/vocab';
-import { notebookAsEntries } from '../lib/memory';
+import { allEntries as vocabAllEntries } from '../lib/vocab';
 import { getGrammarTopic } from '../lib/grammar';
 import { errorNotebookStats } from '../lib/errorNotebook';
 import { retentionPredictionVsActual, speakingImprovement } from '../lib/learnerValidation';
 import { benchmarkExaminer, validateAgainstResults } from '../lib/examBenchmark';
 import { benchmarkStatus, mergeBenchmarkItems } from '../lib/intelligibility';
-import { fmtDuration } from '../lib/analytics';
 import { EVIDENCE_FLOORS } from '../lib/validationStatusReport';
 import {
   joinTrials, calibrateSelection, adaptiveBalancedOutcomes,
@@ -27,7 +27,6 @@ import {
 } from '../lib/selectionCalibration';
 import { mistakeGraphStats } from '../lib/mistakeGraph';
 import RecoveryBadge from './RecoveryBadge';
-import { TrendingUp } from './icons';
 
 // Analytics evidence sections, split out of Analytics.jsx so each concern
 // (ledger, external validation, adaptive-practice evidence, exam benchmark)

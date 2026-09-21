@@ -1,29 +1,26 @@
-import { useMemo, useRef, useState } from 'react';
-import {
-  getMetrics, getSessions, getGrammarProgress, getSrs, getNotebook,
-  getTimeLog, getXpLog, getReviewLog, getXp, getSettings,
-  getReviewEvents, getSessionHistoryMeta, getEvidenceLedgerModel, getErrorModelSummary,
-  getLearnerErrors, getLearnerErrorSummary, getIntelligibilityBenchmark,
-} from '../lib/storage';
+import { useMemo } from 'react';
+import { getMetrics,
+  getSessions,
+  getGrammarProgress,
+  getSrs,
+  getNotebook,
+  getTimeLog,
+  getXpLog,
+  getReviewLog,
+  getXp,
+  getSettings,
+  getReviewEvents,
+  getSessionHistoryMeta,
+  getEvidenceLedgerModel,
+  getErrorModelSummary,
+  getLearnerErrors,
+  getLearnerErrorSummary, } from '../lib/storage';
 import { recoveryHistory } from '../lib/learnerErrors';
 import { getLearnerErrorModel } from '../lib/storage';
 // Measurement-stack metrics/bundles: lazy research module (never the boot graph).
-import {
-  getPlacementValidationMetrics, getProgressionValidationMetrics,
-  getCorpusMetrics, getAssistanceMetrics,
-  getComprehensionValidationMetrics, getStudyProgress, buildValidationBundle, ingestValidationBundle,
-} from '../lib/stores/researchStoreHeavy.js';
 import { allEntries } from '../lib/vocab';
-import { getGrammarErrors } from '../lib/storage';
-import { getGrammarTopic } from '../lib/grammar';
-import { getWeaknessMemory, getWeaknessSummary } from '../lib/storage';
+import { getWeaknessSummary } from '../lib/storage';
 import { levelFromXp } from '../lib/game';
-import { errorNotebookStats } from '../lib/errorNotebook';
-import { retentionPredictionVsActual, speakingImprovement } from '../lib/learnerValidation';
-import { benchmarkExaminer, validateAgainstResults } from '../lib/examBenchmark';
-import { benchmarkStatus, mergeBenchmarkItems } from '../lib/intelligibility';
-import { getExaminerScripts, getRealExamResults } from '../lib/storage';
-import { allEntries as vocabAllEntries } from '../lib/vocab';
 import { notebookAsEntries, heatmapWeeks, totalReviews } from '../lib/memory';
 import {
   skillBreakdown, skillScore, retentionRate, wordsLearned, periodReport, fmtDuration,
@@ -36,14 +33,7 @@ import {
   LearnerValidation, ErrorNotebookStats, LearnerErrorModel, SessionHistory,
   ExamBenchmark, ErrorCategories,
 } from './AnalyticsEvidence';
-import { EVIDENCE_FLOORS } from '../lib/validationStatusReport';
 import { X, Clock, Layers, Book, Mic, Volume, BarChart, TrendingUp } from './icons';
-import {
-  joinTrials, calibrateSelection, adaptiveBalancedOutcomes,
-  MIN_VARIANT_N, MIN_TRANSFER_N,
-} from '../lib/selectionCalibration';
-import { mistakeGraphStats } from '../lib/mistakeGraph';
-import { getSelectionTrial, getMistakeGraph as getGraphForTrials } from '../lib/storage';
 
 // Analytics (full-screen): headline metrics, a skill breakdown, weekly and
 // monthly reports, and activity heatmaps — all from locally-recorded data.
@@ -102,8 +92,6 @@ export default function Analytics({ open, onClose }) {
 
   if (!open) return null;
 
-  const cell = (v) => (v == null ? '—' : v);
-
   return (
     <div className="fixed inset-0 z-50 bg-bg flex flex-col" role="dialog" aria-modal="true" aria-label="Analytics">
       <div className="flex items-center gap-2 px-4 py-3 border-b border-line bg-surface shrink-0">
@@ -131,7 +119,7 @@ export default function Analytics({ open, onClose }) {
 
           {/* week-over-week trend + forward projections */}
           <Trend thisWeek={d.thisWeekXp} lastWeek={d.lastWeekXp} />
-          <Projections xp={d.xp} level={d.level} pace={d.pace} weeklyGoal={d.weeklyGoal} thisWeekXp={d.thisWeekXp} />
+          <Projections level={d.level} pace={d.pace} weeklyGoal={d.weeklyGoal} thisWeekXp={d.thisWeekXp} />
           <EvidenceLedger
             sessions={d.sessions}
             reviewEvents={d.reviewEvents}
@@ -295,7 +283,7 @@ function Trend({ thisWeek, lastWeek }) {
 // Forward projections from recent pace: when the next level and the weekly
 // goal land if the learner keeps their current rate. Honest and clearly
 // framed as an estimate.
-function Projections({ xp, level, pace, weeklyGoal, thisWeekXp }) {
+function Projections({ level, pace, weeklyGoal, thisWeekXp }) {
   const fmtDate = (d) => d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
   if (pace <= 0) {
     return (

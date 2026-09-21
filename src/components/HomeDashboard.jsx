@@ -1,10 +1,10 @@
 import { useMemo } from 'react';
-import { getStreak, getTodayXp, getSrs, getNotebook, getSettings, getSessions, getHabits, getGrammarProgress, getWeeklyPractice } from '../lib/storage';
+import { getTodayXp, getSrs, getNotebook, getSettings, getSessions, getHabits, getGrammarProgress, getWeeklyPractice } from '../lib/storage';
 import { useAllEntries, useDueCount } from '../lib/vocabAsync';
 import { notebookAsEntries, weakEntries } from '../lib/memory';
 import { getScenarios } from '../lib/data';
 import { useScenarios } from '../hooks/useScenarios';
-import { getLanguage } from '../lib/languages';
+import { getLanguage, hasCapabilityNow } from '../lib/languages';
 import { ArrowRight, Layers, MessageCircle, Play, Target, Mic, BookOpen, StudioMark, Bookmark } from './icons';
 import { weaknessAnalysis, dailyRecommendations } from '../lib/personalise';
 import { SCENARIO_ICONS } from './icons';
@@ -21,7 +21,6 @@ function suggestScenario(sessions, scenarios = getScenarios()) {
 export default function HomeDashboard({ dailyGoal = 30, level, onStartLesson, onNavigate, onOpenFieldNotes, onPickScenario, lastActivity, onResume, prefs, onStartToday, todayPlan }) {
   const settings = getSettings();
   const language = getLanguage(settings.language);
-  const streak = getStreak();
   const todayXp = getTodayXp();
   // The vocab library loads in its own chunk (per-language registries) —
   // stats fill in right after first paint. `null` means still loading.
@@ -58,8 +57,9 @@ export default function HomeDashboard({ dailyGoal = 30, level, onStartLesson, on
   const weekly = useMemo(() => {
     try { return getWeeklyPractice(); } catch { return { daysThisWeek: 0, target: 3, met: false, current: 0, best: 0 }; }
   }, []);
+  // Greeting copy is per-language (French is not the only studio language).
   const hour = new Date().getHours();
-  const greeting = hour < 12 ? 'Bonjour !' : hour < 18 ? 'Bon après-midi !' : 'Bonsoir !';
+  const greeting = hour < 12 ? language.greetings.morning : hour < 18 ? language.greetings.afternoon : language.greetings.evening;
 
   const startConversation = (minutes = 5) => {
     try { sessionStorage.setItem('fp.sessionMins', String(minutes)); } catch { /* restricted */ }
@@ -73,7 +73,7 @@ export default function HomeDashboard({ dailyGoal = 30, level, onStartLesson, on
         {/* Hero — mirrors le-studio-site .hero: centered, calm, no clutter */}
         <section className="text-center pt-4 pb-2" aria-labelledby="today-hero-title">
           <Mascot mood="sing" size={56} className="mx-auto text-ink opacity-90" aria-hidden="true" />
-          <p className="mt-1 text-xs font-semibold text-ink2 tracking-wide" lang="fr">{greeting}</p>
+          <p className="mt-1 text-xs font-semibold text-ink2 tracking-wide" lang={language.id}>{greeting}</p>
           <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-surface border border-line text-[11px] font-semibold text-ink2">
             <span className="w-2 h-2 rounded-full bg-success animate-pulse" aria-hidden />
             Le Studio · {language.name} · Today
@@ -180,7 +180,7 @@ export default function HomeDashboard({ dailyGoal = 30, level, onStartLesson, on
             <span className="w-11 h-11 shrink-0 grid place-items-center rounded-2xl bg-surface text-speak border border-speak/20"><Bookmark size={19} /></span>
             <div className="flex-1 min-w-0">
               <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-speak">New · Field Notes</p>
-              <h3 id="field-notes-promo-title" className="mt-1 text-lg font-bold tracking-[-0.02em]">Make today’s French stick.</h3>
+              <h3 id="field-notes-promo-title" className="mt-1 text-lg font-bold tracking-[-0.02em]">Make today’s {language.name} stick.</h3>
               <p className="mt-1 text-sm text-ink2 leading-relaxed">Capture a line from a real message, menu or film — then bring it back until it is yours.</p>
             </div>
             <button type="button" onClick={onOpenFieldNotes} className="inline-flex items-center justify-center gap-1.5 bg-ink text-bg font-bold rounded-[14px] px-4 py-3 text-sm hover:opacity-90 transition shrink-0">
@@ -198,7 +198,7 @@ export default function HomeDashboard({ dailyGoal = 30, level, onStartLesson, on
               icon={SuggestedIcon}
               title={suggested.title}
               kicker="Speak · 5 min"
-              body="Voice roleplay with per-turn corrections. Order a bistro coffee or survive a job interview."
+              body={`Voice roleplay with per-turn corrections — in ${language.name}, for real situations.`}
               meta="No account · Voice or text"
               cta={lastActivity ? 'Resume practice' : 'Start speaking'}
               onClick={lastActivity ? () => onResume(lastActivity) : () => startConversation(5)}
@@ -207,7 +207,7 @@ export default function HomeDashboard({ dailyGoal = 30, level, onStartLesson, on
               icon={Layers}
               title={dueCount > 0 ? `${dueCount} words due` : 'Review vocabulary'}
               kicker="Review · Spaced"
-              body={dueCount > 0 ? 'A short review now beats relearning later — most-forgotten first.' : 'Browse 520+ flashcards whenever you need a refresher.'}
+              body={dueCount > 0 ? 'A short review now beats relearning later — most-forgotten first.' : `Browse ${library ? `${library.length}+` : 'the'} flashcards whenever you need a refresher.`}
               meta="FSRS · Receptive/Productive"
               cta={dueCount > 0 ? 'Review now' : 'Open vocab'}
               onClick={() => onNavigate('cards')}
@@ -216,8 +216,10 @@ export default function HomeDashboard({ dailyGoal = 30, level, onStartLesson, on
               icon={Target}
               title="Deepen the craft"
               kicker="Learn · At leisure"
-              body="Grammar, dictée, reading and writing — all grouped under Learn when you have time."
-              meta="60 topics · 4 skills"
+              body={hasCapabilityNow('grammar')
+                ? 'Grammar, dictée, reading and writing — all grouped under Learn when you have time.'
+                : 'Dictée, conversation and the AI tutor — all grouped under Learn when you have time.'}
+              meta={hasCapabilityNow('grammar') ? '60 topics · 4 skills' : '4 skills'}
               cta="Explore Learn"
               onClick={() => onNavigate('grammar')}
             />
@@ -229,28 +231,43 @@ export default function HomeDashboard({ dailyGoal = 30, level, onStartLesson, on
           <h3 id="today-explore-heading" className="text-center text-[clamp(20px,3vw,26px)] font-bold tracking-[-0.02em]">Explore when you have time</h3>
           <p className="text-center text-ink2 mt-1 text-sm">Useful next steps, kept out of today’s decision.</p>
           <div className="grid gap-3.5 sm:grid-cols-2 lg:grid-cols-4 mt-5">
+            {/* Capability-gated: French-authored surfaces (reading library,
+                learning path) appear for French only — a beta language gets
+                core-loop shortcuts instead, never a French-only card. */}
             <MiniCard
               icon={Mic}
               title="Dictée"
               desc="Listen and type — ears first."
               onClick={() => onStartLesson({ type: 'dictation' })}
             />
-            <MiniCard
-              icon={BookOpen}
-              title="Reading"
-              desc="Stories, tap-to-translate."
-              onClick={() => onStartLesson({ type: 'reading' })}
-            />
-            <MiniCard
-              icon={StudioMark}
-              title="Your path"
-              desc="12 units · checkpoints · CEFR"
-              onClick={() => onNavigate('grammar')}
-            />
+            {hasCapabilityNow('reading-library') && (
+              <MiniCard
+                icon={BookOpen}
+                title="Reading"
+                desc="Stories, tap-to-translate."
+                onClick={() => onStartLesson({ type: 'reading' })}
+              />
+            )}
+            {hasCapabilityNow('learning-path') && (
+              <MiniCard
+                icon={StudioMark}
+                title="Your path"
+                desc="12 units · checkpoints · CEFR"
+                onClick={() => onNavigate('grammar')}
+              />
+            )}
+            {!hasCapabilityNow('reading-library') && (
+              <MiniCard
+                icon={MessageCircle}
+                title="Speaking"
+                desc="Roleplay real situations."
+                onClick={() => onNavigate('speak')}
+              />
+            )}
             <MiniCard
               icon={Bookmark}
               title="Field Notes"
-              desc="Capture real French, then reuse it."
+              desc={`Capture real ${language.name}, then reuse it.`}
               onClick={onOpenFieldNotes}
             />
           </div>

@@ -68,10 +68,12 @@ export default function VocabQuiz({ deck, library, title, onRate, onXp, onActivi
   const rawMode = MODES[index % MODES.length];
   const mode = rawMode === 'listen' && !ttsSupported() ? 'choice' : rawMode;
 
+  // `round` is the reshuffle signal: replaying the deck rebuilds options.
   const options = useMemo(() => {
+    void round;
     if (mode !== 'choice' || !entry) return [];
     return shuffle([entry.en, ...distractors(entry, library)]);
-  }, [entry?.id, mode, round]);
+  }, [entry, library, mode, round]);
 
   if (!deck.length) {
     return (

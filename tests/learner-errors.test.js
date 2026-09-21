@@ -12,7 +12,7 @@ import {
   LEARNER_ERROR_CATEGORIES,
 } from '../src/lib/learnerErrors.js';
 
-test('same-session success is weaker evidence: two passes to resolve, one is only improving', () => {
+test('same-session success is weaker evidence: two DISTINCT encounters to resolve, one is only improving', () => {
   let model = createLearnerErrorModel();
   const at = (day, hour) => `2026-08-0${day}T1${hour}:00:00.000Z`;
   model = recordLearnerError(model, {
@@ -23,19 +23,58 @@ test('same-session success is weaker evidence: two passes to resolve, one is onl
   // one correct answer must never imply mastery → recovering, not resolved.
   model = recordLearnerSuccess(model, {
     category: 'grammar', key: 'articles', mode: 'targeted-drill', score: 82, delayed: false,
+    sessionId: 'ses_a', encounterId: 'ses_a:enc1', activityId: 'drill-1',
   }, { at: at(1, 2) });
   let entry = model.entries[0];
   assert.equal(entry.status, 'recovering', 'a single same-session pass is only Improving');
   assert.equal(entry.lastEvidence, 'same-session');
   assert.equal(entry.cleanPasses, 1);
+  assert.equal(entry.independentPasses, 1);
 
-  // A second independent clean pass resolves it.
+  // Re-answering the SAME drill (same encounter) adds no independent evidence.
   model = recordLearnerSuccess(model, {
     category: 'grammar', key: 'articles', mode: 'grammar', score: 91, delayed: false,
+    sessionId: 'ses_a', encounterId: 'ses_a:enc1', activityId: 'drill-1',
   }, { at: at(1, 3) });
   entry = model.entries[0];
+  assert.equal(entry.status, 'recovering', 'the same encounter twice is still only one encounter');
+  assert.equal(entry.independentPasses, 1, 'a repeated answer never increments independence');
+
+  // A second clean pass from a DIFFERENT encounter resolves it.
+  model = recordLearnerSuccess(model, {
+    category: 'grammar', key: 'articles', mode: 'grammar', score: 91, delayed: false,
+    sessionId: 'ses_a', encounterId: 'ses_a:enc2', activityId: 'drill-2',
+  }, { at: at(1, 4) });
+  entry = model.entries[0];
   assert.equal(entry.status, 'resolved');
-  assert.equal(entry.cleanPasses, 2);
+  assert.equal(entry.cleanPasses, 3);
+  assert.equal(entry.independentPasses, 2);
+});
+
+test('identity-less same-session passes can extend improving but never resolve', () => {
+  let model = createLearnerErrorModel();
+  const at = (day, hour) => `2026-08-0${day}T1${hour}:00:00.000Z`;
+  model = recordLearnerError(model, {
+    category: 'grammar', key: 'verbs', label: 'Verb agreement', mode: 'conversation', score: 40,
+  }, { at: at(1, 0) });
+  // Unknown provenance (e.g. legacy evidence or a caller that cannot know the
+  // encounter): real successes, but independence is unknown — never invented.
+  model = recordLearnerSuccess(model, {
+    category: 'grammar', key: 'verbs', mode: 'targeted-drill', score: 80, delayed: false,
+  }, { at: at(1, 2) });
+  model = recordLearnerSuccess(model, {
+    category: 'grammar', key: 'verbs', mode: 'grammar', score: 90, delayed: false,
+  }, { at: at(1, 3) });
+  const entry = model.entries[0];
+  assert.equal(entry.status, 'recovering', 'identity-less passes cannot prove independence');
+  assert.equal(entry.independentPasses, 0);
+  assert.equal(entry.successCount, 2, 'the successes are still counted, honestly');
+  // A later delayed recall (structurally independent — a scheduled retest)
+  // still resolves it: delayed evidence remains the strong path.
+  model = recordLearnerSuccess(model, {
+    category: 'grammar', key: 'verbs', mode: 'weakness-retest', score: 92,
+  }, { at: at(4, 0) });
+  assert.equal(model.entries[0].status, 'resolved');
 });
 
 test('a delayed clean recall is strong evidence: it resolves on its own', () => {
@@ -71,6 +110,8 @@ test('evidence strength: spaced recalls are delayed, same-day drills are not', (
 });
 
 test('recurrence reactivates a resolved weakness and tallies itself', () => {
+  // (Two DISTINCT encounters resolve, as above; the recurrence rules are
+  // unchanged — see below.)
   let model = createLearnerErrorModel();
   model = recordLearnerError(model, {
     category: 'grammar', key: 'articles', label: 'Articles & partitives',
@@ -78,9 +119,11 @@ test('recurrence reactivates a resolved weakness and tallies itself', () => {
   }, { at: '2026-08-01T10:00:00.000Z' });
   model = recordLearnerSuccess(model, {
     category: 'grammar', key: 'articles', mode: 'grammar', score: 82, delayed: false,
+    sessionId: 'ses_a', encounterId: 'ses_a:enc1',
   }, { at: '2026-08-01T11:00:00.000Z' });
   model = recordLearnerSuccess(model, {
     category: 'grammar', key: 'articles', mode: 'grammar', score: 91, delayed: false,
+    sessionId: 'ses_a', encounterId: 'ses_a:enc2',
   }, { at: '2026-08-01T12:00:00.000Z' });
   assert.equal(model.entries[0].status, 'resolved');
 
@@ -94,6 +137,8 @@ test('recurrence reactivates a resolved weakness and tallies itself', () => {
   assert.equal(entry.recurrenceCount, 1);
   assert.deepEqual(entry.modes, ['conversation', 'grammar', 'writing']);
   assert.equal(entry.cleanPasses, 0, 'the old clean passes cannot paper over a fresh slip');
+  assert.equal(entry.independentPasses, 0, 'recurrence restarts recovery from zero');
+  assert.deepEqual(entry.encounterKeys, [], 'the encounter tally restarts with the recovery');
 });
 
 test('error prioritisation and category summaries expose the reusable gap model', () => {
@@ -242,5 +287,17 @@ test('legacy models without evidence fields still normalise and stay compatible'
   const next = recordLearnerSuccess(legacy, {
     category: 'grammar', key: 'articles', mode: 'grammar', score: 88, delayed: false,
   }, { at: '2026-08-01T12:00:00.000Z' });
-  assert.equal(next.entries[0].status, 'resolved', 'second same-session pass still resolves legacy entries');
+  assert.equal(next.entries[0].status, 'recovering', 'identity-less evidence extends improving but never resolves legacy entries');
+  assert.equal(next.entries[0].independentPasses, 0, 'unknown legacy evidence never invents independence');
+  // Only fresh, properly identified evidence can complete the recovery.
+  const resolved = recordLearnerSuccess(next, {
+    category: 'grammar', key: 'articles', mode: 'grammar', score: 90, delayed: false,
+    sessionId: 'ses_b', encounterId: 'ses_b:enc1',
+  }, { at: '2026-08-01T13:00:00.000Z' });
+  assert.equal(resolved.entries[0].status, 'recovering', 'legacy pass + one identified pass: independence still unproven');
+  const resolvedTwo = recordLearnerSuccess(resolved, {
+    category: 'grammar', key: 'articles', mode: 'grammar', score: 92, delayed: false,
+    sessionId: 'ses_b', encounterId: 'ses_b:enc2',
+  }, { at: '2026-08-01T14:00:00.000Z' });
+  assert.equal(resolvedTwo.entries[0].status, 'resolved', 'two distinct identified encounters resolve');
 });

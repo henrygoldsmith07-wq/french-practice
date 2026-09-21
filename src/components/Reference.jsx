@@ -361,7 +361,10 @@ function Dictionary({ onImported }) {
     getFrequencyWords().then((words) => { if (on) setFreqWords(words); });
     return () => { on = false; };
   }, []);
+  // `added` is the refresh signal: starring/unstarring bumps it so the
+  // dictionary re-reads the notebook list it derives from.
   const dict = useMemo(() => {
+    void added;
     const vocab = allEntries().map((e) => ({ fr: e.fr, en: e.en, ipa: e.ipa || null, source: 'vocab' }));
     const freq = freqWords.map((w) => ({ ...w, source: 'freq' }));
     const nb = getNotebook().map((e) => ({ fr: e.fr, en: e.en, ipa: null, source: 'notebook' }));

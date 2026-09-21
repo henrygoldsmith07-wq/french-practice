@@ -11,7 +11,7 @@ import {
   getLanguageModelProgress,
   recordLanguageEvidence,
 } from '../lib/storage';
-import { Book, Check, ChevronRight, Layers, MessageCircle, Mic, Target } from './icons';
+import { Book, ChevronRight, Layers, MessageCircle, Mic, Target } from './icons';
 
 const FILTERS = [
   ['all', 'All structures'],
@@ -34,11 +34,14 @@ export default function LivingLanguage({ onOpenGrammar, onOpenSpeaking }) {
   const [filter, setFilter] = useState('all');
   const [tick, setTick] = useState(0);
 
-  const structures = useMemo(() => buildLanguageMap({
-    progress: getLanguageModelProgress(),
-    grammarProgress: getGrammarProgress(),
-    grammarErrors: getGrammarErrors(),
-  }), [tick]);
+  const structures = useMemo(() => {
+    void tick; // refresh signal: bumping tick re-reads the language model
+    return buildLanguageMap({
+      progress: getLanguageModelProgress(),
+      grammarProgress: getGrammarProgress(),
+      grammarErrors: getGrammarErrors(),
+    });
+  }, [tick]);
 
   const counts = useMemo(() => ({
     spontaneous: structures.filter((entry) => entry.stage >= STAGE_COUNT).length,

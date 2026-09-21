@@ -14,6 +14,7 @@ import { listeningDifficultyLadder } from '../lib/learningAdaptation';
 import { playbackFor } from '../lib/accents';
 import { shuffleOptions } from './GrammarExercises';
 import { STAGES } from '../lib/authenticAudio';
+import { hasCapabilityNow } from '../lib/capabilities';
 
 // Listening hub: TTS-narrated tracks (mini-podcasts, dialogues, news,
 // scenes) with listen-first transcripts, per-line highlighting, variable
@@ -127,7 +128,11 @@ export default function Listening({ mode, onModeChange, ttsRate, level = 'B1', o
           <ChevronRight size={16} className="text-ink3 shrink-0" />
         </button>
 
-        {LISTENING_KINDS.map((kind) => (
+        {/* The track library (mini-podcasts, dialogues, news, scenes) is
+            French-authored — capability-gated so a beta language sees the
+            core listening tools (dictée, course, numbers) without a French
+            track grid it cannot use. */}
+        {hasCapabilityNow('listening-library') && LISTENING_KINDS.map((kind) => (
           <section key={kind.id}>
             <h3 className="text-[11px] font-bold uppercase tracking-wider text-ink2 mb-2">
               {kind.title} <span className="normal-case font-normal text-ink3">— {kind.description}</span>

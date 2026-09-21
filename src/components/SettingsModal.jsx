@@ -96,7 +96,7 @@ export default function SettingsModal({ open, onClose, apiKey, onKeyChange, sett
   };
 
   return (
-    <Modal open={open} onClose={onClose}>
+    <Modal open={open} onClose={onClose} label="Settings">
       <div className="p-6 space-y-5">
         <div className="flex items-start justify-between">
           <div>
@@ -184,7 +184,7 @@ export default function SettingsModal({ open, onClose, apiKey, onKeyChange, sett
             <RadioGroup
               label="Target language"
               groupClassName="grid grid-cols-3 gap-2"
-              options={LANGUAGE_LIST.map((l) => ({ value: l.id, maturity: maturityLabel(l.id) }))}
+              options={LANGUAGE_LIST.map((l) => ({ ...l, value: l.id, maturity: maturityLabel(l.id) }))}
               value={settings.language || 'fr'}
               onChange={(id) => onSettingsChange({ ...settings, language: id })}
               btnClass={(on) => `flex flex-col items-center gap-1 rounded-xl border px-2 py-3 transition-colors ${on ? 'bg-surface2 border-ink' : 'bg-surface border-line hover:border-ink3'}`}

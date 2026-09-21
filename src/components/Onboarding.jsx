@@ -43,10 +43,13 @@ const DEFAULTS = {
 const SECTIONS = ['Language', 'Level', 'Goal', 'Speak'];
 const SECTION_OF = [0, 1, 2, 3];
 
-export default function Onboarding({ open, onComplete, onSkip, onStartConversation }) {
+export default function Onboarding({ open, initialLanguage, onComplete, onSkip, onStartConversation }) {
   const [step, setStep] = useState(0);
   const [dir, setDir] = useState('fwd');
-  const [d, setD] = useState(DEFAULTS);
+  // Seed from the ACTIVE language, not the French default: replaying
+  // onboarding (Settings → Replay) must never silently rewrite the learner's
+  // language back to French if they click through.
+  const [d, setD] = useState(() => ({ ...DEFAULTS, language: initialLanguage || DEFAULTS.language }));
   const set = (patch) => setD((previous) => ({ ...previous, ...patch }));
 
   if (!open) return null;

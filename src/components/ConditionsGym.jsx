@@ -32,13 +32,7 @@ export default function ConditionsGym({ ttsRate = 1, onBack }) {
 
   const track = LISTENING_TRACKS.find((t) => t.id === trackId) || LISTENING_TRACKS[0];
   const lines = useMemo(() => (track?.lines || []).slice(0, 6), [track]);
-  const condition = CONDITIONS[conditionId] || CONDITIONS.normal;
   const bedConfig = noiseBedConfig(conditionId);
-
-  const clearTimers = () => {
-    for (const t of timersRef.current) clearTimeout(t);
-    timersRef.current = [];
-  };
 
   const stopNoiseBed = () => {
     try { bedNodesRef.current?.src?.stop(); } catch { /* already stopped */ }

@@ -9,7 +9,7 @@ export const DICTATION_LEVELS = [
   { id: 5, label: 'Authentic', hint: 'Natural speech, all accents strict' },
 ];
 
-export function levelForSrs(srs, entries){
+export function levelForSrs(srs){
   const learned = Object.values(srs).filter(s=> (s.reps||0)>=2).length;
   if(learned < 8) return 1;
   if(learned < 20) return 2;

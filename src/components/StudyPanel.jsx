@@ -50,7 +50,10 @@ function downloadJson(name, data) {
 
 export default function StudyPanel() {
   const [busy, setBusy] = useState(false);
+  // `busy` is the refresh signal: re-reads the study store after any
+  // consent/import/withdraw action completes.
   const data = useMemo(() => {
+    void busy;
     const { state, enrolled, day } = studyStatus();
     if (!enrolled) return { enrolled: false, state, consent: studyConsentState() };
     const outcomes = getStudyOutcomes();
@@ -71,7 +74,6 @@ export default function StudyPanel() {
       pool,
     };
   }, [busy]);
-
   if (!data.enrolled) {
     const withdrawn = data.state?.status === 'withdrawn';
     const declined = data.consent === 'declined';
@@ -136,7 +138,6 @@ export default function StudyPanel() {
     : personal.n < MIN_N_PER_ARM
       ? `Not enough evidence yet · collecting (n=${personal.n})`
       : `Collecting · n=${personal.n} — outcomes not yet comparable`;
-  const p = (v) => (v == null ? '—' : `${Math.round(v * 100)}%`);
   const armBlock = (label, arm) => (
     <div className="space-y-1" data-testid={`arm-${label.toLowerCase()}`}>
       <div className="flex items-baseline gap-2">

@@ -32,5 +32,18 @@ export async function load(url, context, nextLoad) {
     const out = transformSync(source, { loader: 'jsx', jsx: 'automatic', format: 'esm' });
     return { source: out.code, format: 'module', shortCircuit: true };
   }
+  if (url.endsWith('.js')) {
+    // Vite defines import.meta.env at build time; Node does not. Shim it so
+    // the real component chain (e.g. lib/quota.js) loads unchanged in tests.
+    const source = readFileSync(fileURLToPath(url), 'utf8');
+    if (source.includes('import.meta.env')) {
+      const patched = source.replaceAll(
+        'import.meta.env',
+        '(globalThis.__VITE_ENV__ ??= {})',
+      );
+      const out = transformSync(patched, { loader: 'js', format: 'esm' });
+      return { source: out.code, format: 'module', shortCircuit: true };
+    }
+  }
   return nextLoad(url, context);
 }

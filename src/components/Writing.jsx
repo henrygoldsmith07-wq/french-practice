@@ -1,6 +1,6 @@
 import { lazy, Suspense, useState } from 'react';
 import { langName } from '../lib/i18n';
-import { contentLang } from '../lib/content/active';
+import { hasCapabilityNow } from '../lib/capabilities';
 import { randomPoolSentence, toWords, diffWords, displayHits } from '../lib/sentences';
 import { COMPLETION_STARTERS, randomFrom } from '../lib/writing';
 import { judgeCompletion, friendlyError } from '../lib/groq';
@@ -18,8 +18,8 @@ import { Pencil, Check, X, RefreshCw, ChevronLeft, ChevronRight, MessageCircle, 
 const ConjugationTrainer = lazy(() => import('./ConjugationTrainer'));
 
 const MODES = [
-  { id: 'conjugation', icon: Target, title: 'Conjugation trainer', subtitle: 'Type the right form — accents graded' },
-  { id: 'accents', icon: Pencil, title: 'Accent trainer', subtitle: 'Retype words with every accent in place' },
+  { id: 'conjugation', icon: Target, title: 'Conjugation trainer', subtitle: 'Type the right form — accents graded', cap: 'conjugation' },
+  { id: 'accents', icon: Pencil, title: 'Accent trainer', subtitle: 'Retype words with every accent in place', cap: 'writing-authored' },
   { id: 'translate', icon: RefreshCw, title: 'Translation drill', subtitle: 'EN→FR and FR→EN, alternating' },
   { id: 'typing', icon: Clock, title: 'Typing drill', subtitle: 'Copy a sentence exactly — accents count' },
   { id: 'completion', icon: MessageCircle, title: 'Sentence completion', subtitle: 'Finish a starter naturally, get judged' },
@@ -40,7 +40,10 @@ export default function Writing({ apiKey, mockMode, level, onXp, onActivity }) {
             <p className="text-xs text-ink2 mt-1">From accurate typing to argued essays — always with feedback.</p>
           </div>
           <div className="space-y-2.5">
-            {MODES.filter((m) => m.id !== 'conjugation' || contentLang() === 'fr').map((m) => (
+            {/* French-authored trainers (conjugation tables, French accent
+                retype) are capability-gated — one matrix, no hand-rolled
+                language checks. */}
+            {MODES.filter((m) => !m.cap || hasCapabilityNow(m.cap)).map((m) => (
               <button
                 key={m.id}
                 onClick={() => setMode(m.id)}

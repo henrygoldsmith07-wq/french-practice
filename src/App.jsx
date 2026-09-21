@@ -1,19 +1,14 @@
-import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useReducer, useState } from 'react';
 import HomeDashboard from './components/HomeDashboard';
-import TodaySession from './components/TodaySession';
 import FeedbackWidget from './components/FeedbackWidget';
 const ChatArena = lazy(() => import('./components/ChatArena'));
 const SessionDashboard = lazy(() => import('./components/SessionDashboard'));
 const Vocabulary = lazy(() => import('./components/Vocabulary'));
-const Grammar = lazy(() => import('./components/Grammar'));
 const DevPanel = lazy(() => import('./components/DevPanel'));
 const SettingsModal = lazy(() => import('./components/SettingsModal'));
-const Skills = lazy(() => import('./components/Skills'));
-const AiHub = lazy(() => import('./components/AiHub'));
 const PathSetup = lazy(() => import('./components/PathSetup'));
 const LearningPath = lazy(() => import('./components/LearningPath'));
 const Profile = lazy(() => import('./components/Profile'));
-const Culture = lazy(() => import('./components/Culture'));
 const RealWorld = lazy(() => import('./components/RealWorld'));
 const Personalise = lazy(() => import('./components/Personalise'));
 const Offline = lazy(() => import('./components/Offline'));
@@ -22,6 +17,14 @@ const Reference = lazy(() => import('./components/Reference'));
 const Focus = lazy(() => import('./components/Focus'));
 const Onboarding = lazy(() => import('./components/Onboarding'));
 const GlobalSearch = lazy(() => import('./components/GlobalSearch'));
+// TodaySession (and its drill-runner graph) is an overlay the learner opens
+// deliberately — lazy keeps its curriculum/memory/quiz imports out of the
+// first-load chunk entirely.
+const TodaySession = lazy(() => import('./components/TodaySession'));
+// Grammar / Skills / AiHub / Culture chunks are NOT imported here — App never
+// renders them directly (Learn hub owns them) and lib/prefetch.js owns their
+// intent/idle loading. Importing them here would drag them into App's chunk
+// graph for nothing.
 import { getPath, applyActivity } from './lib/path';
 import { getScenarios } from './lib/data';
 import usePwaInstall from './hooks/usePwaInstall';
@@ -36,17 +39,20 @@ import {
   getPrefs, setPrefs, getSessions,
   setApiKey as persistApiKey, setAvatar as persistAvatar, ownAvatar, setHabitList,
   setOnboarded, setLastActivity, getLastActivity, recordSpeakingGap, recordLearningActivity,
+  shouldOnboard,
 } from './lib/storage';
 // Heavy content libraries (vocab packs, grammar topics, listening tracks,
 // groq) are NOT statically imported here — they would drag ~600 kB of content
 // into the first bundle for a handful of label lookups. They load lazily
 // below and inside their own screens' chunks.
 import { adaptiveLevel } from './lib/personalise';
+import { prefetchForTab } from './lib/prefetch';
 import { AVATARS, activeEvent, levelFromXp } from './lib/game';
 import { useDueCount, loadAllEntries, warmScenarios } from './lib/vocabAsync';
-import { getLanguage, featureAvailableNow } from './lib/languages';
+import { getLanguage, featureAvailableNow, hasCapabilityNow } from './lib/languages';
+import { overlayReducer, overlayIs, overlayPayload, initialOverlay } from './lib/overlayNav';
 import { relayEnabled } from './lib/relay';
-import { Flame, Bolt, Sun, Moon, Gear, Key, ArrowRight, Home, MessageCircle, Layers, BookOpen, BarChart, Search, Target, Coins as CoinsIcon, X, Download } from './components/icons';
+import { Flame, Bolt, Sun, Moon, Gear, Key, ArrowRight, Home, MessageCircle, Layers, BookOpen, BarChart, Search, Coins as CoinsIcon, X, Download } from './components/icons';
 import Mascot from './components/Mascot';
 import LearnHub from './components/LearnHub';
 import ProgressHub from './components/ProgressHub';
@@ -77,9 +83,14 @@ export default function App() {
     if (canonical === 'progress') setProgressView(null);
     _setTab(canonical);
   };
-  const [settingsOpen, setSettingsOpen] = useState(false);
-  const [searchOpen, setSearchOpen] = useState(false);
-  const [dashboardOpen, setDashboardOpen] = useState(false);
+  // ONE structured overlay state replaces ~15 mutually-exclusive booleans
+  // (lib/overlayNav.js): at most one overlay can be open, so two-modals-at-
+  // once and detached-payload states are structurally impossible. Escape and
+  // Android Back close whatever is open via useOverlayNav; opening a second
+  // overlay replaces the first (modal focus, not a stack).
+  const [overlay, dispatchOverlay] = useReducer(overlayReducer, initialOverlay);
+  const openOverlay = (name, payload = undefined) => dispatchOverlay({ type: 'open', overlay: name, payload });
+  const closeOverlay = () => dispatchOverlay({ type: 'close' });
   // In-flight session lifecycle (persist/restore, warm-then-heal scenario
   // resolution, language switching) and document appearance live in focused
   // hooks; App stays composition.
@@ -100,17 +111,6 @@ export default function App() {
   const [celebration, setCelebration] = useState(null);
   const [coins, setCoins] = useState(getCoins);
   const [avatarId, setAvatarId] = useState(getAvatar);
-  const [profileOpen, setProfileOpen] = useState(false);
-  const [realWorldOpen, setRealWorldOpen] = useState(false);
-  const [personaliseOpen, setPersonaliseOpen] = useState(false);
-  const [offlineOpen, setOfflineOpen] = useState(false);
-  const [analyticsOpen, setAnalyticsOpen] = useState(false);
-  const [referenceOpen, setReferenceOpen] = useState(false);
-  const [referenceTool, setReferenceTool] = useState(null);
-  const [focusOpen, setFocusOpen] = useState(false);
-  const [devPanelOpen, setDevPanelOpen] = useState(false);
-  const [onboardingOpen, setOnboardingOpen] = useState(false);
-  const [todayOpen, setTodayOpen] = useState(false);
   const [prefs, setPrefsState] = useState(getPrefs);
   const pwa = usePwaInstall();
   const [installDismissed, setInstallDismissed] = useState(false);
@@ -122,8 +122,6 @@ export default function App() {
   // covers the learning path's CEFR reassignment.
   const dueTick = `${tab}|${xp}|${streakTick}|${path ? `${path.goal}:${path.cefr}:${path.unitIndex}:${path.lessonIndex}` : ''}`;
   const dueCount = useDueCount(dueTick);
-  const [learningPathOpen, setLearningPathOpen] = useState(false);
-  const [pathSetupOpen, setPathSetupOpen] = useState(false);
   const [grammarFocus, setGrammarFocus] = useState(null);
   const [skillArea, setSkillArea] = useState(null);
   const [speakingMode, setSpeakingMode] = useState(null);
@@ -145,44 +143,17 @@ export default function App() {
   // study clock, telemetry sink) lives in one hook; App stays composition.
   const { telemetry, clearTelemetry } = useStudioBoot({ dueCount, smartReminders: settings.smartReminders });
 
-  const overlaySetters = {
-    search: setSearchOpen,
-    settings: setSettingsOpen,
-    profile: setProfileOpen,
-    realWorld: setRealWorldOpen,
-    personalise: setPersonaliseOpen,
-    offline: setOfflineOpen,
-    analytics: setAnalyticsOpen,
-    reference: setReferenceOpen,
-    focus: setFocusOpen,
-    devPanel: setDevPanelOpen,
-    learningPath: setLearningPathOpen,
-    pathSetup: setPathSetupOpen,
-    onboarding: setOnboardingOpen,
-    today: setTodayOpen,
-  };
-  const openOverlay = (name) => {
-    const set = overlaySetters[name];
-    if (set) set(true);
-  };
+  // First-run onboarding: a brand-new learner (no key, no XP, no sessions,
+  // not onboarded before) is greeted by the picker. Returning learners and
+  // every seeded/skipped state land straight in the studio. Runs once after
+  // mount so storage has settled.
+  useEffect(() => {
+    if (shouldOnboard()) openOverlay('onboarding');
+  }, []); // mount-only gate: a brand-new learner gets the picker, once
 
-  const overlayClosers = [
-    [searchOpen, () => setSearchOpen(false)],
-    [settingsOpen, () => setSettingsOpen(false)],
-    [profileOpen, () => setProfileOpen(false)],
-    [realWorldOpen, () => setRealWorldOpen(false)],
-    [personaliseOpen, () => setPersonaliseOpen(false)],
-    [offlineOpen, () => setOfflineOpen(false)],
-    [analyticsOpen, () => setAnalyticsOpen(false)],
-    [referenceOpen, () => setReferenceOpen(false)],
-    [focusOpen, () => setFocusOpen(false)],
-    [devPanelOpen, () => setDevPanelOpen(false)],
-    [onboardingOpen, () => setOnboardingOpen(false)],
-    [todayOpen, () => setTodayOpen(false)],
-    [learningPathOpen, () => setLearningPathOpen(false)],
-    [pathSetupOpen, () => setPathSetupOpen(false)],
-  ];
-  useOverlayNav(overlayClosers);
+  // Escape / Android Back close the one open overlay (useOverlayNav pushes
+  // and consumes a history entry around it).
+  useOverlayNav([[Boolean(overlay), closeOverlay]]);
 
   const updateSettings = (s) => {
     if (s.language !== settings.language) switchLanguage(s.language);
@@ -224,13 +195,13 @@ export default function App() {
       setApiKey(d.apiKey.trim());
     }
     setOnboarded();
-    setOnboardingOpen(false);
+    closeOverlay();
   };
 
   const skipOnboarding = () => {
     if (!apiKey && !settings.mockMode) updateSettings({ ...settings, mockMode: true });
     setOnboarded();
-    setOnboardingOpen(false);
+    closeOverlay();
   };
 
   const effectiveLevel = adaptiveLevel(settings.level, getSessions(), prefs.adaptiveDifficulty).level;
@@ -323,7 +294,7 @@ export default function App() {
   const startLesson = (lesson) => {
     if (lesson.scenarioId) {
       const s = getScenarios().find((x) => x.id === lesson.scenarioId);
-      if (s && s.id !== scenario.id) {
+      if (s && s.id !== scenario?.id) {
         setScenario(s);
         setHistory([]);
         setLastScores(null);
@@ -337,8 +308,21 @@ export default function App() {
       setTab('learn');
       return;
     }
-    if (lesson.type === 'reading') { setSkillArea('reading'); setLearnView('skills'); setTab('learn'); return; }
-    if (lesson.type === 'listening') { setSkillArea('listening'); setListeningMode(lesson.trackId); setLearnView('skills'); setTab('learn'); return; }
+    // Capability-gated lesson types: the reading and listening libraries are
+    // French-authored, so a stale link can never route a beta learner into
+    // them — they fall back to the Skills hub instead.
+    if (lesson.type === 'reading') {
+      if (hasCapabilityNow('reading-library')) { setSkillArea('reading'); setLearnView('skills'); }
+      else setLearnView('skills');
+      setTab('learn');
+      return;
+    }
+    if (lesson.type === 'listening') {
+      if (hasCapabilityNow('listening-library')) { setSkillArea('listening'); setListeningMode(lesson.trackId); }
+      setLearnView('skills');
+      setTab('learn');
+      return;
+    }
     if (lesson.type === 'cards') { setTab('review'); return; }
     // scenario/checkpoint -> Speak
     setTab(lesson.type === 'checkpoint' || lesson.type === 'scenario' ? 'speak' : 'today');
@@ -346,50 +330,70 @@ export default function App() {
 
   const startRoleplay = (scenarioId) => {
     const s = getScenarios().find((x) => x.id === scenarioId);
-    if (s && s.id !== scenario.id) {
+    if (s && s.id !== scenario?.id) {
       setScenario(s);
       setHistory([]);
       setLastScores(null);
     }
-    setRealWorldOpen(false);
+    closeOverlay();
     setTab('speak');
   };
 
   const runRecommendation = (type) => {
-    setPersonaliseOpen(false);
+    closeOverlay();
     if (type === 'arena' || type === 'speak') { setTab('speak'); return; }
     if (type === 'cards' || type === 'review') { setTab('review'); return; }
     if (type === 'field-notes') { setTab('learn'); setLearnView('field-notes'); return; }
-    if (type === 'grammar') { setLearnView('grammar'); setTab('learn'); return; }
+    if (type === 'grammar') {
+      // The grammar library is French-authored: a beta recommendation is
+      // re-routed to the Learn hub instead of a screen that cannot exist.
+      if (hasCapabilityNow('grammar')) setLearnView('grammar');
+      else setLearnView(null);
+      setTab('learn');
+      return;
+    }
     if (type === 'reading' || type === 'listening' || type === 'dictation' || type === 'quickfire') { setLearnView('skills'); setTab('learn'); return; }
   };
 
   const goFromSearch = (hit) => {
-    setSearchOpen(false);
+    closeOverlay();
     // Final gate for French-only features: search results, stale links and
     // any future caller can never land a Beta language on them. The hub also
     // hides the entry points — this closes the loop behind them.
     if (hit.type === 'grammar' && !featureAvailableNow('grammar')) return;
     if (hit.type === 'scenario') {
       const sc = getScenarios().find((x) => x.id === hit.id);
-      if (sc && sc.id !== scenario.id) { setScenario(sc); setHistory([]); setLastScores(null); }
+      if (sc && sc.id !== scenario?.id) { setScenario(sc); setHistory([]); setLastScores(null); }
       setTab('speak');
     }
     if (hit.type === 'field-notes') { setTab('learn'); setLearnView('field-notes'); }
-    if (hit.type === 'grammar') { setGrammarFocus(hit.id); setLearnView('grammar'); setTab('learn'); }
-    if (hit.type === 'reading') { setSkillArea('reading'); setLearnView('skills'); setTab('learn'); }
-    if (hit.type === 'listening') { setSkillArea('listening'); setListeningMode(hit.id); setLearnView('skills'); setTab('learn'); }
+    if (hit.type === 'grammar' && featureAvailableNow('grammar')) { setGrammarFocus(hit.id); setLearnView('grammar'); setTab('learn'); }
+    if (hit.type === 'reading' && hasCapabilityNow('reading-library')) { setSkillArea('reading'); setLearnView('skills'); setTab('learn'); }
+    if (hit.type === 'listening' && hasCapabilityNow('listening-library')) { setSkillArea('listening'); setListeningMode(hit.id); setLearnView('skills'); setTab('learn'); }
   };
 
   const resumeActivity = (la) => {
     if (!la) return;
     if (la.type === 'session') {
       const sc = getScenarios().find((x) => x.id === la.id);
-      if (sc && sc.id !== scenario.id) { setScenario(sc); setHistory([]); setLastScores(null); }
+      if (sc && sc.id !== scenario?.id) { setScenario(sc); setHistory([]); setLastScores(null); }
       setTab('speak');
-    } else if (la.type === 'grammar') { setGrammarFocus(la.id); setLearnView('grammar'); setTab('learn'); }
-    else if (la.type === 'listening') { setSkillArea('listening'); setListeningMode(la.id); setLearnView('skills'); setTab('learn'); }
-    else if (la.type === 'reading') { setSkillArea('reading'); setLearnView('skills'); setTab('learn'); }
+    } else if (la.type === 'grammar') {
+      // Stale evidence from an earlier French period must never route a beta
+      // learner into French-authored screens — they re-route to the hub.
+      if (featureAvailableNow('grammar')) { setGrammarFocus(la.id); setLearnView('grammar'); }
+      else setLearnView(null);
+      setTab('learn');
+    }
+    else if (la.type === 'listening') {
+      if (hasCapabilityNow('listening-library')) { setSkillArea('listening'); setListeningMode(la.id); }
+      setLearnView('skills'); setTab('learn');
+    }
+    else if (la.type === 'reading') {
+      if (hasCapabilityNow('reading-library')) { setSkillArea('reading'); setLearnView('skills'); }
+      else setLearnView(null);
+      setTab('learn');
+    }
     else if (la.type === 'cards') setTab('review');
     else if (la.type === 'dictation') { setSkillArea('listening'); setListeningMode('dictation'); setLearnView('skills'); setTab('learn'); }
     else if (la.type === 'quickfire') { setSkillArea('speaking'); setSpeakingMode('quickfire'); setLearnView('skills'); setTab('learn'); }
@@ -414,15 +418,15 @@ export default function App() {
           setFluencyReviewResult(review);
         } catch { /* the report must open even if the debrief fails */ }
         setDebriefPending(false);
-        setDashboardOpen(true);
+        openOverlay('dashboard');
       })();
       return;
     }
-    setDashboardOpen(true);
+    openOverlay('dashboard');
   };
 
   const closeDashboard = () => {
-    setDashboardOpen(false);
+    closeOverlay();
     setHistory([]);
     setLastScores(null);
     setFluencyReviewResult(null);
@@ -451,7 +455,7 @@ export default function App() {
             >
           <Flame size={13} /> {streak.count}
         </button>
-        <button onClick={() => setProfileOpen(true)} aria-label={`${xp} XP — open your stats`} className="relative flex items-center gap-1 px-2.5 py-1 rounded-full bg-surface2 text-ink text-xs font-semibold whitespace-nowrap" title="Experience points — tap for your stats">
+        <button onClick={() => openOverlay('profile')} aria-label={`${xp} XP — open your stats`} className="relative flex items-center gap-1 px-2.5 py-1 rounded-full bg-surface2 text-ink text-xs font-semibold whitespace-nowrap" title="Experience points — tap for your stats">
           <Bolt size={13} /> {xp.toLocaleString('en-GB')} XP
           {xpGain && (
             <span key={xpGain.id} className="xp-pop absolute -top-1 right-0 text-ink font-bold text-xs pointer-events-none">
@@ -459,14 +463,14 @@ export default function App() {
             </span>
           )}
         </button>
-        <button onClick={() => setProfileOpen(true)} aria-label={`${coins} coins — open your stats`} className="hidden sm:flex items-center gap-1 px-2.5 py-1 rounded-full bg-surface2 text-ink text-xs font-semibold whitespace-nowrap" title="Coins — tap for your stats">
+        <button onClick={() => openOverlay('profile')} aria-label={`${coins} coins — open your stats`} className="hidden sm:flex items-center gap-1 px-2.5 py-1 rounded-full bg-surface2 text-ink text-xs font-semibold whitespace-nowrap" title="Coins — tap for your stats">
           <CoinsIcon size={13} /> {coins}
         </button>
         <div className="ml-auto flex items-center gap-2">
-          <button onClick={() => setSearchOpen(true)} aria-label="Search the studio" title="Search" className="w-10 h-10 grid place-items-center rounded-full text-ink2 hover:bg-surface2 hover:text-ink">
+          <button onClick={() => openOverlay('search')} aria-label="Search the studio" title="Search" className="w-10 h-10 grid place-items-center rounded-full text-ink2 hover:bg-surface2 hover:text-ink">
             <Search size={18} />
           </button>
-          <button onClick={() => setProfileOpen(true)} aria-label="Open your profile" title="Profile" className="w-10 h-10 grid place-items-center rounded-full bg-surface2 hover:bg-line text-lg">
+          <button onClick={() => openOverlay('profile')} aria-label="Open your profile" title="Profile" className="w-10 h-10 grid place-items-center rounded-full bg-surface2 hover:bg-line text-lg">
             <span role="img" aria-hidden="true">{(AVATARS.find((a) => a.id === avatarId) || AVATARS[0]).emoji}</span>
           </button>
           {tab === 'speak' && history.length > 0 && (
@@ -477,14 +481,14 @@ export default function App() {
           <button onClick={toggleTheme} aria-label={isDark ? 'Switch to light mode' : 'Switch to dark mode'} title={isDark ? 'Light mode' : 'Dark mode'} className="w-10 h-10 grid place-items-center rounded-full text-ink2 hover:bg-surface2 hover:text-ink text-lg">
             {isDark ? <Sun size={18} /> : <Moon size={18} />}
           </button>
-          <button onClick={() => setSettingsOpen(true)} aria-label="Settings" className="w-10 h-10 grid place-items-center rounded-full text-ink2 hover:bg-surface2 hover:text-ink text-lg">
+          <button onClick={() => openOverlay('settings')} aria-label="Settings" className="w-10 h-10 grid place-items-center rounded-full text-ink2 hover:bg-surface2 hover:text-ink text-lg">
             <Gear size={18} />
           </button>
         </div>
       </header>
 
       {!ready && (
-        <button onClick={() => setSettingsOpen(true)} className="fade-in mx-4 mt-3 flex items-center gap-3 text-left bg-surface2 border border-line rounded-xl px-4 py-3 hover:border-ink3 transition">
+        <button onClick={() => openOverlay('settings')} className="fade-in mx-4 mt-3 flex items-center gap-3 text-left bg-surface2 border border-line rounded-xl px-4 py-3 hover:border-ink3 transition">
           <span className="w-10 h-10 grid place-items-center rounded-xl bg-surface border border-line text-ink" aria-hidden="true"><Key size={18} /></span>
           <span className="flex-1">
             <span className="block text-sm font-semibold text-ink">Welcome to the Studio!</span>
@@ -519,9 +523,9 @@ export default function App() {
               onOpenFieldNotes={() => { setTab('learn'); setLearnView('field-notes'); }}
               lastActivity={getLastActivity()}
               onResume={resumeActivity}
-              onStartToday={() => setTodayOpen(true)}
+              onStartToday={() => openOverlay('today')}
               onPickScenario={(s) => {
-                if (s.id !== scenario.id) {
+                if (s && s.id !== scenario?.id) {
                   setScenario(s);
                   setHistory([]);
                   setLastScores(null);
@@ -529,7 +533,11 @@ export default function App() {
               }}
             />
           )}
-          {tab === 'speak' && scenario && (
+          {/* Speak renders deterministically during session hydration: a
+              loader, never a blank void and never a half-restored arena. The
+              registry chunk resolves a beat after boot; ChatArena only mounts
+              once the scenario — restored or first — is final. */}
+          {tab === 'speak' && (scenario ? (
             <ChatArena
               onEndSession={endSession}
               apiKey={apiKey}
@@ -555,7 +563,9 @@ export default function App() {
               scenario={scenario}
               setScenario={setScenario}
             />
-          )}
+          ) : (
+            <ScreenLoader />
+          ))}
           {tab === 'review' && (
             <Vocabulary apiKey={apiKey} mockMode={settings.mockMode} onActivity={handleActivity} onXp={awardXp} />
           )}
@@ -563,7 +573,7 @@ export default function App() {
             <LearnHub
               view={learnView}
               onView={(v) => {
-                if (v === 'realworld-overlay') { setRealWorldOpen(true); return; }
+                if (v === 'realworld-overlay') { openOverlay('realWorld'); return; }
                 setLearnView(v);
               }}
               grammarFocus={grammarFocus}
@@ -582,8 +592,8 @@ export default function App() {
               apiKey={apiKey}
               mockMode={settings.mockMode}
               level={effectiveLevel}
-              referenceTool={referenceTool}
-              onCloseReference={() => { setReferenceOpen(false); setReferenceTool(null); setLearnView(null); }}
+              referenceTool={overlayIs(overlay, 'reference') ? overlayPayload(overlay, 'tool') : null}
+              onCloseReference={() => { closeOverlay(); setLearnView(null); }}
               onOpenSpeaking={() => setTab('speak')}
             />
           )}
@@ -591,7 +601,7 @@ export default function App() {
             <ProgressHub
               view={progressView}
               onView={(v) => {
-                if (v === 'dev') { setDevPanelOpen(true); return; }
+                if (v === 'dev') { openOverlay('devPanel'); return; }
                 setProgressView(v);
               }}
               onXp={awardXp}
@@ -600,11 +610,7 @@ export default function App() {
               path={path}
               dueCount={dueCount}
               onStartLesson={startLesson}
-              onOpenPathSetup={() => setPathSetupOpen(true)}
-              prefs={prefs}
-              onPrefsChange={updatePrefs}
-              baseLevel={settings.level}
-              onRun={runRecommendation}
+              onOpenPathSetup={() => openOverlay('pathSetup')}
               onOpenGrammar={(topicId) => {
                 if (!featureAvailableNow('grammar')) return;
                 setGrammarFocus(topicId); setLearnView('grammar'); setTab('learn');
@@ -622,53 +628,60 @@ export default function App() {
         ))}
       </nav>
 
+      {/* All overlays render from the ONE structured state: at most one open,
+          Escape/Back handled by useOverlayNav, payloads travel with the
+          overlay descriptor (e.g. reference's initial tool). */}
       <Suspense fallback={null}>
-      {settingsOpen && (
-        <SettingsModal open={settingsOpen} onClose={() => setSettingsOpen(false)} apiKey={apiKey} onKeyChange={handleApiKeyChange} settings={settings} onSettingsChange={updateSettings} onReplayOnboarding={() => { setSettingsOpen(false); setOnboardingOpen(true); }} />
+      {overlayIs(overlay, 'settings') && (
+        <SettingsModal open onClose={closeOverlay} apiKey={apiKey} onKeyChange={handleApiKeyChange} settings={settings} onSettingsChange={updateSettings} onReplayOnboarding={() => openOverlay('onboarding')} />
       )}
-      {dashboardOpen && (
-        <SessionDashboard open={dashboardOpen} onClose={closeDashboard} apiKey={apiKey} mockMode={settings.mockMode} scenario={scenario} history={history} level={effectiveLevel} onXp={awardXp} fluencyReview={fluencyReviewResult} fluencyPending={debriefPending} onSessionSaved={(report) => { setStreakTick((t) => t + 1); handleActivity({ type: 'session', scenarioId: scenario.id, score: report?.average_scores?.overall ?? 0 }); }} />
+      {overlayIs(overlay, 'dashboard') && (
+        <SessionDashboard open onClose={closeDashboard} apiKey={apiKey} mockMode={settings.mockMode} scenario={scenario} history={history} level={effectiveLevel} onXp={awardXp} fluencyReview={fluencyReviewResult} fluencyPending={debriefPending} onSessionSaved={(report) => { setStreakTick((t) => t + 1); handleActivity({ type: 'session', scenarioId: scenario?.id, score: report?.average_scores?.overall ?? 0 }); }} />
       )}
-      {personaliseOpen && (<Personalise open={personaliseOpen} onClose={() => setPersonaliseOpen(false)} prefs={prefs} onPrefsChange={updatePrefs} baseLevel={settings.level} onRun={runRecommendation} />)}
-      {offlineOpen && <Offline open={offlineOpen} onClose={() => setOfflineOpen(false)} pwa={pwa} />}
-      {analyticsOpen && <Analytics open={analyticsOpen} onClose={() => setAnalyticsOpen(false)} />}
-      {referenceOpen && (<Reference open={referenceOpen} initialTool={referenceTool} onXp={awardXp} onClose={() => { setReferenceOpen(false); setReferenceTool(null); }} />)}
-      {focusOpen && <Focus open={focusOpen} onClose={() => setFocusOpen(false)} />}
+      {overlayIs(overlay, 'personalise') && (<Personalise open onClose={closeOverlay} prefs={prefs} onPrefsChange={updatePrefs} baseLevel={settings.level} onRun={runRecommendation} />)}
+      {overlayIs(overlay, 'offline') && <Offline open onClose={closeOverlay} pwa={pwa} />}
+      {overlayIs(overlay, 'analytics') && <Analytics open onClose={closeOverlay} />}
+      {overlayIs(overlay, 'reference') && (<Reference open initialTool={overlayPayload(overlay, 'tool')} onXp={awardXp} onClose={() => { closeOverlay(); setLearnView(null); }} />)}
+      {overlayIs(overlay, 'focus') && <Focus open onClose={closeOverlay} />}
       {/* Developer panel: opt-in (Settings → Developer panel), lazy, and an
           overlay — never inline in a tab, where its height would push layout
           around and intercept the tab grid's clicks. */}
-      {devPanelOpen && (
-        <DevPanel open onClose={() => setDevPanelOpen(false)} telemetry={telemetry} apiKey={apiKey} mockMode={settings.mockMode} onMockMode={(v) => updateSettings({ ...settings, mockMode: v })} onClear={clearTelemetry} />
+      {overlayIs(overlay, 'devPanel') && (
+        <DevPanel open onClose={closeOverlay} telemetry={telemetry} apiKey={apiKey} mockMode={settings.mockMode} onMockMode={(v) => updateSettings({ ...settings, mockMode: v })} onClear={clearTelemetry} />
       )}
-      {learningPathOpen && (
+      {overlayIs(overlay, 'learningPath') && (
         <div className="fixed inset-0 z-[55] overflow-y-auto bg-bg" role="dialog" aria-modal="true" aria-label="Learning path">
           <div className="mx-auto min-h-full max-w-lg px-4 py-4">
             <div className="mb-4 flex items-center gap-3">
               <h2 className="flex-1 text-lg font-bold text-ink">Learning path</h2>
-              <button type="button" onClick={() => setLearningPathOpen(false)} aria-label="Close learning path" className="grid h-9 w-9 place-items-center rounded-full text-ink2 hover:bg-surface2 hover:text-ink"><X size={18} /></button>
+              <button type="button" onClick={closeOverlay} aria-label="Close learning path" className="grid h-9 w-9 place-items-center rounded-full text-ink2 hover:bg-surface2 hover:text-ink"><X size={18} /></button>
             </div>
-            <LearningPath path={path} dueCount={dueCount} onStartLesson={startLesson} onOpenSetup={() => { setLearningPathOpen(false); setPathSetupOpen(true); }} />
+            <LearningPath path={path} dueCount={dueCount} onStartLesson={startLesson} onOpenSetup={() => openOverlay('pathSetup')} />
           </div>
         </div>
       )}
-      {onboardingOpen && (<Onboarding open={onboardingOpen} onComplete={finishOnboarding} onSkip={skipOnboarding} onStartConversation={() => setTab('speak')} />)}
-      {searchOpen && <GlobalSearch open={searchOpen} onClose={() => setSearchOpen(false)} onGo={goFromSearch} />}
-      {realWorldOpen && (<RealWorld open={realWorldOpen} onClose={() => setRealWorldOpen(false)} onRoleplay={startRoleplay} onXp={awardXp} />)}
-      {profileOpen && (<Profile open={profileOpen} onClose={() => setProfileOpen(false)} onXp={awardXp} weeklyGoal={settings.weeklyGoal} onHeaderChange={({ coins: c, avatarId: a }) => { setCoins(c); setAvatarId(a); }} />)}
-      {pathSetupOpen && (<PathSetup open={pathSetupOpen} onClose={() => setPathSetupOpen(false)} onCreated={(p) => { setPath(p); setPathSetupOpen(false); updateSettings({ ...settings, level: p.cefr }); }} />)}
+      {overlayIs(overlay, 'onboarding') && (<Onboarding open initialLanguage={settings.language} onComplete={finishOnboarding} onSkip={skipOnboarding} onStartConversation={() => setTab('speak')} />)}
+      {overlayIs(overlay, 'search') && <GlobalSearch open onClose={closeOverlay} onGo={goFromSearch} />}
+      {overlayIs(overlay, 'realWorld') && (<RealWorld open onClose={closeOverlay} onRoleplay={startRoleplay} onXp={awardXp} />)}
+      {overlayIs(overlay, 'profile') && (<Profile open onClose={closeOverlay} onXp={awardXp} weeklyGoal={settings.weeklyGoal} onHeaderChange={({ coins: c, avatarId: a }) => { setCoins(c); setAvatarId(a); }} />)}
+      {overlayIs(overlay, 'pathSetup') && (<PathSetup open onClose={closeOverlay} onCreated={(p) => { setPath(p); closeOverlay(); updateSettings({ ...settings, level: p.cefr }); }} />)}
       </Suspense>
-      <TodaySession
-        open={todayOpen}
-        onClose={() => setTodayOpen(false)}
-        minutes={20}
-        apiKey={apiKey}
-        mockMode={settings.mockMode}
-        level={effectiveLevel}
-        ttsRate={settings.ttsRate}
-        onTurn={handleTurn}
-        onXp={awardXp}
-        onActivity={handleActivity}
-      />
+      {overlayIs(overlay, 'today') && (
+        <Suspense fallback={<ScreenLoader />}>
+          <TodaySession
+            open
+            onClose={closeOverlay}
+            minutes={20}
+            apiKey={apiKey}
+            mockMode={settings.mockMode}
+            level={effectiveLevel}
+            ttsRate={settings.ttsRate}
+            onTurn={handleTurn}
+            onXp={awardXp}
+            onActivity={handleActivity}
+          />
+        </Suspense>
+      )}
       {celebration && <Celebration data={celebration} onDone={() => setCelebration(null)} />}
     </div>
   );
@@ -723,8 +736,17 @@ function ScreenLoader() {
 }
 
 function TabButton({ id, icon: TabIcon, label, active, onClick }) {
+  // Intent prefetch: pointing at (or keyboard-focusing) a tab downloads that
+  // tab's chunk before the tap lands, so the first navigation never shows a
+  // spinner — without the old boot-time blanket warm-up.
   return (
-    <button onClick={() => onClick(id)} aria-current={active ? 'page' : undefined} className={`relative flex-1 flex flex-col items-center gap-1 py-2.5 min-h-14 text-[11px] font-medium transition-colors ${active ? 'text-ink' : 'text-ink3 hover:text-ink2'}`}>
+    <button
+      onClick={() => onClick(id)}
+      onPointerEnter={() => prefetchForTab(id)}
+      onFocus={() => prefetchForTab(id)}
+      aria-current={active ? 'page' : undefined}
+      className={`relative flex-1 flex flex-col items-center gap-1 py-2.5 min-h-14 text-[11px] font-medium transition-colors ${active ? 'text-ink' : 'text-ink3 hover:text-ink2'}`}
+    >
       <span aria-hidden="true" className={`absolute top-0 h-0.5 rounded-full bg-ink transition-all duration-200 ${active ? 'w-8 opacity-100' : 'w-0 opacity-0'}`} />
       <TabIcon size={18} />
       {label}

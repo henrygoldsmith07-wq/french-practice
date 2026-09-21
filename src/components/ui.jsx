@@ -35,7 +35,7 @@ export function ScoreBadge({ value, size = 'md' }) {
 // restored to the trigger on close — aria-modal without this strands
 // keyboard/screen-reader users behind an "inert" background.
 
-export function Modal({ open, onClose, children, wide = false }) {
+export function Modal({ open, onClose, children, wide = false, label }) {
   const panelRef = useRef(null);
   const restoreRef = useRef(null);
 
@@ -86,6 +86,7 @@ export function Modal({ open, onClose, children, wide = false }) {
         ref={panelRef}
         role="dialog"
         aria-modal="true"
+        aria-label={label}
         tabIndex={-1}
         onClick={(e) => e.stopPropagation()}
         className={`sheet-enter w-full ${wide ? 'sm:max-w-3xl' : 'sm:max-w-md'} max-h-[92dvh] overflow-y-auto nice-scroll bg-surface border border-line rounded-t-3xl sm:rounded-3xl shadow-2xl shadow-black/50 focus:outline-none`}

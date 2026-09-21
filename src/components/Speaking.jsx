@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import DailyChallenge from './DailyChallenge';
 import Pronunciation from './Pronunciation';
 import { Mic, Clock, MessageCircle, ChevronLeft, ChevronRight } from './icons';

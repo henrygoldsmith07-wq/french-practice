@@ -29,8 +29,8 @@ export function grammarTopicsReady() { return topicIdSet.size > 0; }
 export function ensureGrammarTopics() {
   if (!loaderPromise) {
     loaderPromise = import('./grammar.js')
-      .then((m) => setGrammarTopics(m.GRAMMAR_TOPICS))
-      .catch(() => { loaderPromise = null; });
+      .then((m) => { setGrammarTopics(m.GRAMMAR_TOPICS); return grammarTopicsReady(); })
+      .catch(() => { loaderPromise = null; return false; });
   }
   return loaderPromise;
 }
@@ -205,6 +205,12 @@ export function probeCapabilities({
   srsDue = 0,
   listeningTrack = null,
   recentCorrections = 0,
+  // Capability rows of the ACTIVE language (lib/capabilities.js): the
+  // conjugation trainer, authored grammar drills and the accent retype are
+  // French-authored, so a beta language's plan can never schedule them no
+  // matter what a concept's shape looks like. Default true keeps this pure
+  // function's existing callers (node tests) unchanged.
+  languageCaps = { conj: true, authored: true, accent: true },
 } = {}) {
   const authored = concept ? authoredDrillFor(concept) : null;
   const trainer = concept ? trainerDrillFor(concept) : null;
@@ -213,10 +219,10 @@ export function probeCapabilities({
   return {
     concept: concept || null,
     'ai-drill': Boolean(hasAi) && Boolean(concept),
-    'conj-drill': Boolean(trainer),
+    'conj-drill': Boolean(trainer) && languageCaps.conj !== false,
     'dictation-drill': Boolean(dictation),
-    'accent-drill': Boolean(accent),
-    'authored-drill': Boolean(authored),
+    'accent-drill': Boolean(accent) && languageCaps.accent !== false,
+    'authored-drill': Boolean(authored) && languageCaps.authored !== false,
     'retype': pendingRetypes > 0,
     'srs-retrieval': srsDue > 0,
     'listen': Boolean(listeningTrack),

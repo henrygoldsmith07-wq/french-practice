@@ -2,20 +2,22 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import useRecorder from '../hooks/useRecorder';
 import { transcribe, friendlyError } from '../lib/groq';
 import { speak } from '../lib/tts';
-import {
-  getExamBoundarySets, getExaminerScripts, getRealExamResults, recordExaminerMark,
-  recordRealExamResult, recordSkillScore, saveExamBoundarySet,
-} from '../lib/storage';
-import {
-  BOARDS, CRITERIA, EXAM_MODE, EXAM_MODES, TASK_CRITERIA, TIER, boardList, resolveWjecGcse, specCaveat, timingQa,
-} from '../lib/exams/boards.js';
-import {
-  PHASE, buildPaper, initRun, beginPrep, beginSpeaking, timeLeft, phaseAllowance,
-  notesAllowed, completeSection, scoreTask, scorePaper, gradeEstimate, examFeedback,
-  benchmarkExaminer, scoreExamTechnique, validateAgainstResults,
-} from '../lib/exams/simulator.js';
+import { getExamBoundarySets } from '../lib/storage';
+import { BOARDS,
+  EXAM_MODE,
+  EXAM_MODES,
+  TIER,
+  resolveWjecGcse, } from '../lib/exams/boards.js';
+import { PHASE,
+  buildPaper,
+  initRun,
+  beginPrep,
+  beginSpeaking,
+  timeLeft,
+  phaseAllowance,
+  notesAllowed,
+  completeSection, } from '../lib/exams/simulator.js';
 import { availableThemes } from '../lib/exams/tasks.js';
-import { parseBoundaryImport } from '../lib/exams/boundaries.js';
 import { Clock, Mic, Square, ChevronRight } from './icons';
 import { Spinner } from './ui';
 import { Setup } from './ExamSetup';
@@ -51,7 +53,8 @@ export default function ExamSimulator({ apiKey, mockMode, onXp, onActivity }) {
   const board = BOARDS[boardId];
   // The theme picker follows the selected qualification: Made-for-Wales
   // shows its three broad areas, legacy boards their published theme lists.
-  const themes = useMemo(() => (board?.themes?.length ? board.themes : availableThemes()), [boardId]);
+  const boardThemes = board?.themes;
+  const themes = useMemo(() => (boardThemes?.length ? boardThemes : availableThemes()), [boardThemes]);
   const selectedBoundary = boundarySets.find((set) => set.id === boundarySetId) || null;
 
   useEffect(() => {

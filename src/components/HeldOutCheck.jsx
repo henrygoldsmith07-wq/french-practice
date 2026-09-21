@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
 import { ChevronRight, Volume, Mic } from './icons';
-import { speak } from '../lib/tts';
 import useRecorder from '../hooks/useRecorder';
 import { transcribe, evaluateTurn, friendlyError } from '../lib/groq';
 
@@ -51,7 +50,7 @@ function ConfidenceChips({ value, onChange }) {
   );
 }
 
-function OptionList({ options, correctOptionId, locked, chosenId, onPick, lang, groupLabel }) {
+function OptionList({ options, locked, onPick, lang, groupLabel }) {
   return (
     <div className="grid gap-2" role="group" aria-label={groupLabel}>
       {options.map((o) => {
@@ -71,16 +70,14 @@ function OptionList({ options, correctOptionId, locked, chosenId, onPick, lang, 
 );
 }
 
-function ChoiceRunner({ item, objective, setObjective, onPick }) {
+function ChoiceRunner({ item, objective, onPick }) {
   return (
     <div className="space-y-4">
       <p className="text-center text-lg font-bold text-ink">{item.content?.prompt}</p>
       <p className="text-center text-[11px] text-ink3">Choose the matching French word.</p>
       <OptionList
         options={item.options || []}
-        correctOptionId={item.correctOptionId}
         locked={Boolean(objective)}
-        chosenId={objective?.chosenId ?? null}
         onPick={(o) => onPick(o)}
         lang="fr"
         groupLabel="Choose the matching French word"
@@ -89,7 +86,7 @@ function ChoiceRunner({ item, objective, setObjective, onPick }) {
   );
 }
 
-function TypedRunner({ item, objective, setObjective, hint, onAnswer }) {
+function TypedRunner({ item, objective, hint, onAnswer }) {
   const [draft, setDraft] = useState('');
   const submit = () => {
     if (!draft.trim() || objective) return;
@@ -167,9 +164,7 @@ function ListeningRunner({ item, objective, setObjective, onPick, ttsRate = 1 })
       )}
       <OptionList
         options={item.options || []}
-        correctOptionId={item.correctOptionId}
         locked={Boolean(objective) || !played}
-        chosenId={objective?.chosenId ?? null}
         onPick={(o) => onPick(o)}
         lang="en"
         groupLabel="Choose the meaning you heard"
@@ -187,9 +182,7 @@ function ReadingRunner({ item, objective, onPick }) {
       <p className="text-center text-[11px] text-ink3">Read the passage, then choose the meaning.</p>
       <OptionList
         options={item.options || []}
-        correctOptionId={item.correctOptionId}
         locked={Boolean(objective)}
-        chosenId={objective?.chosenId ?? null}
         onPick={(o) => onPick(o)}
         lang="en"
         groupLabel="Choose the correct meaning"
@@ -204,7 +197,6 @@ function SpeakingRunner({ item, objective, setObjective, confidence, setConfiden
   // never as incorrect. The learner's confidence is captured separately.
   const [stage, setStage] = useState('idle'); // idle|ready|recording|processing|awaiting-confidence
   const [tappedMic, setTappedMic] = useState(false);
-  const [note, setNote] = useState(null);
   const recorder = useRecorder({
     onComplete: async (blob) => {
       setStage('processing');
@@ -244,12 +236,13 @@ function SpeakingRunner({ item, objective, setObjective, confidence, setConfiden
 
   // A denied/unavailable microphone resolves (not rejects) inside the
   // recorder; surface it as an explicit unavailable measurement.
+  // setObjective is stable state-setter identity; listed for lint clarity.
   useEffect(() => {
     if (recorder.error && !objective) {
       setObjective({ status: 'unavailable', reason: 'microphone-unavailable' });
       setStage('awaiting-confidence');
     }
-  }, [recorder.error, objective]);
+  }, [recorder.error, objective, setObjective]);
   // An evaluation pipeline that never resolves (offline, hung API, silent
   // recorder) must NOT trap the check: after a bounded wait the attempt is
   // recorded unscored — infrastructure failure, never learner failure.
@@ -262,7 +255,7 @@ function SpeakingRunner({ item, objective, setObjective, confidence, setConfiden
       }
     }, 15000);
     return () => clearTimeout(t);
-  }, [stage, objective]);
+  }, [stage, objective, setObjective]);
   // A microphone that opens but never produces media is equally an
   // infrastructure failure — surface it instead of trapping the learner.
   useEffect(() => {
@@ -274,7 +267,7 @@ function SpeakingRunner({ item, objective, setObjective, confidence, setConfiden
       }
     }, 10000);
     return () => clearTimeout(t);
-  }, [stage, objective, recorder.recording, tappedMic]);
+  }, [stage, objective, recorder.recording, tappedMic, setObjective]);
 
   return (
     <div className="space-y-4">
@@ -314,7 +307,6 @@ function SpeakingRunner({ item, objective, setObjective, confidence, setConfiden
       {objective && stage === 'awaiting-confidence' && (
         <ConfidenceChips value={confidence} onChange={setConfidence} />
       )}
-      {note && <p className="text-[11px] text-amber-700 text-center">{note}</p>}
     </div>
   );
 }
@@ -383,7 +375,7 @@ export default function HeldOutCheck({ check, onDone, apiKey, mockMode, level, t
     if (objective) return;
     setObjective({ chosenId: o.id, status: 'scored', correct: o.id === item.correctOptionId });
   };
-  const onTyped = ({ draft, matched }) => {
+  const onTyped = ({ draft: _draft, matched }) => {
     if (objective) return;
     setObjective({
       status: 'scored',

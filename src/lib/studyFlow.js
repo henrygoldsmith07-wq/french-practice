@@ -6,20 +6,30 @@
 // Nothing in this module touches the mistake graph, FSRS/SRS state, or any
 // mastery lifecycle, and nothing about check items ever steers selection.
 
-import {
-  enrolStudy, isEnrolled, studyDay, isCheckDay, buildHeldOutPool,
-  makeCheckRecord, recordCheckResult, makeOutcomeRecord, withdrawStudy,
-  applyRetestToOutcome, applyRecurrenceToOutcome, cleanBaseline,
+import { enrolStudy,
+  isEnrolled,
+  studyDay,
+  isCheckDay,
+  recordCheckResult,
+  makeOutcomeRecord,
+  withdrawStudy,
+  applyRetestToOutcome,
+  applyRecurrenceToOutcome,
+  cleanBaseline,
   checkSkillSummary,
-  PROTOCOL_VERSION,
-} from './evidenceStudy.js';
+  PROTOCOL_VERSION, } from './evidenceStudy.js';
 import { mayEnrol, hasDeclined, makeConsentRecord, consentGuardOk, protocolVersionOk } from './studyConsent.js';
-import {
-  getStudyState, saveStudyState, getStudyConsent, saveStudyConsent,
-  getStudyChecks, saveStudyChecks,
-  getStudyOutcomes, saveStudyOutcomes, getSyncId, getLastPlacement,
-  getStudyArmOverride, getSessions,
-} from './storage.js';
+import { getStudyState,
+  saveStudyState,
+  getStudyConsent,
+  saveStudyConsent,
+  getStudyChecks,
+  saveStudyChecks,
+  getStudyOutcomes,
+  saveStudyOutcomes,
+  getSyncId,
+  getLastPlacement,
+  getSessions, } from './storage.js';
 
 // Re-exports for components: the study glue is the single study surface.
 export { buildHeldOutPool, makeCheckRecord, recordCheckResult } from './evidenceStudy.js';
@@ -296,7 +306,7 @@ export function linkRetestToOutcomes({ mistakeId, retest, trialAt = null }) {
 }
 
 /** Recurrence: fresh occurrence after a delayed success, per outcome row. */
-export function markOutcomeRecurrence({ mistakeId, trialAt = null, recurred = true }) {
+export function markOutcomeRecurrence({ mistakeId, recurred = true }) {
   // Research-write guard: no consent/active study, no fp.study.* write.
   if (!canRecordStudyData() || !canRecordUnderProtocol()) return;
   try {

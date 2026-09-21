@@ -21,7 +21,7 @@ import { Mic, Square, Play, RefreshCw } from './icons';
 // diff scores how much was recognized (a solid proxy for clarity), and the
 // LLM turns the mis-transcriptions into specific accent feedback.
 
-export default function Pronunciation({ mode, apiKey, mockMode, ttsRate, level, onXp, onActivity }) {
+export default function Pronunciation({ mode, apiKey, mockMode, level, onXp, onActivity }) {
   const shadow = mode === 'shadow';
   const [sentence, setSentence] = useState(() => randomPoolSentence());
   const [played, setPlayed] = useState(false); // shadowing requires listening first
@@ -332,7 +332,7 @@ export default function Pronunciation({ mode, apiKey, mockMode, ttsRate, level, 
       {(error || recorder.error) && (
         <p role="alert" className="text-xs text-ink text-center">{error || recorder.error}</p>
       )}
-      <MinimalPairStrip level={level} />
+      <MinimalPairStrip />
       <PhonemeWeakStrip />
       <div className="text-center">
         <SpeakButton text={sentence.text} slow />
@@ -340,7 +340,7 @@ export default function Pronunciation({ mode, apiKey, mockMode, ttsRate, level, 
     </div>
   );
 }
-function MinimalPairStrip({ level }){
+function MinimalPairStrip(){
   // Start from the learner's actual weakest contrast, not a hard-coded one —
   // the label and the audio must agree on the very first render.
   const weak = weakestPhonemes(1)[0];

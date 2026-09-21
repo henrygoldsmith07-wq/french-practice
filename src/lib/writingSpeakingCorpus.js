@@ -163,7 +163,6 @@ export function corpusCorrectionMetrics(entries = []) {
     if (a > h) falsePos += (a - h);
     if (h > a) falseNeg += (h - a);
   }
-  const denom = Math.max(1, totalHuman + totalAI);
   return {
     n: both.length,
     status: both.length < MIN_CORPUS_N ? 'provisional' : 'validated',

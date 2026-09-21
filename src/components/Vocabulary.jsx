@@ -11,7 +11,6 @@ import Memory from './Memory';
 import Mascot from './Mascot';
 import { weakEntries, notebookAsEntries, reviewOrder, dueEntries, frontierTier, isEntryDue, NEW_CARD_CAP } from '../lib/memory';
 import { fsrsRetention, isProductiveUnlocked } from '../lib/fsrs';
-import { activeVocabTarget, controlledNewVocab } from '../lib/adaptivePractice';
 import { SpeakButton } from './ui';
 import { ChevronLeft, ChevronRight, Layers, Book, Plus, Trash, BarChart, Clock, Search, Target } from './icons';
 
@@ -34,15 +33,31 @@ export default function Vocabulary({ apiKey, mockMode, onActivity, onXp }) {
     next.has(id) ? next.delete(id) : next.add(id);
     return next;
   });
-  const srs = useMemo(() => getSrs(), [srsTick]);
-  const notebook = useMemo(() => getNotebook(), [nbTick]);
+  // Refresh-tick pattern: srsTick/nbTick bump after study/notebook writes;
+  // the void keeps the tick registered as read inside the memo factory.
+  const srs = useMemo(() => {
+    void srsTick;
+    return getSrs();
+  }, [srsTick]);
+  const notebook = useMemo(() => {
+    void nbTick;
+    return getNotebook();
+  }, [nbTick]);
 
   // New cards are introduced by frequency, so the "due" set is gated to the
   // current frontier tier (computed once, globally, over the whole library).
-  const frontier = useMemo(() => frontierTier(allEntries(), srs), [srs]);
+  const frontier = useMemo(() => {
+    void srs; // refresh signal; frontier is keyed to the srs snapshot
+    return frontierTier(allEntries(), srs);
+  }, [srs]);
   // Memoised so typing in the search box doesn't rescan ~3k cards per keystroke.
+  // `frontier` is the refresh signal: after a study session promotes the tier,
+  // the due total must recompute even though `srs` may look unchanged.
   const dueTotal = useMemo(
-    () => dueEntries([...allEntries(), ...notebookAsEntries(notebook)], srs, Date.now(), { newCardCap: NEW_CARD_CAP }).length,
+    () => {
+      void frontier;
+      return dueEntries([...allEntries(), ...notebookAsEntries(notebook)], srs, Date.now(), { newCardCap: NEW_CARD_CAP }).length;
+    },
     [srs, frontier, notebook],
   );
 
@@ -310,7 +325,11 @@ function Deck({ packId, onBack, srs, onRated, onSavedChange, apiKey, mockMode, o
 
   // Built once per deck — rebuilding the multi-thousand-entry library on every
   // render (each keystroke while the quiz is open) is pure waste.
-  const library = useMemo(() => [...allEntries(), ...notebookAsEntries(getNotebook())], [packId]);
+  // packId switches decks: a new deck deserves a fresh library snapshot.
+  const library = useMemo(() => {
+    void packId;
+    return [...allEntries(), ...notebookAsEntries(getNotebook())];
+  }, [packId]);
 
   if (!deck.length) {
     return (

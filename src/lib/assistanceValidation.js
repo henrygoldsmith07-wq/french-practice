@@ -7,7 +7,6 @@
 // Pair with: cefr.js assistancePolicy, learningAdaptation.js assistanceFading,
 // storage.js learner history, memory.js retention.
 
-import { MIN_VALIDATION_N } from './placementValidation.js';
 
 export const MIN_ASSISTANCE_N = 20;
 

@@ -1,9 +1,8 @@
-import { lazy, Suspense, useState } from 'react';
+import { lazy, Suspense } from 'react';
 import { getSettings } from '../lib/storage';
 import { BarChart, Map, Clock, Target, Layers } from './icons';
 import { ChevronRight } from './icons';
-import { contentLang } from '../lib/content/active.js';
-import { featureAvailableNow } from '../lib/languages';
+import { featureAvailableNow, hasCapabilityNow } from '../lib/languages';
 
 const LazyProfile = lazy(() => import('./Profile'));
 const LazyAnalytics = lazy(() => import('./Analytics'));
@@ -32,7 +31,9 @@ const SECTIONS_ALL = [
 // The 12-unit learning path is authored for French only; beta languages get
 // the core loop and honest progress surfaces instead of a half-built path.
 // Gated via the shared FULL_ONLY_FEATURES registry (languages.js).
-const SECTIONS = (lang) => SECTIONS_ALL.filter(
+// Capability-aware: sections derive from the shared capability matrix, so a
+// section appears only for languages that actually offer it.
+const SECTIONS = () => SECTIONS_ALL.filter(
   (s) => featureAvailableNow(s.id),
 );
 
@@ -46,10 +47,6 @@ export default function ProgressHub({
   dueCount,
   onStartLesson,
   onOpenPathSetup,
-  prefs,
-  onPrefsChange,
-  baseLevel,
-  onRunRecommendation,
   onOpenGrammar,
   onOpenSpeaking,
 }) {
@@ -131,10 +128,16 @@ export default function ProgressHub({
       <div className="max-w-[1020px] mx-auto px-[22px] py-6 space-y-6">
         <div className="text-center">
           <h2 className="text-[clamp(22px,4vw,30px)] font-bold tracking-[-0.02em]">Progress</h2>
-          <p className="text-ink2 mt-1.5 text-sm max-w-xl mx-auto">Streak, learning path and analytics — the quiet scoreboard. No guilt, just shape and momentum.</p>
+          {/* Copy stays honest per language: no advertising a gated feature
+              in the hub the learner is standing in. */}
+          <p className="text-ink2 mt-1.5 text-sm max-w-xl mx-auto">
+            {hasCapabilityNow('learning-path')
+              ? 'Streak, learning path and analytics — the quiet scoreboard. No guilt, just shape and momentum.'
+              : 'Streak, proficiency and analytics — the quiet scoreboard. No guilt, just shape and momentum.'}
+          </p>
         </div>
         <div className="grid gap-3.5 sm:grid-cols-2">
-          {SECTIONS(contentLang()).map((s) => (
+          {SECTIONS().map((s) => (
             <button
               key={s.id}
               onClick={() => onView(s.id)}

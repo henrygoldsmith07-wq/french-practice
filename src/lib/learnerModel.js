@@ -25,7 +25,7 @@ export const EXAM_BOARDS = [
 ];
 
 // Difficulty adaptation: nudge level by session scores + XP pace
-export function adaptedLevel(base, sessions, xpLog){
+export function adaptedLevel(base, sessions){
   const recent = sessions.slice(-6).map(s=> s.report?.average_scores?.overall).filter(n=> typeof n==="number");
   if(recent.length<3) return { level: base, reason: "not enough sessions" };
   const avg = recent.reduce((a,b)=>a+b,0)/recent.length;
@@ -54,7 +54,7 @@ export function conversationVocab(knownWords, newWords){
 // Build practice queue from weaknesses: SM-2 due + weak grammar + notebook
 // Returns ordered item ids with reason
 // weakness: { type: "grammar"|"vocab"|"pronunciation", id, severity }
-export function practiceQueue({ srs, weakGrammar, weakWords, notebook }){
+export function practiceQueue({ srs, weakGrammar, weakWords }){
   const q = [];
   (weakWords||[]).slice(0,6).forEach(w=> q.push({ id: w.id || w, type:"vocab", reason:"weak word" }));
   (weakGrammar||[]).slice(0,3).forEach(g=> q.push({ id: g, type:"grammar", reason:"weak grammar" }));

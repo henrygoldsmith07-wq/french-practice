@@ -68,10 +68,9 @@ export default function Dictation({ ttsRate, level: cefr = 'B1', onXp, onActivit
   // 1:1 because toWords only strips punctuation, never merges words).
   const displayHits = useMemo(() => {
     if (!result) return null;
-    const target = toWords(sentence.text);
     let k = 0;
     return targetWords.map((w) => (toWords(w).length ? result.hits[(k += 1) - 1] : true));
-  }, [result, sentence, targetWords]);
+  }, [result, targetWords]);
 
   return (
     <div className="h-full overflow-y-auto nice-scroll px-4 py-6">

@@ -7,9 +7,15 @@
 // to it. So the simulator runs real clocks — supervised preparation, then a
 // per-task allowance that does not pause when you panic.
 
-import {
-  CRITERIA, EXAM_MODE, TASK_CRITERIA, bandFor, getBoard, getTask, specCaveat, targetSeconds, taskMarks, TIER,
-} from './boards.js';
+import { CRITERIA,
+  EXAM_MODE,
+  TASK_CRITERIA,
+  bandFor,
+  getBoard,
+  specCaveat,
+  targetSeconds,
+  taskMarks,
+  TIER, } from './boards.js';
 import {
   pickConversation, pickExamTask, pickPhotocard, pickReadingPassage, pickRoleplay,
 } from './tasks.js';

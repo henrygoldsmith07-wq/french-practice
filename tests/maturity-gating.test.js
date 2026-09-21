@@ -26,15 +26,18 @@ test('maturity declaration: French full, DE/ES beta, label surfaced', () => {
 });
 
 test('the shared registry marks exactly the French-only features', () => {
-  for (const feature of ['grammar', 'culture', 'exams', 'path']) {
+  // French-authored surfaces (capability matrix rows) must gate off for beta.
+  for (const feature of ['grammar', 'culture', 'exams', 'path', 'reading', 'listening', 'writing', 'conjugation']) {
     assert.ok(FULL_ONLY_FEATURES.has(feature), `${feature} must be registered`);
   }
   assert.equal(featureAvailable('grammar', 'fr'), true);
   assert.equal(featureAvailable('grammar', 'de'), false);
   assert.equal(featureAvailable('grammar', 'es'), false);
   assert.equal(featureAvailable('exams', 'de'), false);
+  assert.equal(featureAvailable('reading', 'de'), false);
+  assert.equal(featureAvailable('listening', 'es'), false);
   // Core loop is available everywhere.
-  for (const feature of ['today', 'speak', 'review', 'field-notes', 'reference']) {
+  for (const feature of ['today', 'speak', 'review', 'field-notes', 'reference', 'cards', 'dictation', 'pronunciation']) {
     assert.equal(featureAvailable(feature, 'es'), true, `${feature} is core-loop, not French-only`);
   }
 });
@@ -49,15 +52,21 @@ test('featureAvailableNow follows the active content language', async () => {
 });
 
 test('betaAlternativeCopy advertises what IS available, and frames the rest as future work', () => {
-  // Everything promised must be real, core-loop, available-everywhere features…
-  for (const promised of ['today', 'conversation', 'vocabulary', 'dictée', 'ai tutor']) {
-    assert.ok(betaAlternativeCopy.toLowerCase().includes(promised), `alternative copy must mention "${promised}"`);
-  }
-  // …and French-only surfaces may only appear on the "still coming" side of the sentence.
-  const [readyClause, futureClause] = betaAlternativeCopy.split('Still coming:');
-  assert.ok(futureClause, 'the copy must state what is still being built');
-  for (const banned of ['grammar topics', 'exam', 'culture']) {
-    assert.ok(!readyClause.toLowerCase().includes(banned), `"${banned}" must not be promised as ready`);
+  // The copy is per-language: the language name is dynamic.
+  assert.ok(betaAlternativeCopy('de').includes('German'));
+  assert.ok(betaAlternativeCopy('es').includes('Spanish'));
+  for (const id of ['de', 'es']) {
+    const copy = betaAlternativeCopy(id);
+    // Everything promised must be real, core-loop, available-everywhere features…
+    for (const promised of ['today', 'conversation', 'vocabulary', 'dictée', 'ai tutor']) {
+      assert.ok(copy.toLowerCase().includes(promised), `alternative copy must mention "${promised}"`);
+    }
+    // …and French-only surfaces may only appear on the "still coming" side of the sentence.
+    const [readyClause, futureClause] = copy.split('Still coming for');
+    assert.ok(futureClause, 'the copy must state what is still being built');
+    for (const banned of ['grammar topics', 'exam', 'culture']) {
+      assert.ok(!readyClause.toLowerCase().includes(banned), `"${banned}" must not be promised as ready`);
+    }
   }
 });
 

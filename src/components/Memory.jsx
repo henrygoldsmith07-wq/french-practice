@@ -13,7 +13,7 @@ import {
   memoryBuckets, weakEntries, curvePoints, heatmapWeeks, totalReviews,
   reviewOutlook, notebookAsEntries,
 } from '../lib/memory';
-import { ChevronLeft, ChevronRight, Check, X, Layers, Target, Book, Pencil } from './icons';
+import { ChevronLeft, ChevronRight, Check, X, Layers, Target, Book } from './icons';
 
 // Memory & revision dashboard: retention buckets from the forgetting curve,
 // weak-word and mistake drills, custom-flashcard study, and the review
@@ -22,8 +22,14 @@ import { ChevronLeft, ChevronRight, Check, X, Layers, Target, Book, Pencil } fro
 export default function Memory({ onBack, onOpenDeck, onXp }) {
   const [habitTick, setHabitTick] = useState(0);
   const [errorTick, setErrorTick] = useState(0);
-  const habits = useMemo(() => getHabits(), [habitTick]);
-  const learnerErrors = useMemo(() => getLearnerErrors({ limit: 8 }), [errorTick]);
+  const habits = useMemo(() => {
+    void habitTick; // refresh signal
+    return getHabits();
+  }, [habitTick]);
+  const learnerErrors = useMemo(() => {
+    void errorTick; // refresh signal
+    return getLearnerErrors({ limit: 8 });
+  }, [errorTick]);
 
   const { entries, buckets, weak, outlook, log } = useMemo(() => {
     const srsMap = getSrs();

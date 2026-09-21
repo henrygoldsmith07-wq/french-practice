@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { poolForLevel, makePrompt, checkForm, spokenSentence, tenseLabel, trainerVerbs, focusedPool } from '../lib/conjugationTrainer';
 import { PERSONS } from '../lib/reference';
 import { recordLearnerError, recordLearnerSuccess } from '../lib/storage';
@@ -14,11 +14,15 @@ const LEVELS = ['A1', 'A2', 'B1', 'B2'];
 
 export default function ConjugationTrainer({ onXp, focus = null, onDone = null }) {
   const focusKey = focus ? `${focus.verb || ''}:${focus.tense || ''}` : '';
+  // focus identity churns every render upstream; focusKey is the stable shape.
+  // The memo re-runs when the shape changes and reads the latest focus via ref.
+  const focusRef = useRef(focus);
+  focusRef.current = focus;
   const [level, setLevel] = useState('B1');
-  const pool = useMemo(
-    () => (focus ? focusedPool(focus) : poolForLevel(level)),
-    [level, focusKey],
-  );
+  const pool = useMemo(() => {
+    void focusKey; // the shape change is what re-runs this memo
+    return focusRef.current ? focusedPool(focusRef.current) : poolForLevel(level);
+  }, [level, focusKey]);
   const [prompt, setPrompt] = useState(() => (focus ? makePrompt(focusedPool(focus), { personIndex: focus.personIndex ?? null }) : makePrompt(poolForLevel('B1'))));
   // Focused mode is a session segment: when the gap cannot be prompted
   // (verb/tense not in the pool), the segment ends instead of dead-ending.

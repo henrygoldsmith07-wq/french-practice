@@ -4,6 +4,8 @@
 // All deterministic and offline — it reads the same local data the rest of
 // the app records (habits, grammar scores, session scores, SRS).
 
+import { hasCapabilityNow } from './capabilities.js';
+
 export const LEARNING_STYLES = [
   { id: 'balanced', emoji: '⚖️', title: 'Balanced', desc: 'A bit of everything, evenly' },
   { id: 'conversation', emoji: '💬', title: 'Conversation-first', desc: 'Speaking and roleplay lead' },
@@ -58,11 +60,14 @@ export function adaptiveLevel(baseLevel, sessions, enabled) {
 export function weaknessAnalysis({ habits, grammarProgress, sessions, weakWordCount, dueCount }) {
   const areas = [];
 
-  // Grammar: recurring mistakes + low-scoring / untried topics.
+  // Grammar: recurring mistakes + low-scoring / untried topics. The grammar
+  // LIBRARY is French-authored — for a beta language the area is suppressed
+  // rather than recommending a lesson that cannot exist (stale grammar data
+  // from an earlier French period must not leak into a German plan).
   const habitHits = habits.reduce((a, h) => a + h.count, 0);
   const grammarScores = Object.values(grammarProgress).map((g) => g.best);
   const lowGrammar = grammarScores.filter((s) => s < 80).length;
-  if (habitHits >= 2 || lowGrammar > 0) {
+  if ((habitHits >= 2 || lowGrammar > 0) && hasCapabilityNow('grammar')) {
     areas.push({
       id: 'grammar',
       label: 'Grammar accuracy',
@@ -127,13 +132,24 @@ const STYLE_WEIGHTS = {
 
 // Produce an ordered list of recommendation cards. Weakness areas get a boost
 // so the plan attacks gaps first; the list is capped to the lesson length.
-export function dailyRecommendations({ prefs, weaknesses, dueCount, suggestedScenario }) {
+// Every card type is gated by the language capability matrix — a beta
+// language is never recommended a French-authored lesson (grammar, reading).
+const TYPE_CAPABILITY = {
+  arena: 'conversation',
+  cards: 'vocabulary',
+  grammar: 'grammar',
+  quickfire: 'conversation',
+  dictation: 'dictation',
+  reading: 'reading-library',
+};
+export function dailyRecommendations({ prefs, weaknesses, dueCount, suggestedScenario, offer }) {
   const weights = STYLE_WEIGHTS[prefs.learningStyle] || STYLE_WEIGHTS.balanced;
   const weakBoost = {};
-  weaknesses.forEach((w, i) => {
+  (weaknesses || []).forEach((w, i) => {
     const type = w.action.type === 'arena' ? 'arena' : w.action.type;
-    weakBoost[type] = (weakBoost[type] || 0) + (weaknesses.length - i);
+    weakBoost[type] = (weakBoost[type] || 0) + ((weaknesses || []).length - i);
   });
+  const offered = (type) => (offer ? offer.includes(type) : hasCapabilityNow(TYPE_CAPABILITY[type]));
 
   const pool = [
     { type: 'arena', title: `Roleplay: ${suggestedScenario.title}`, subtitle: 'Conversation practice', base: weights.arena },
@@ -142,7 +158,7 @@ export function dailyRecommendations({ prefs, weaknesses, dueCount, suggestedSce
     { type: 'quickfire', title: 'Quick Fire', subtitle: '45-second improv', base: weights.quickfire },
     { type: 'dictation', title: 'Dictée', subtitle: 'Train your ear', base: weights.dictation },
     { type: 'reading', title: 'Reading', subtitle: 'Stories, news, tap-to-translate', base: weights.reading },
-  ];
+  ].filter((c) => offered(c.type));
 
   return pool
     .map((c) => ({ ...c, score: c.base + (weakBoost[c.type] || 0) * 0.8 }))

@@ -3,7 +3,7 @@ import { GRAMMAR_TOPICS, getGrammarTopic, grammarTopicOfDay, grammarStatsByCefr 
 import { getGrammarProgress, recordGrammarQuiz, bumpChallengeMetric } from '../lib/storage';
 import { Drill, SentenceBuilder, Quiz } from './GrammarExercises';
 import { Markdown, SpeakButton } from './ui';
-import { ERROR_CATEGORIES, categoryForTopic, categoriesForErrors } from '../lib/errorTaxonomy';
+import { categoriesForErrors } from '../lib/errorTaxonomy';
 import { getGrammarErrors } from '../lib/storage';
 import { ChevronLeft, ChevronRight, Book, CheckCircle, Search, Target } from './icons';
 
@@ -30,8 +30,10 @@ export default function Grammar({ focusTopicId, onFocusConsumed, onXp, onActivit
   const [query, setQuery] = useState('');
   // Re-read only when a quiz finishes bumps `tick` — reading localStorage on
   // every render made the memo below useless and re-parsed JSON per keystroke.
-  const progress = useMemo(() => getGrammarProgress(), [tick]);
-  void tick;
+  const progress = useMemo(() => {
+    void tick; // refresh signal: bumping tick re-reads stored progress
+    return getGrammarProgress();
+  }, [tick]);
   const tip = useMemo(() => grammarTopicOfDay(), []);
   const byCefr = useMemo(() => grammarStatsByCefr(), []);
   const masteredCount = useMemo(

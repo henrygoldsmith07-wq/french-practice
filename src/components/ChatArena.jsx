@@ -3,7 +3,7 @@ import { langName } from '../lib/i18n';
 import useRecorder from '../hooks/useRecorder';
 import Waveform from './Waveform';
 import { getScenarios } from '../lib/data';
-import { transcribe, evaluateTurn, evaluateRedoTurn, getHint, friendlyError, fluencyReview } from '../lib/groq';
+import { transcribe, evaluateTurn, evaluateRedoTurn, getHint, friendlyError } from '../lib/groq';
 import { scoreDelta, redoVerdict } from '../lib/redo';
 import { speechMetrics } from '../lib/analytics';
 import { activeLanguage } from '../lib/i18n';
@@ -11,6 +11,7 @@ import {
   getSrs, getSessions, getMetrics, getReviewEvents, getGrammarProgress, getEvidenceLedgerModel,
   getSettings, recordGrammarError, recordWeaknessError, recordWeaknessRepair, getDueWeaknesses, getLearnerBrief,
 } from '../lib/storage';
+import { currentSessionId, newEncounterId } from '../lib/evidenceIdentity';
 import { recordAssistanceEvent, recordCorpusEntry } from '../lib/stores/researchStoreHeavy.js';
 import { recordMistake, typeForCategory, mistakeId as graphIdFor } from '../lib/mistakeGraph';
 import { saveMistakeGraph, getMistakeGraph } from '../lib/storage';
@@ -23,7 +24,6 @@ import { SpeakButton, RateSlider, Spinner } from './ui';
 import { speak, stopSpeaking } from '../lib/tts';
 import { ArrowRight, Lightbulb, Mic, Square, scenarioIcon } from './icons';
 import ScenarioPicker from './ScenarioPicker';
-import FluencyDebrief from './FluencyDebrief';
 import { Avatar, AiBubble, UserBubble, RedoCompare, STRONG_LEVELS } from './ArenaCorrections';
 import { markOutcomeRecurrence } from '../lib/studyFlow';
 
@@ -58,8 +58,6 @@ export default function ChatArena({ apiKey, mockMode, ttsRate, level, onTtsRate,
   // default (coach — the daily session keeps per-turn corrections).
   const [localMode, setLocalMode] = useState(readConversationMode);
   const conversationMode = conversationModeProp || localMode;
-  const [debriefOpen, setDebriefOpen] = useState(false);
-  const [debriefLoading, setDebriefLoading] = useState(false);
   const [hintLevel, setHintLevel] = useState(0);
   const [hint, setHint] = useState('');
   const [hintLoading, setHintLoading] = useState(false);
@@ -199,10 +197,19 @@ export default function ChatArena({ apiKey, mockMode, ttsRate, level, onTtsRate,
           recordGrammarError(redoEval.grammar_topic);
           recordWeaknessError(redoEval.grammar_topic, { scenarioId: scenario.id });
         }
-        // Repair signal: successful redo counts as evidence the learner recovered the form
+        // Repair signal: a successful redo counts as evidence the learner
+        // recovered the form — for the SAME encounter as the original turn
+        // (a re-answer of the same drill), so it can never increment
+        // independent mastery twice on its own.
         if (original.evaluation?.grammar_topic) {
           const improved = (redoEval.scores?.overall ?? 0) > (original.evaluation.scores?.overall ?? 0);
-          if (improved) recordWeaknessRepair(original.evaluation.grammar_topic, { scenarioId: scenario.id, passed: true });
+          if (improved) recordWeaknessRepair(original.evaluation.grammar_topic, {
+            scenarioId: scenario.id,
+            sessionId: original.sessionId || currentSessionId(),
+            encounterId: original.encounterId || null,
+            activityId: scenario.id,
+            passed: true,
+          });
         }
         const { deltas, deltaOverall } = scoreDelta(original.evaluation.scores, redoEval.scores);
         const verdict = redoVerdict(deltaOverall);
@@ -229,6 +236,10 @@ export default function ChatArena({ apiKey, mockMode, ttsRate, level, onTtsRate,
     setPhase('thinking');
     setError(null);
     const turnNumber = history.length + 1;
+    // Evidence identity for THIS encounter (one drill presentation): shared
+    // by the turn object, any error it records and any later redo, so a
+    // re-answer of the same turn can never count twice toward mastery.
+    const encounterId = newEncounterId();
     try {
       const learner = getLearnerBrief();
       const learningPlan = buildLearningPlan({
@@ -259,7 +270,7 @@ export default function ChatArena({ apiKey, mockMode, ttsRate, level, onTtsRate,
         mock: mockMode,
       });
       if (stale()) return; // scenario switched mid-flight â€” discard, don't append
-      if (evaluation.grammar_topic) recordWeaknessError(evaluation.grammar_topic, { scenarioId: scenario.id });
+      if (evaluation.grammar_topic) recordWeaknessError(evaluation.grammar_topic, { scenarioId: scenario.id, sessionId: currentSessionId(), encounterId });
       if (evaluation.grammar_topic) recordGrammarError(evaluation.grammar_topic);
       // Permanent learning object: definite/likely errors become notebook
       // entries automatically â€” retype drill now, recurrence tracking forever.
@@ -335,6 +346,13 @@ export default function ChatArena({ apiKey, mockMode, ttsRate, level, onTtsRate,
         userText,
         evaluation,
         reply: evaluation.reply,
+        // Evidence identity for this encounter (one drill presentation): a
+        // redo of this turn re-answers the SAME encounter and must never
+        // double-count toward independent mastery. Persisted with the turn so
+        // a restored session keeps its identity after a reload.
+        sessionId: currentSessionId(),
+        encounterId,
+        activityId: scenario.id,
         curveball: turnNumber === CURVEBALL_TURN,
         mode: conversationMode,
         correctionPolicy: isFluency
