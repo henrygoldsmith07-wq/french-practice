@@ -1,7 +1,7 @@
 {
-  "generatedAt": "2026-09-14T12:04:32.374Z",
+  "generatedAt": "2026-09-21T12:13:52.951Z",
   "dataset": "validation-dataset.json",
-  "honestyNote": "'—' means no number is claimed yet. Floors per VALIDATION.md; never fabricate rows to move a status.",
+  "honestyNote": "'—' means no number is claimed yet. Agreement figures carry their 95% Wilson interval — small samples wear wide intervals, not false precision. Floors per VALIDATION.md; never fabricate rows to move a status.",
   "tracks": [
     {
       "track": "placement",
