@@ -608,4 +608,123 @@ for (const order of ORDERS) {
   }
 }
 
+// ---- 14. held-out listening waits for confirmed audio playback ------------
+
+{
+  const originalUtterance = globalThis.SpeechSynthesisUtterance;
+  const hadSpeech = Object.prototype.hasOwnProperty.call(window, 'speechSynthesis');
+  const originalSpeech = window.speechSynthesis;
+  let utterance = null;
+  class FakeUtterance {
+    constructor(text) { this.text = text; this.onstart = null; this.onerror = null; }
+  }
+  Object.defineProperty(globalThis, 'SpeechSynthesisUtterance', {
+    value: FakeUtterance, configurable: true, writable: true,
+  });
+  Object.defineProperty(window, 'speechSynthesis', {
+    value: { speak: (u) => { utterance = u; } }, configurable: true,
+  });
+
+  const check = {
+    id: 'chk-listen-start',
+    scheduledSkill: 'listening',
+    items: [{
+      assessmentId: 'listen-1', sourceItemId: 'held-listen-1', skill: 'listening', cefr: 'A1',
+      content: { audio: 'Bonjour', prompt: 'Listen and choose.' },
+      options: [{ id: 'hello', text: 'Hello' }, { id: 'bye', text: 'Goodbye' }],
+      correctOptionId: 'hello',
+    }],
+  };
+  const container = document.createElement('div');
+  document.body.appendChild(container);
+  const root = createRoot(container);
+  try {
+    await act(async () => {
+      root.render(React.createElement(HeldOutCheck, {
+        check, onDone: () => {}, apiKey: '', mockMode: true, level: 'A1',
+      }));
+    });
+    const play = [...container.querySelectorAll('button')].find((b) => b.textContent.includes('Play'));
+    assert.ok(play, 'listening play button rendered');
+    await act(async () => { play.click(); });
+
+    const helloBefore = [...container.querySelectorAll('button')].find((b) => b.textContent === 'Hello');
+    assert.equal(helloBefore.disabled, true, 'queuing TTS alone does not unlock answers');
+    assert.ok(utterance, 'utterance was queued');
+
+    await act(async () => {
+      utterance.onstart?.();
+      await new Promise((r) => setTimeout(r, 0));
+    });
+    const helloAfter = [...container.querySelectorAll('button')].find((b) => b.textContent === 'Hello');
+    assert.equal(helloAfter.disabled, false, 'answers unlock only after confirmed playback start');
+  } finally {
+    await close({ root, container });
+    if (originalUtterance === undefined) delete globalThis.SpeechSynthesisUtterance;
+    else Object.defineProperty(globalThis, 'SpeechSynthesisUtterance', {
+      value: originalUtterance, configurable: true, writable: true,
+    });
+    if (hadSpeech) Object.defineProperty(window, 'speechSynthesis', {
+      value: originalSpeech, configurable: true,
+    });
+    else delete window.speechSynthesis;
+  }
+}
+
+{
+  const originalUtterance = globalThis.SpeechSynthesisUtterance;
+  const hadSpeech = Object.prototype.hasOwnProperty.call(window, 'speechSynthesis');
+  const originalSpeech = window.speechSynthesis;
+  let utterance = null;
+  class FakeUtterance {
+    constructor(text) { this.text = text; this.onstart = null; this.onerror = null; }
+  }
+  Object.defineProperty(globalThis, 'SpeechSynthesisUtterance', {
+    value: FakeUtterance, configurable: true, writable: true,
+  });
+  Object.defineProperty(window, 'speechSynthesis', {
+    value: { speak: (u) => { utterance = u; } }, configurable: true,
+  });
+
+  const check = {
+    id: 'chk-listen-error',
+    scheduledSkill: 'listening',
+    items: [{
+      assessmentId: 'listen-err', sourceItemId: 'held-listen-err', skill: 'listening', cefr: 'A1',
+      content: { audio: 'Bonsoir', prompt: 'Listen and choose.' },
+      options: [{ id: 'evening', text: 'Good evening' }, { id: 'morning', text: 'Good morning' }],
+      correctOptionId: 'evening',
+    }],
+  };
+  const container = document.createElement('div');
+  document.body.appendChild(container);
+  const root = createRoot(container);
+  try {
+    await act(async () => {
+      root.render(React.createElement(HeldOutCheck, {
+        check, onDone: () => {}, apiKey: '', mockMode: true, level: 'A1',
+      }));
+    });
+    const play = [...container.querySelectorAll('button')].find((b) => b.textContent.includes('Play'));
+    await act(async () => {
+      play.click();
+      utterance.onerror?.();
+      await new Promise((r) => setTimeout(r, 0));
+    });
+    assert.ok(container.textContent.includes('Audio could not be played'), 'playback error becomes unavailable evidence');
+    const answer = [...container.querySelectorAll('button')].find((b) => b.textContent === 'Good evening');
+    assert.equal(answer.disabled, true, 'failed playback never unlocks scored answers');
+  } finally {
+    await close({ root, container });
+    if (originalUtterance === undefined) delete globalThis.SpeechSynthesisUtterance;
+    else Object.defineProperty(globalThis, 'SpeechSynthesisUtterance', {
+      value: originalUtterance, configurable: true, writable: true,
+    });
+    if (hadSpeech) Object.defineProperty(window, 'speechSynthesis', {
+      value: originalSpeech, configurable: true,
+    });
+    else delete window.speechSynthesis;
+  }
+}
+
 console.log('Today-deps lifecycle render tests: PASS');
