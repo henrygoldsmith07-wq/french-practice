@@ -63,6 +63,31 @@ test('retype eligibility matches the 24-hour delayed-proof gate', async () => {
   );
 });
 
+test('legacy ISO rehearsal timestamps can still retire after the delay', async () => {
+  const notebook = await freshNotebook();
+  const now = Date.parse('2026-09-22T12:00:00Z');
+  const seeded = notebook.addErrorNotebook({
+    original: 'Je aller au parc.',
+    corrected: 'Je vais au parc.',
+    why: 'Conjugate aller.',
+  });
+  const id = seeded[0].id;
+  const rows = notebook.getErrorNotebook();
+  rows[0].rehearsedAt = new Date(now - notebook.REHEARSE_GAP_MS - 1000).toISOString();
+  // Persist through the public first pass: this keeps the fixture at the same
+  // storage boundary as a restored legacy backup.
+  localStorage.setItem('fp.errors.v1', JSON.stringify(rows));
+
+  assert.equal(
+    notebook.markCorrectedByLearner(id, 'Je vais au parc.', now),
+    'retired',
+    'an ISO rehearsal timestamp proves the delayed interval correctly',
+  );
+  const retired = notebook.getErrorNotebook()[0];
+  assert.equal(retired.correctedByLearner, true);
+  assert.equal(retired.rehearsedAt, now, 'retirement normalises the timestamp to numeric epoch ms');
+});
+
 test('corrected errors are selected by repair activity, not original creation time', async () => {
   const notebook = await freshNotebook();
   const old = '2026-08-01T09:00:00Z';
