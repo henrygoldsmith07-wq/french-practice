@@ -67,6 +67,8 @@ import { currentSessionId, newEncounterId } from '../lib/evidenceIdentity';
 import { segmentExplain, recoveryStatus } from '../lib/segmentExplain';
 import RecoveryBadge from './RecoveryBadge';
 
+const EMPTY_DEP_LIST = Object.freeze([]);
+
 // Today's French — one Start button, one composed session. Segments come
 // from the daily curriculum; the learner never chooses a mode. Every phase
 // writes through the app's real recorders, so abandoning mid-way still counts.
@@ -91,27 +93,42 @@ export default function TodaySession({ open, onClose, minutes = 20, apiKey, mock
   // import failures deterministically.
   const deps = useTodayDeps(depsImpl);
   const { entries, retry } = deps;
-  const scenariosReg = deps.scenarios;
-  const grammarReady = deps.grammar;       // true = ready (or not needed)
-  const listeningTracks = deps.listening;  // null = loading
-  const studyModule = deps.study;          // null = loading
+  const scenarioFailed = deps.failed.includes('scenarios');
+  const grammarFailed = deps.failed.includes('grammar');
+  const listeningFailed = deps.failed.includes('listening');
   const studyFailed = deps.failed.includes('study');
+
+  // Vocabulary is the one hard content dependency: it anchors the live SRS
+  // queue and learner review state. The other content libraries are additive
+  // capabilities, so a failed chunk degrades to "not available" rather than
+  // taking down the whole composed session.
+  const scenariosReg = deps.scenarios ?? (scenarioFailed ? EMPTY_DEP_LIST : null);
+  const grammarReady = deps.grammar || grammarFailed;
+  const listeningTracks = deps.listening ?? (listeningFailed ? EMPTY_DEP_LIST : null);
+  const studyModule = deps.study;
   const studyReady = Boolean(studyModule);
+  const degradedLearning = scenarioFailed || grammarFailed || listeningFailed;
+  const learningDepsSettled = entries !== null
+    && scenariosReg !== null
+    && Boolean(grammarReady)
+    && listeningTracks !== null;
+  const studySettled = degradedLearning || studyReady || studyFailed;
 
   // Capability rows for the ACTIVE language (registry: lib/capabilities.js):
   // French-authored drill producers and the listening library never enter a
   // German or Spanish plan.
   const conjCap = hasCapabilityNow('conjugation');
-  const authoredCap = hasCapabilityNow('grammar');
+  const authoredCap = hasCapabilityNow('grammar') && !grammarFailed;
   const accentCap = hasCapabilityNow('writing-authored');
 
   const plan = useMemo(() => {
-    if (!open || !entries || !scenariosReg || !grammarReady || !listeningTracks) return null;
-    // Study measurement: wait while it resolves (never silently skipped), but
-    // when it has FAILED, continue without measurement — study tooling must
-    // never block ordinary learning.
-    if (!studyReady && !studyFailed) return null;
-    const studyApi = studyReady ? studyModule : null;
+    if (!open || entries === null || scenariosReg === null || !grammarReady || listeningTracks === null) return null;
+    // Study measurement waits for its module only in a normal session. When
+    // any learning-content capability degraded, continue practice immediately
+    // but disable measurement: altered modality exposure must never enter the
+    // research comparison as if the planned treatment was delivered.
+    if (!degradedLearning && !studyReady && !studyFailed) return null;
+    const studyApi = studyReady && !degradedLearning ? studyModule : null;
     const graph = getMistakeGraph();
     // Conjugation-trainer misses are grammar gaps the mistake graph may never
     // have seen (the trainer writes to the learnerErrors model). A gap that
@@ -253,6 +270,9 @@ export default function TodaySession({ open, onClose, minutes = 20, apiKey, mock
     // cannot run. Offline, the AI drill becomes the authored drill (or
     // retype/SRS/listen) BEFORE the session starts.
     const planResolved = resolvePlanCapabilities(planBuilt, caps);
+    // If degradation removed every runnable practice segment, fail closed into
+    // the retry screen instead of presenting a fake zero-step completion.
+    if (!planResolved.segments.length) return null;
     // Learner-facing explanation layer (see segmentExplain.js): every
     // targeted segment carries WHAT is practised, WHY it was selected, the
     // evidence behind that, and what success requires — all frozen with the
@@ -361,12 +381,14 @@ export default function TodaySession({ open, onClose, minutes = 20, apiKey, mock
       trialDraft,
       trialGraph: graph,
       trialVariant: variant,
+      degradedLearning,
     };
   // deps: every async dependency's arrival (or failure, or retry) changes the
   // deps object → these primitives change → the plan replans no matter what
   // order modules resolve in.
   }, [open, minutes, apiKey, mockMode, level, entries, scenariosReg, grammarReady,
-    listeningTracks, studyReady, studyFailed, studyModule, conjCap, authoredCap, accentCap]);
+    listeningTracks, studyReady, studyFailed, studyModule, degradedLearning,
+    conjCap, authoredCap, accentCap]);
 
   // Warm the heavy mid-session chunks (arena, held-out check) with the
   // session, not the app. Fire-and-forget: the lazy() imports render via
@@ -422,7 +444,7 @@ export default function TodaySession({ open, onClose, minutes = 20, apiKey, mock
   // Loading: genuine learning dependencies (vocab, scenarios, grammar,
   // listening) still resolving. Never more than the actual chunk downloads —
   // and never a timer: deps resolve as soon as their chunks land.
-  if (!plan && !deps.failed.length) {
+  if (!plan && (!learningDepsSettled || !studySettled)) {
     return (
       <div className="fixed inset-0 z-[60] bg-bg grid place-items-center" role="dialog" aria-modal="true" aria-label="Loading today's session">
         <div className="text-center space-y-3 px-6">
@@ -706,6 +728,9 @@ function TodayBody({ plan, trialId, segIndex, setSegIndex, close, apiKey, mockMo
         </p>
         {!plan.study && (
           <p className="max-w-lg mx-auto text-[11px] text-ink3">Practising without research measurement today — your session is unaffected.</p>
+        )}
+        {plan.degradedLearning && (
+          <p className="max-w-lg mx-auto text-[11px] text-ink3">Some optional practice material did not load, so Today adapted to the activities available.</p>
         )}
       </header>
       {seg?.explain && (
