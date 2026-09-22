@@ -115,7 +115,7 @@ test('scheduled retest strength is forwarded to the unified learner-error model'
     encounterId: 's-delayed:enc1',
     delayed: true,
   });
-  const entry = storage.getLearnerErrors({ limit: 20 }).find((e) => e.id === 'grammar:articles');
+  const entry = storage.getLearnerErrorModel().entries.find((e) => e.id === 'grammar:articles');
   assert.ok(entry);
   assert.equal(entry.lastEvidence, 'delayed', 'scheduled retest remains delayed in the unified model');
   assert.equal(entry.status, 'resolved', 'one genuine delayed clean recall is strong evidence');
