@@ -64,6 +64,7 @@ import { ChevronRight, X } from './icons';
 import { personAt } from '../lib/conjugationMeta';
 import { recordLearnerSuccess } from '../lib/storage';
 import { currentSessionId, newEncounterId } from '../lib/evidenceIdentity';
+import { localDayIndex } from '../lib/localDay';
 import { segmentExplain, recoveryStatus } from '../lib/segmentExplain';
 import RecoveryBadge from './RecoveryBadge';
 
@@ -230,7 +231,7 @@ export default function TodaySession({ open, onClose, minutes = 20, apiKey, mock
     const srsDue = dueEntries(library, srs, Date.now(), { newCardCap: NEW_CARD_CAP }).length;
     const notebook = getErrorNotebook();
     const pendingRetypes = selectDueRetypes(notebook).length;
-    const dayIndex = Math.floor(Date.now() / 86400000);
+    const dayIndex = localDayIndex();
     const tracks = Array.isArray(listeningTracks) ? listeningTracks : [];
     const listeningTrack = tracks.length ? tracks[dayIndex % tracks.length] : null;
     const weakness = (() => { try { return getDueWeaknesses()[0] || null; } catch { return null; } })();
