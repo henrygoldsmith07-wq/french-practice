@@ -422,7 +422,10 @@ export function checkSkillSummary(check) {
  */
 export function makeOutcomeRecord({ trial, graphNode = null, now = Date.now() } = {}) {
   return {
-    id: `out-${trial?.at || new Date(now).toISOString()}-${trial?.selectedId || 'none'}`,
+    id: trial?.id
+      ? `out-${trial.id}`
+      : `out-${trial?.at || new Date(now).toISOString()}-${trial?.selectedId || 'none'}`,
+    trialId: trial?.id || null,
     participantRef: true,          // joined to the participant via the trial's variant
     day: null,                     // filled by the caller (study day)
     at: trial?.at || new Date(now).toISOString(),
