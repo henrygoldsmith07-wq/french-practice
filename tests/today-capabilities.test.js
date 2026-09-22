@@ -110,7 +110,7 @@ test('a fully capable plan keeps every segment and sums to the budget', () => {
     listeningTrack: { id: 't1', title: 'Track' },
   });
   const plan = resolvePlanCapabilities(fullPlan(), caps);
-  assert.deepEqual(plan.segments.map((s) => s.id), ['speak', 'retrieve', 'drill', 'review']);
+  assert.deepEqual(plan.segments.map((s) => s.id), ['speak', 'retrieve', 'drill', 'review', 'listen']);
   assert.equal(plan.totalMinutes, 20);
   const drill = plan.segments.find((s) => s.id === 'drill');
   assert.equal(drill.payload.kind, 'ai-drill');
@@ -118,15 +118,14 @@ test('a fully capable plan keeps every segment and sums to the budget', () => {
   assert.equal(drill.payload.chain[1].kind, 'authored-drill');
 });
 
-test('listen survives when it can run (speak absent, minutes remain)', () => {
-  // No scenario → the curriculum hands speak's minutes to listen.
+test('listen survives capability resolution when it can run', () => {
   const plan0 = buildDailyCurriculum({
     minutes: 30, srsDue: 10,
     topMistake: { id: 'mg-1', concept: 'passe-compose', type: 'tense', mastery: 30, recurrence: 2 },
     recentCorrections: 3,
     listeningTrack: { id: 't1', title: 'Track' },
   });
-  assert.ok(plan0.segments.some((s) => s.id === 'listen'), 'fixture sanity: listen present without speak');
+  assert.ok(plan0.segments.some((s) => s.id === 'listen'), 'fixture sanity: listen is a first-class segment');
   const caps = probeCapabilities({
     hasAi: true, concept: 'passe-compose', hasScenario: false,
     srsDue: 10, recentCorrections: 3, listeningTrack: { id: 't1', title: 'Track' },
@@ -174,7 +173,6 @@ test('nothing available → SRS retrieval, then listen fallback; empty state sta
 });
 
 test('listen segment without a track is dropped and minutes re-flow', () => {
-  // No scenario → the curriculum hands speak's minutes to listen.
   const withListen = buildDailyCurriculum({
     minutes: 30, srsDue: 10,
     topMistake: { id: 'mg-1', concept: 'passe-compose', type: 'tense', mastery: 30, recurrence: 3 },
