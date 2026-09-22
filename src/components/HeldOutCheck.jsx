@@ -157,16 +157,22 @@ function ListeningRunner({ item, objective, setObjective, onPick, ttsRate = 1 })
         setPlayed(true);
       });
       u.onerror = () => settle(() => {
-        setObjective({ status: 'unavailable', reason: 'tts-failed' });
+        // A failed REPLAY does not erase a successful first playback. Once the
+        // learner has genuinely heard the item, the evidence remains scorable.
+        if (!played) setObjective({ status: 'unavailable', reason: 'tts-failed' });
       });
       setStarting(true);
       startTimerRef.current = setTimeout(() => {
-        settle(() => setObjective({ status: 'unavailable', reason: 'tts-timeout' }));
+        settle(() => {
+          if (!played) setObjective({ status: 'unavailable', reason: 'tts-timeout' });
+        });
       }, 5000);
       window.speechSynthesis.speak(u);
     } catch {
+      if (startTimerRef.current) clearTimeout(startTimerRef.current);
+      startTimerRef.current = null;
       setStarting(false);
-      setObjective({ status: 'unavailable', reason: 'tts-failed' });
+      if (!played) setObjective({ status: 'unavailable', reason: 'tts-failed' });
     }
   };
   return (
