@@ -354,4 +354,45 @@ for (const order of ORDERS) {
   }
 }
 
+// ---- 9. committed Today plans create one selection trial in StrictMode ----
+
+{
+  localStorage.clear();
+  storage.saveMistakeGraph([{
+    id: 'mg-strict', concept: 'passe-compose', type: 'grammar',
+    errorCount: 3, lastMissAt: Date.now() - 86400000, mastery: 0.2, recurrence: 2,
+    modes: ['conversation'], overdueBy: 86400000,
+  }]);
+
+  const strictImpl = {
+    entries: () => Promise.resolve(ENTRIES),
+    scenarios: () => Promise.resolve(SCENARIOS),
+    grammar: () => Promise.resolve(true),
+    listening: () => Promise.resolve(TRACKS),
+    study: () => Promise.resolve(STUDY),
+  };
+  const container = document.createElement('div');
+  document.body.appendChild(container);
+  const root = createRoot(container);
+  try {
+    await act(async () => {
+      root.render(React.createElement(
+        React.StrictMode,
+        null,
+        React.createElement(TodaySession, {
+          open: true, onClose: () => {}, minutes: 20, apiKey: '', mockMode: true,
+          level: 'B1', ttsRate: 1, depsImpl: strictImpl,
+        }),
+      ));
+      await new Promise((r) => setTimeout(r, 120));
+    });
+
+    const trials = storage.getSelectionTrial();
+    assert.equal(trials.length, 1, 'StrictMode effect replay must not duplicate selection trials');
+    assert.ok(trials[0].id?.startsWith('selection:'), 'new trials carry a durable unique id');
+  } finally {
+    await close({ root, container });
+  }
+}
+
 console.log('Today-deps lifecycle render tests: PASS');
