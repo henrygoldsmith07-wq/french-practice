@@ -17,6 +17,19 @@ function writeRaw(v){ write(KEYS.errorNotebook, v.slice(0,200)); }
 
 export function getErrorNotebook(){ return readRaw(); }
 
+export function correctionActivityAt(entry) {
+  const at = entry?.rehearsedAt || entry?.lastAt || entry?.at || 0;
+  const parsed = typeof at === 'number' ? at : Date.parse(at);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+export function selectCorrectedErrors(entries, { since = 0, limit = 200 } = {}) {
+  return (Array.isArray(entries) ? entries : [])
+    .filter((entry) => entry?.correctedByLearner && correctionActivityAt(entry) >= since)
+    .sort((a, b) => correctionActivityAt(b) - correctionActivityAt(a))
+    .slice(0, Math.max(0, limit));
+}
+
 export function addErrorNotebook({ original, corrected, why, ruleId, mistakeId }){
   if(!original || !corrected || original===corrected) return readRaw();
   recordWritingGap(ruleId || corrected, {
@@ -28,7 +41,18 @@ export function addErrorNotebook({ original, corrected, why, ruleId, mistakeId }
   const list = readRaw();
   const id = `${Date.now()}-${Math.random().toString(36).slice(2,6)}`;
   const existing = list.find(e=> e.corrected===corrected && e.original===original);
-  if(existing){ existing.count = (existing.count||1)+1; existing.lastAt = new Date().toISOString(); existing.recurrence = (existing.recurrence||0)+1; writeRaw(list); return list; }
+  if(existing){
+    existing.count = (existing.count||1)+1;
+    existing.lastAt = new Date().toISOString();
+    existing.recurrence = (existing.recurrence||0)+1;
+    // A repeated real-world slip reopens the correction loop. Leaving a
+    // previously retired entry marked corrected would let recurrence bypass
+    // retype + delayed proof entirely.
+    existing.correctedByLearner = false;
+    existing.rehearsedAt = null;
+    writeRaw(list);
+    return list;
+  }
   list.unshift({ id, original, corrected, why: why||'', ruleId: ruleId||null, mistakeId: mistakeId||null, at: new Date().toISOString(), count: 1, recurrence: 0, correctedByLearner: false });
   writeRaw(list);
   return list;
