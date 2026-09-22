@@ -273,6 +273,43 @@ test('canonicaliseModel folds legacy surrogate entries; errors survive, clean pa
   assert.equal(canonicaliseModel(plain), plain, 'no fold → same model reference (no write-back)');
 });
 
+test('canonicaliseModel removes only the historical duplicate SRS card row', () => {
+  const raw = {
+    version: 1,
+    updatedAt: '2026-08-10T10:00:00.000Z',
+    entries: [
+      {
+        id: 'vocabulary:bonjour', category: 'vocabulary', key: 'bonjour',
+        label: 'bonjour', errorCount: 2, status: 'active',
+        lastErrorAt: '2026-08-10T10:00:00.000Z', lastSeen: '2026-08-10T10:00:00.000Z',
+        evidence: [{ at: '2026-08-10T10:00:00.000Z', mode: 'receptive', source: 'srs', score: 0 }],
+        modes: ['receptive'],
+      },
+      {
+        id: 'vocabulary:item:bonjour', category: 'vocabulary', key: 'item:bonjour',
+        label: 'bonjour', errorCount: 2, status: 'active',
+        lastErrorAt: '2026-08-10T10:00:00.000Z', lastSeen: '2026-08-10T10:00:00.000Z',
+        evidence: [{ at: '2026-08-10T10:00:00.000Z', mode: 'cards', source: 'per-review-event', score: 0 }],
+        modes: ['cards'],
+      },
+      {
+        id: 'vocabulary:custom-key', category: 'vocabulary', key: 'custom-key',
+        label: 'custom', errorCount: 1, status: 'active',
+        lastErrorAt: '2026-08-09T10:00:00.000Z', lastSeen: '2026-08-09T10:00:00.000Z',
+        evidence: [{ at: '2026-08-09T10:00:00.000Z', mode: 'writing', source: 'manual', score: 0 }],
+        modes: ['writing'],
+      },
+    ],
+  };
+  const folded = canonicaliseModel(raw);
+  const ids = folded.entries.map((entry) => entry.id);
+  assert.ok(ids.includes('vocabulary:item:bonjour'), 'canonical SRS item row survives');
+  assert.ok(!ids.includes('vocabulary:bonjour'), 'known duplicate plain SRS row is removed');
+  assert.ok(ids.includes('vocabulary:custom-key'), 'unrelated plain vocabulary keys are untouched');
+  assert.equal(folded.entries.find((entry) => entry.id === 'vocabulary:item:bonjour').errorCount, 2,
+    'duplicate counts are not added together');
+});
+
 test('legacy models without evidence fields still normalise and stay compatible', () => {
   const legacy = createLearnerErrorModel({
     updatedAt: '2026-08-01T10:00:00.000Z',
