@@ -1099,6 +1099,7 @@ export function DelayedReview({ count, onXp, onDone }) {
   const [idx, setIdx] = useState(0);
   const [revealed, setRevealed] = useState(false);
   const firedRef = useRef(false);
+  const markRef = useRef(false);
   const complete = !items.length || idx >= items.length;
 
   // Review is a session segment, not a terminal screen: empty review queues
@@ -1116,9 +1117,14 @@ export function DelayedReview({ count, onXp, onDone }) {
 
   useEffect(() => {
     firedRef.current = false;
+    markRef.current = false;
     setIdx(0);
     setRevealed(false);
   }, [count]);
+
+  useEffect(() => {
+    markRef.current = false;
+  }, [idx]);
 
   if (complete) {
     return (
@@ -1129,6 +1135,8 @@ export function DelayedReview({ count, onXp, onDone }) {
   }
   const entry = items[idx];
   const mark = (remembered) => {
+    if (markRef.current) return;
+    markRef.current = true;
     try {
       const graph = getMistakeGraph();
       const match = graph.find((m) => m.original === entry.original || m.concept === entry.ruleId);
