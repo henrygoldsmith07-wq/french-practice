@@ -878,6 +878,7 @@ function SessionDrillShell({ title, canFinish, onDone, children }) {
 function AiDrillRunner({ concept, level, apiKey, mockMode, onXp, onDone, onEmpty }) {
   const [state, setState] = useState({ busy: true, exercises: null });
   const correctRef = useRef(0);
+  const finishRef = useRef(false);
   // Evidence identity: the whole drill is ONE presentation of this concept
   // (one encounter). Every success it records cites the same encounter, so a
   // single lucky run can never mint two independent passes; the NEXT drill
@@ -906,6 +907,8 @@ function AiDrillRunner({ concept, level, apiKey, mockMode, onXp, onDone, onEmpty
     return undefined;
   }, [state.busy, state.exercises, onEmpty]);
   const finish = () => {
+    if (finishRef.current) return;
+    finishRef.current = true;
     try {
       const graph = getMistakeGraph();
       const node = graph.find((m) => m.concept === concept && m.status === 'active');
