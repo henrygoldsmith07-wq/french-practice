@@ -81,10 +81,19 @@ export function markCorrectedByLearner(id, typed, now = Date.now()){
   const list = readRaw();
   const e = list.find(x=> x.id===id);
   if(!e) return false;
-  // Accent-insensitive, like every other typed check in the app — the drill
-  // targets the correction, not the accent keys.
-  const norm = (s) => String(s).trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
-  const ok = norm(e.corrected) === norm(typed);
+  const rawNorm = (s) => String(s).trim().toLowerCase().normalize('NFC');
+  const accentless = (s) => rawNorm(s).normalize('NFD').replace(/[̀-ͯ]/g, '');
+  // Most sentence repairs stay accent-tolerant so the learner is tested on
+  // the target grammar/wording rather than keyboard friction. But when the
+  // correction itself is ONLY an accent/diacritic change, stripping accents
+  // would accept the original mistake as "fixed". Those corrections require
+  // the corrected diacritic explicitly.
+  const accentOnlyCorrection =
+    accentless(e.original) === accentless(e.corrected)
+    && rawNorm(e.original) !== rawNorm(e.corrected);
+  const ok = accentOnlyCorrection
+    ? rawNorm(e.corrected) === rawNorm(typed)
+    : accentless(e.corrected) === accentless(typed);
   if(!ok) return false;
   const priorRehearsal = e.rehearsedAt == null
     ? null
