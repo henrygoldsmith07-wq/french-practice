@@ -782,4 +782,56 @@ for (const order of ORDERS) {
   }
 }
 
+// ---- 16. AI drill completion is one-shot under rapid double-click ---------
+
+{
+  localStorage.clear();
+  storage.saveMistakeGraph([{
+    id: 'mg-ai-double',
+    concept: 'passe-compose',
+    type: 'grammar',
+    status: 'active',
+    mastery: 40,
+    recurrence: 1,
+    createdAt: new Date(Date.now() - 2 * 86400000).toISOString(),
+    lastSeenAt: new Date(Date.now() - 86400000).toISOString(),
+    retests: [],
+  }]);
+  let completed = 0;
+  const payload = {
+    kind: 'ai-drill',
+    concept: 'passe-compose',
+    chain: [{ kind: 'ai-drill', concept: 'passe-compose' }],
+  };
+  const container = document.createElement('div');
+  document.body.appendChild(container);
+  const root = createRoot(container);
+  try {
+    await act(async () => {
+      root.render(React.createElement(DrillChainRunner, {
+        payload,
+        level: 'B1',
+        apiKey: '',
+        mockMode: true,
+        ttsRate: 1,
+        onXp: () => {},
+        onDone: () => { completed += 1; },
+      }));
+      await new Promise((r) => setTimeout(r, 80));
+    });
+    const done = [...container.querySelectorAll('button')].find((b) => b.textContent === 'Done drilling');
+    assert.ok(done, 'mock AI drill renders its completion action');
+    await act(async () => {
+      done.click();
+      done.click();
+      await new Promise((r) => setTimeout(r, 20));
+    });
+    const node = storage.getMistakeGraph().find((m) => m.id === 'mg-ai-double');
+    assert.equal(node.retests.length, 1, 'double click writes one retest');
+    assert.equal(completed, 1, 'double click emits one completion');
+  } finally {
+    await close({ root, container });
+  }
+}
+
 console.log('Today-deps lifecycle render tests: PASS');
