@@ -159,6 +159,15 @@ function mkOutcome() {
   });
 }
 
+test('outcome identity follows the durable selection-trial id', () => {
+  const at = iso(T0);
+  const a = makeOutcomeRecord({ trial: { id: 'selection-a', at, selectedId: 'mg-1', variant: 'adaptive' }, now: T0 });
+  const b = makeOutcomeRecord({ trial: { id: 'selection-b', at, selectedId: 'mg-1', variant: 'adaptive' }, now: T0 });
+  assert.equal(a.trialId, 'selection-a');
+  assert.equal(b.trialId, 'selection-b');
+  assert.notEqual(a.id, b.id, 'same-millisecond sessions remain distinct');
+});
+
 test('immediate retries land in `immediate`, never the retention windows', () => {
   const o = mkOutcome();
   applyRetestToOutcome(o, { at: iso(T0 + 120000), correct: true, immediate: true });
