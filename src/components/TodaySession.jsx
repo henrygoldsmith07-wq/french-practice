@@ -887,8 +887,29 @@ export function RecallRunner({ cardCap, onDone, onXp, onActivity }) {
   const [idx, setIdx] = useState(0);
   const firedRef = useRef(false);
   const loaded = deck !== null;
-  useEffect(() => { if (loaded && deck.length === 0 && !firedRef.current) { firedRef.current = true; setTimeout(onDone, 0); } }, [loaded, deck, onDone]);
-  useEffect(() => { firedRef.current = false; }, [cardCap]);
+
+  // Empty decks skip immediately; completed non-empty decks briefly show the
+  // completion state and then hand control back to Today. Mark completion only
+  // when the timer actually fires so a parent re-render cannot cancel the timer
+  // after permanently flipping the guard.
+  useEffect(() => {
+    if (!loaded || firedRef.current) return undefined;
+    const delay = deck.length === 0 ? 0 : idx >= deck.length ? 300 : null;
+    if (delay === null) return undefined;
+    const timer = setTimeout(() => {
+      if (firedRef.current) return;
+      firedRef.current = true;
+      onDone();
+    }, delay);
+    return () => clearTimeout(timer);
+  }, [loaded, deck, idx, onDone]);
+
+  // A changed cap or language library means a fresh recall segment.
+  useEffect(() => {
+    firedRef.current = false;
+    setIdx(0);
+  }, [cardCap, entries]);
+
   if (!loaded || deck.length === 0) return null;
   if (idx >= deck.length) {
     return (
