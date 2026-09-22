@@ -95,6 +95,21 @@ test('recurrence resets recovery: old passes cannot re-resolve', async () => {
   assert.equal(storage.getWeaknessMemory()[0].status, 'recovering', 'stale passes cannot paper over a fresh slip');
 });
 
+test('scheduled retest strength is forwarded to the unified learner-error model', async () => {
+  const storage = await freshStorage();
+  storage.recordWeaknessError('articles', { scenarioId: 'cafe' });
+  storage.recordWeaknessRetestResult('articles', true, {
+    scenarioId: 'market',
+    sessionId: 's-delayed',
+    encounterId: 's-delayed:enc1',
+    delayed: true,
+  });
+  const entry = storage.getLearnerErrors({ limit: 20 }).find((e) => e.id === 'grammar:articles');
+  assert.ok(entry);
+  assert.equal(entry.lastEvidence, 'delayed', 'scheduled retest remains delayed in the unified model');
+  assert.equal(entry.status, 'resolved', 'one genuine delayed clean recall is strong evidence');
+});
+
 test('a failed retest is a recurrence and cancels the scheduled retest', async () => {
   const storage = await freshStorage();
   storage.recordWeaknessError('du-de-la', { scenarioId: 'cafe' });
