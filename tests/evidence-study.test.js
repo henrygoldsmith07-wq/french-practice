@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
   enrolStudy, withdrawStudy, isEnrolled, studyDay, assignArm,
-  isCheckDay, buildHeldOutPool, makeCheckRecord, recordCheckResult, checkScore,
+  isCheckDay, buildHeldOutPool, makeCheckRecord, recordCheckResult, checkScore, summarizeCheckEvidence,
   makeOutcomeRecord, applyRetestToOutcome, applyRecurrenceToOutcome,
   studyAggregates, personalOutcomes,
   MIN_N_PER_ARM, MIN_TRANSFER_N,
@@ -109,6 +109,28 @@ test('pool selection is stable per (participant, day) — reload cannot reshuffl
   const b = buildHeldOutPool({ ...args, srsMap: {} });
   assert.deepEqual(a.words.map((w) => w.id), b.words.map((w) => w.id));
   assert.equal(a.track?.id, b.track?.id);
+});
+
+test('held-out summaries exclude unavailable/unscored items from accuracy', () => {
+  const summary = summarizeCheckEvidence([
+    { skill: 'grammar', status: 'scored', correct: true },
+    { skill: 'grammar', status: 'scored', correct: false },
+    { skill: 'grammar', status: 'unavailable', correct: null },
+    { skill: 'grammar', status: 'unscored', correct: null },
+  ]);
+  assert.equal(summary.correct, 1);
+  assert.equal(summary.total, 2, 'only objectively scored correctness items enter the denominator');
+  assert.equal(summary.quizScore, 50);
+  assert.equal(summary.unavailable, 1);
+  assert.equal(summary.unscored, 1);
+
+  const speaking = summarizeCheckEvidence([
+    { skill: 'speaking', status: 'scored', aiScore: 72 },
+    { skill: 'speaking', status: 'unavailable', aiScore: null },
+  ]);
+  assert.equal(speaking.total, 0, 'speaking is numeric-score shaped, not fake correct/incorrect');
+  assert.equal(speaking.quizScore, null);
+  assert.equal(speaking.speakingMean, 72);
 });
 
 test('check records are measurement-only and score correctly', () => {
