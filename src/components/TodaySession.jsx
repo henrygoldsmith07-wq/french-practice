@@ -26,7 +26,7 @@ import {
   getSrs, getNotebook, getDueWeaknesses, rateCard,
   getMistakeGraph, saveMistakeGraph, getStudyChecks, getLearnerErrors,
 } from '../lib/storage';
-import { getErrorNotebook, selectCorrectedErrors } from '../lib/errorNotebook';
+import { getErrorNotebook, selectCorrectedErrors, selectDueRetypes } from '../lib/errorNotebook';
 // The vocab library is a separate lazy chunk (per-language registries) — it
 // must be awaited, never statically imported from the entry graph. The hook
 // centralises the null-means-loading discipline and reloads on language switch.
@@ -211,7 +211,7 @@ export default function TodaySession({ open, onClose, minutes = 20, apiKey, mock
     const library = [...entries, ...notebookAsEntries(getNotebook())];
     const srsDue = dueEntries(library, srs, Date.now(), { newCardCap: NEW_CARD_CAP }).length;
     const notebook = getErrorNotebook();
-    const pendingRetypes = notebook.filter((e) => !e.correctedByLearner).length;
+    const pendingRetypes = selectDueRetypes(notebook).length;
     const dayIndex = Math.floor(Date.now() / 86400000);
     const tracks = Array.isArray(listeningTracks) ? listeningTracks : [];
     const listeningTrack = tracks.length ? tracks[dayIndex % tracks.length] : null;
