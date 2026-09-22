@@ -323,13 +323,16 @@ export function markOutcomeRecurrence({ mistakeId, recurred = true }) {
 }
 
 /** Delivery facts recorded when the Today session finishes. */
-export function updateOutcomeDelivery({ trialAt, timeSpent, completed, delivered }) {
+export function updateOutcomeDelivery({ trialId = null, trialAt, timeSpent, completed, delivered }) {
   // Research-write guard: no consent/active study, no fp.study.* write.
   if (!canRecordStudyData() || !canRecordUnderProtocol()) return;
   try {
-    if (!trialAt) return;
+    if (!trialId && !trialAt) return;
     const list = getStudyOutcomes();
-    const idx = list.findIndex((o) => o.at === trialAt || (o.id && trialAt && o.id.includes(trialAt)));
+    const idx = list.findIndex((o) =>
+      (trialId && o.trialId === trialId)
+      || (!trialId && trialAt && (o.at === trialAt || (o.id && o.id.includes(trialAt))))
+    );
     if (idx < 0) return;
     list[idx].timeSpent = Number.isFinite(timeSpent) ? timeSpent : list[idx].timeSpent;
     list[idx].completed = typeof completed === 'boolean' ? completed : list[idx].completed;
