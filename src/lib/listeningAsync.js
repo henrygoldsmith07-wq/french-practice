@@ -30,8 +30,24 @@ export function useListeningTracks() {
     let on = true;
     loadListeningTracks()
       .then((t) => { if (on) setTracks(t); })
-      .catch(() => { /* stays null; consumers fall through to the next segment */ });
+      // null is reserved for "still loading". A failed load resolves this hook
+      // to an empty array so consumers can distinguish failure/missing content
+      // from a chunk that simply has not arrived yet. A remount retries because
+      // the module cache itself remains null on failure.
+      .catch(() => { if (on) setTracks([]); });
     return () => { on = false; };
   }, [tracks]);
   return tracks;
+}
+
+
+/**
+ * Resolve one requested track without collapsing the loading state into
+ * "missing". This keeps session fallbacks from skipping valid content while
+ * the lazy listening chunk is still in flight.
+ */
+export function resolveListeningTrack(tracks, trackId) {
+  if (tracks === null) return { status: 'loading', track: null };
+  const track = Array.isArray(tracks) ? tracks.find((item) => item?.id === trackId) || null : null;
+  return track ? { status: 'ready', track } : { status: 'missing', track: null };
 }
