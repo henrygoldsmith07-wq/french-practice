@@ -51,7 +51,33 @@ export function canonicaliseModel(model) {
   let changed = false;
   const folded = new Map();
   const entries = [];
+
+  // A historical SRS wiring bug wrote every card review twice:
+  //   vocabulary:<card-id>      source=srs
+  //   vocabulary:item:<card-id> source=per-review-event
+  // The item: row is the older canonical namespace and also the one produced
+  // by legacy review migration. Drop ONLY a plain row that has this exact
+  // matching duplicate signature; arbitrary plain vocabulary keys survive.
+  const ids = new Map(model.entries.map((entry) => [entry?.id, entry]));
+  const duplicatePlainVocabulary = new Set();
   for (const entry of model.entries) {
+    if (!entry || entry.category !== 'vocabulary') continue;
+    const key = String(entry.key || '');
+    if (!key || key.startsWith('item:')) continue;
+    const paired = ids.get(`vocabulary:item:${key}`);
+    if (!paired) continue;
+    const plainSources = new Set((entry.evidence || []).map((ev) => ev?.source).filter(Boolean));
+    const itemSources = new Set((paired.evidence || []).map((ev) => ev?.source).filter(Boolean));
+    const knownPlain = plainSources.has('srs');
+    const knownItem = itemSources.has('per-review-event') || itemSources.has('legacy-review-events');
+    if (knownPlain && knownItem) {
+      duplicatePlainVocabulary.add(entry.id);
+      changed = true;
+    }
+  }
+
+  for (const entry of model.entries) {
+    if (duplicatePlainVocabulary.has(entry?.id)) continue;
     const fold = LEGACY_ID_FOLDS.find(([re]) => re.test(entry.id));
     if (!fold) { entries.push(entry); continue; }
     changed = true;
