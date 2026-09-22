@@ -8,6 +8,7 @@ import {
   EXAM_MODE, EXAM_MODES, TIER, TASK_CRITERIA, CRITERIA,
 } from '../lib/exams/boards.js';
 import { getExaminerScripts, getRealExamResults } from '../lib/storage';
+import { newEncounterId } from '../lib/evidenceIdentity';
 import { Check } from './icons';
 
 // Shared time formatter (same shape as the setup stage's local fmt).
@@ -62,7 +63,7 @@ export function Review({ run, scores, setScores, onRestart, onXp, onActivity }) 
         techniqueScore: technique.score,
         examMode,
       });
-      onActivity?.({ type: examMode, boardId: run.paper.boardId, score: paperScore.percent, techniqueScore: technique.score, mode: 'exam', label: `${run.paper.boardName} ${EXAM_MODES[examMode].label}` });
+      onActivity?.({ type: examMode, boardId: run.paper.boardId, score: paperScore.percent, techniqueScore: technique.score, mode: 'exam', label: `${run.paper.boardName} ${EXAM_MODES[examMode].label}`, encounterId: newEncounterId(), activityId: `${run.paper.boardId}:${examMode}` });
       onXp?.(30);
     }
     setAwarded(true);

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { poolForLevel, makePrompt, checkForm, spokenSentence, tenseLabel, trainerVerbs, focusedPool } from '../lib/conjugationTrainer';
 import { PERSONS } from '../lib/reference';
 import { recordLearnerError, recordLearnerSuccess } from '../lib/storage';
+import { currentSessionId, newEncounterId } from '../lib/evidenceIdentity';
 import { SpeakButton } from './ui';
 import { Check, RefreshCw, Flame, ChevronRight, BookOpen, X } from './icons';
 
@@ -31,12 +32,20 @@ export default function ConjugationTrainer({ onXp, focus = null, onDone = null }
   }, [focus, pool, onDone]);
   const [input, setInput] = useState('');
   const [result, setResult] = useState(null); // { status, answer, xp }
+  // Evidence identity: each PROMPT is one encounter. The ref is replaced when
+  // a new prompt is drawn (next prompt ⇒ new encounter) but reused while the
+  // learner retries that same prompt (submit after a wrong attempt keeps the
+  // same id, so a grind can never fabricate independent passes).
+  const encounterRef = useRef(newEncounterId());
   const [streak, setStreak] = useState(0);
   const [best, setBest] = useState(0);
   const [peeked, setPeeked] = useState(false);
 
   const nextPrompt = (prevKey) => {
     setPrompt(makePrompt(pool, { avoid: prevKey }));
+    // New prompt ⇒ new encounter: evidence from the next drill question can
+    // be counted as genuinely independent by the recovery model.
+    encounterRef.current = newEncounterId();
     setInput('');
     setResult(null);
     setPeeked(false);
@@ -62,6 +71,9 @@ export default function ConjugationTrainer({ onXp, focus = null, onDone = null }
         mode: 'conjugation-trainer',
         score: 100,
         source: 'conjugation-trainer',
+        sessionId: currentSessionId(),
+        encounterId: encounterRef.current,
+        activityId: prompt.key,
       });
     } else if (!near) {
       recordLearnerError({
@@ -72,6 +84,9 @@ export default function ConjugationTrainer({ onXp, focus = null, onDone = null }
         score: 0,
         source: 'conjugation-trainer',
         detail: `Typed “${input.trim() || '—'}”, expected “${prompt.answer}”`,
+        sessionId: currentSessionId(),
+        encounterId: encounterRef.current,
+        activityId: prompt.key,
       });
     }
     setResult({ status, answer: prompt.answer, gained });
@@ -79,7 +94,7 @@ export default function ConjugationTrainer({ onXp, focus = null, onDone = null }
 
   return (
     <div className="space-y-4">
-      {!focus && <LevelPicker level={level} onChange={(l) => { setLevel(l); const p = makePrompt(poolForLevel(l)); setPrompt(p); setInput(''); setResult(null); setPeeked(false); setStreak(0); }} />}
+      {!focus && <LevelPicker level={level} onChange={(l) => { setLevel(l); const p = makePrompt(poolForLevel(l)); setPrompt(p); setInput(''); setResult(null); setPeeked(false); setStreak(0); encounterRef.current = newEncounterId(); }} />}
 
       {prompt ? (
         <form onSubmit={submit} className="space-y-4">

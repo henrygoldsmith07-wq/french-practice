@@ -1,5 +1,5 @@
 import { lazy, Suspense, useState } from 'react';
-import { langName } from '../lib/i18n';
+import { langName, activeLanguage } from '../lib/i18n';
 import { hasCapabilityNow } from '../lib/capabilities';
 import { randomPoolSentence, toWords, diffWords, displayHits } from '../lib/sentences';
 import { COMPLETION_STARTERS, randomFrom } from '../lib/writing';
@@ -19,12 +19,12 @@ const ConjugationTrainer = lazy(() => import('./ConjugationTrainer'));
 
 const MODES = [
   { id: 'conjugation', icon: Target, title: 'Conjugation trainer', subtitle: 'Type the right form — accents graded', cap: 'conjugation' },
-  { id: 'accents', icon: Pencil, title: 'Accent trainer', subtitle: 'Retype words with every accent in place', cap: 'writing-authored' },
-  { id: 'translate', icon: RefreshCw, title: 'Translation drill', subtitle: 'EN→FR and FR→EN, alternating' },
-  { id: 'typing', icon: Clock, title: 'Typing drill', subtitle: 'Copy a sentence exactly — accents count' },
-  { id: 'completion', icon: MessageCircle, title: 'Sentence completion', subtitle: 'Finish a starter naturally, get judged' },
-  { id: 'free', icon: Pencil, title: 'Free writing', subtitle: 'A short text from a prompt, AI-corrected' },
-  { id: 'essay', icon: BookOpen, title: 'Essay studio', subtitle: 'Longer form, structured feedback and scores' },
+  { id: 'accents', icon: Pencil, title: 'Accent trainer', subtitle: 'Retype words with every accent in place', cap: 'accent-trainer' },
+  { id: 'translate', icon: RefreshCw, title: 'Translation drill', subtitle: 'Both directions, alternating', cap: 'translation' },
+  { id: 'typing', icon: Clock, title: 'Typing drill', subtitle: 'Copy a sentence exactly — accents count', cap: 'typing' },
+  { id: 'completion', icon: MessageCircle, title: 'Sentence completion', subtitle: 'Finish a starter naturally, get judged', cap: 'sentence-completion' },
+  { id: 'free', icon: Pencil, title: 'Free writing', subtitle: 'A short text from a prompt, AI-corrected', cap: 'free-writing-prompts' },
+  { id: 'essay', icon: BookOpen, title: 'Essay studio', subtitle: 'Longer form, structured feedback and scores', cap: 'essay-prompts' },
 ];
 
 export default function Writing({ apiKey, mockMode, level, onXp, onActivity }) {
@@ -73,17 +73,17 @@ export default function Writing({ apiKey, mockMode, level, onXp, onActivity }) {
           <h2 className="flex-1 text-center text-sm font-semibold text-ink">{active.title}</h2>
           <span className="w-10" aria-hidden="true" />
         </div>
-        {mode === 'conjugation' && (
+        {mode === 'conjugation' && hasCapabilityNow('conjugation') && (
           <Suspense fallback={<Spinner label="Loading verbs…" />}>
             <ConjugationTrainer onXp={onXp} />
           </Suspense>
         )}
-        {mode === 'accents' && <AccentDrill onXp={onXp} />}
-        {mode === 'translate' && <TranslateDrill onXp={onXp} />}
-        {mode === 'typing' && <><TypingDrill onXp={onXp} /><div className="pt-4"><ErrorNotebookCard /></div></>}
-        {mode === 'completion' && <Completion apiKey={apiKey} mockMode={mockMode} level={level} onXp={onXp} />}
-        {mode === 'free' && <WritingStudio depth="quick" apiKey={apiKey} mockMode={mockMode} level={level} onXp={onXp} onActivity={onActivity} />}
-        {mode === 'essay' && <WritingStudio depth="essay" apiKey={apiKey} mockMode={mockMode} level={level} onXp={onXp} onActivity={onActivity} />}
+        {mode === 'accents' && hasCapabilityNow('accent-trainer') && <AccentDrill onXp={onXp} />}
+        {mode === 'translate' && hasCapabilityNow('translation') && <TranslateDrill onXp={onXp} />}
+        {mode === 'typing' && hasCapabilityNow('typing') && <><TypingDrill onXp={onXp} /><div className="pt-4"><ErrorNotebookCard /></div></>}
+        {mode === 'completion' && hasCapabilityNow('sentence-completion') && <Completion apiKey={apiKey} mockMode={mockMode} level={level} onXp={onXp} />}
+        {mode === 'free' && hasCapabilityNow('free-writing-prompts') && <WritingStudio depth="quick" apiKey={apiKey} mockMode={mockMode} level={level} onXp={onXp} onActivity={onActivity} />}
+        {mode === 'essay' && hasCapabilityNow('essay-prompts') && <WritingStudio depth="essay" apiKey={apiKey} mockMode={mockMode} level={level} onXp={onXp} onActivity={onActivity} />}
       </div>
     </div>
   );
@@ -102,7 +102,7 @@ function ErrorNotebookCard(){
           <p className="text-xs text-ink2">“{e.original}” → <span className="font-semibold text-ink">{e.corrected}</span></p>
           <p className="text-[11px] text-ink3">{e.why || explainCorrection(e.original, e.corrected)}</p>
           <div className="flex gap-2">
-            <input value={typed[e.id]||''} onChange={ev=> setTyped(s=> ({...s, [e.id]: ev.target.value}))} placeholder="Retype the correction…" lang="fr" className="flex-1 bg-surface2 border border-line rounded-lg px-2 py-1.5 text-xs" />
+            <input value={typed[e.id]||''} onChange={ev=> setTyped(s=> ({...s, [e.id]: ev.target.value}))} placeholder="Retype the correction…" lang={activeLanguage().id} className="flex-1 bg-surface2 border border-line rounded-lg px-2 py-1.5 text-xs" />
             <button onClick={()=> { if(markCorrectedByLearner(e.id, typed[e.id])) setTick(t=>t+1); }} className="btn btn-secondary min-h-8 px-3 rounded-lg text-xs">Check</button>
           </div>
           {e.correctedByLearner && <p className="text-[11px] text-ink">✓ Corrected by you.</p>}

@@ -63,6 +63,7 @@ import Quiz from './Quiz';
 import { ChevronRight, X } from './icons';
 import { personAt } from '../lib/conjugationMeta';
 import { recordLearnerSuccess } from '../lib/storage';
+import { currentSessionId, newEncounterId } from '../lib/evidenceIdentity';
 import { segmentExplain, recoveryStatus } from '../lib/segmentExplain';
 import RecoveryBadge from './RecoveryBadge';
 
@@ -757,6 +758,12 @@ function SessionDrillShell({ title, canFinish, onDone, children }) {
 function AiDrillRunner({ concept, level, apiKey, mockMode, onXp, onDone, onEmpty }) {
   const [state, setState] = useState({ busy: true, exercises: null });
   const correctRef = useRef(0);
+  // Evidence identity: the whole drill is ONE presentation of this concept
+  // (one encounter). Every success it records cites the same encounter, so a
+  // single lucky run can never mint two independent passes; the NEXT drill
+  // run builds its own identity.
+  const encounterRef = useRef(null);
+  if (encounterRef.current === null) encounterRef.current = newEncounterId();
   const awardCounting = (n) => { if (n >= 3) correctRef.current += 1; onXp(n); };
   useEffect(() => {
     let live = true;
@@ -798,7 +805,7 @@ function AiDrillRunner({ concept, level, apiKey, mockMode, onXp, onDone, onEmpty
         const entry = getLearnerErrors({ limit: 40 }).find((e) => e.category === 'grammar'
           && (e.key === concept || e.label === concept
             || (concept && e.label && concept.toLowerCase().includes(e.label.toLowerCase()))));
-        if (entry) recordLearnerSuccess({ category: 'grammar', key: entry.key, mode: 'targeted-drill', score: null, source: 'ai-drill' });
+        if (entry) recordLearnerSuccess({ category: 'grammar', key: entry.key, mode: 'targeted-drill', score: null, source: 'ai-drill', sessionId: currentSessionId(), encounterId: encounterRef.current, activityId: concept });
       }
     } catch { /* loop bookkeeping must never break the drill */ }
     onDone();
@@ -892,7 +899,7 @@ export function RecallRunner({ cardCap, onDone, onXp, onActivity }) {
   }
   const entry = deck[idx];
   const rate = (rating) => {
-    rateCard(entry.id, rating, { mode: 'receptive', skill: 'vocabulary', itemLabel: entry.fr, label: entry.fr, source: 'today-recall' });
+    rateCard(entry.id, rating, { mode: 'receptive', skill: 'vocabulary', itemLabel: entry.fr, label: entry.fr, source: 'today-recall', encounterId: newEncounterId() });
     onActivity?.({ type: 'cards', rating, itemId: entry.id, itemLabel: entry.fr, mode: 'receptive' });
     onXp(rating === 'again' ? 1 : 2);
     // Mistake-graph cards close their loop: the SRS resurface IS the

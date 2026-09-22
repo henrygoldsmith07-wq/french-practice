@@ -176,6 +176,7 @@ import {
   getSettings as _storeGetSettings, setSettings as _storeSetSettings,
   getPrefs as _storeGetPrefs, setPrefs as _storeSetPrefs,
   getApiKey as _storeGetApiKey, setApiKey as _storeSetApiKey, clearApiKey as _storeClearApiKey,
+  getConversationMode as _storeGetConversationMode, setConversationMode as _storeSetConversationMode,
 } from './stores/settingsStore.js';
 export const getSettings = () => _storeGetSettings();
 export const setSettings = (s2) => _storeSetSettings(s2);
@@ -184,6 +185,8 @@ export const setPrefs = (p) => _storeSetPrefs(p);
 export const getApiKey = () => _storeGetApiKey();
 export const setApiKey = (k) => _storeSetApiKey(k);
 export const clearApiKey = () => _storeClearApiKey();
+export const getConversationMode = () => _storeGetConversationMode();
+export const setConversationMode = (m) => _storeSetConversationMode(m);
 
 
 // ---- Pulse opt-in ---------------------------------------------------------
@@ -420,7 +423,7 @@ function errorRecycleAt(entry, from = entry?.lastErrorAt) {
   return new Date(new Date(from).getTime() + days * 86400000).toISOString();
 }
 
-export function recordLedgerError({ mode, key, label, score = 0, source = 'practice', context = null } = {}) {
+export function recordLedgerError({ mode, key, label, score = 0, source = 'practice', context = null, sessionId = null, encounterId = null, activityId = null } = {}) {
   const normalisedMode = normalisePracticeMode(mode);
   const cleanKey = compactText(key, 120);
   if (!cleanKey) return null;
@@ -463,11 +466,16 @@ export function recordLedgerError({ mode, key, label, score = 0, source = 'pract
   const delayDays = ERROR_RECYCLE_DAYS[Math.min(ERROR_RECYCLE_DAYS.length - 1, Number(entry.successCount) || 0)];
   entry.nextReviewAt = new Date(Date.now() + delayDays * 86400000).toISOString();
   entry.status = 'active';
+  // Evidence provenance (optional): kept on the entry so downstream tooling
+  // can audit WHERE a success/mistake came from.
+  if (encounterId) entry.lastEncounterId = compactText(encounterId, 80);
+  if (sessionId) entry.lastSessionId = compactText(sessionId, 80);
+  if (activityId) entry.lastActivityId = compactText(activityId, 80);
   writeLedgerErrors(list);
   return entry;
 }
 
-export function recordLedgerSuccess({ mode, key, label, score = 100, source = 'practice', context = null } = {}) {
+export function recordLedgerSuccess({ mode, key, label, score = 100, source = 'practice', context = null, sessionId = null, encounterId = null, activityId = null } = {}) {
   const normalisedMode = normalisePracticeMode(mode);
   const cleanKey = compactText(key, 120);
   if (!cleanKey) return null;
@@ -486,14 +494,18 @@ export function recordLedgerSuccess({ mode, key, label, score = 100, source = 'p
   const delayDays = ERROR_RECYCLE_DAYS[Math.min(ERROR_RECYCLE_DAYS.length - 1, Number(entry.successCount) || 0)];
   entry.nextReviewAt = new Date(Date.now() + delayDays * 86400000).toISOString();
   entry.status = entry.successCount >= 2 && entry.successCount >= entry.errorCount ? 'resolved' : 'recovering';
+  if (encounterId) entry.lastEncounterId = compactText(encounterId, 80);
+  if (sessionId) entry.lastSessionId = compactText(sessionId, 80);
+  if (activityId) entry.lastActivityId = compactText(activityId, 80);
   writeLedgerErrors(list);
   return entry;
 }
 
-function recordGapOutcome({ mode, key, label, score = 0, source, context, event = true }) {
+function recordGapOutcome({ mode, key, label, score = 0, source, context, event = true, sessionId = null, encounterId = null, activityId = null }) {
+  const provenance = { sessionId, encounterId, activityId };
   const result = clampScore(score) >= 80
-    ? recordLedgerSuccess({ mode, key, label, score, source, context })
-    : recordLedgerError({ mode, key, label, score, source, context });
+    ? recordLedgerSuccess({ mode, key, label, score, source, context, ...provenance })
+    : recordLedgerError({ mode, key, label, score, source, context, ...provenance });
   if (event) {
     recordReviewEvent({
       kind: 'assessment',
@@ -510,28 +522,28 @@ function recordGapOutcome({ mode, key, label, score = 0, source, context, event 
   return result;
 }
 
-export function recordGrammarGap(topicId, { score = 0, source = 'grammar', context = null } = {}) {
-  return recordGapOutcome({ mode: 'grammar', key: topicId, label: topicId, score, source, context });
+export function recordGrammarGap(topicId, { score = 0, source = 'grammar', context = null, sessionId = null, encounterId = null, activityId = null } = {}) {
+  return recordGapOutcome({ mode: 'grammar', key: topicId, label: topicId, score, source, context, sessionId, encounterId, activityId });
 }
 
-export function recordVocabularyGap(itemId, { label = itemId, score = 0, source = 'vocabulary', context = null, event = false } = {}) {
-  return recordGapOutcome({ mode: 'vocabulary', key: itemId, label, score, source, context, event });
+export function recordVocabularyGap(itemId, { label = itemId, score = 0, source = 'vocabulary', context = null, event = false, sessionId = null, encounterId = null, activityId = null } = {}) {
+  return recordGapOutcome({ mode: 'vocabulary', key: itemId, label, score, source, context, event, sessionId, encounterId, activityId });
 }
 
-export function recordListeningGap(itemId, { label = itemId, score = 0, source = 'listening', context = null } = {}) {
-  return recordGapOutcome({ mode: 'listening', key: itemId, label, score, source, context });
+export function recordListeningGap(itemId, { label = itemId, score = 0, source = 'listening', context = null, sessionId = null, encounterId = null, activityId = null } = {}) {
+  return recordGapOutcome({ mode: 'listening', key: itemId, label, score, source, context, sessionId, encounterId, activityId });
 }
 
-export function recordPronunciationGap(itemId, { label = itemId, score = 0, source = 'pronunciation', context = null } = {}) {
-  return recordGapOutcome({ mode: 'pronunciation', key: itemId, label, score, source, context });
+export function recordPronunciationGap(itemId, { label = itemId, score = 0, source = 'pronunciation', context = null, sessionId = null, encounterId = null, activityId = null } = {}) {
+  return recordGapOutcome({ mode: 'pronunciation', key: itemId, label, score, source, context, sessionId, encounterId, activityId });
 }
 
-export function recordSpeakingGap(itemId, { label = itemId, score = 0, source = 'speaking', context = null } = {}) {
-  return recordGapOutcome({ mode: 'speaking', key: itemId, label, score, source, context });
+export function recordSpeakingGap(itemId, { label = itemId, score = 0, source = 'speaking', context = null, sessionId = null, encounterId = null, activityId = null } = {}) {
+  return recordGapOutcome({ mode: 'speaking', key: itemId, label, score, source, context, sessionId, encounterId, activityId });
 }
 
-export function recordWritingGap(itemId, { label = itemId, score = 0, source = 'writing', context = null } = {}) {
-  return recordGapOutcome({ mode: 'writing', key: itemId, label, score, source, context });
+export function recordWritingGap(itemId, { label = itemId, score = 0, source = 'writing', context = null, sessionId = null, encounterId = null, activityId = null } = {}) {
+  return recordGapOutcome({ mode: 'writing', key: itemId, label, score, source, context, sessionId, encounterId, activityId });
 }
 
 export function getEvidenceLedgerModel() {
@@ -1085,7 +1097,9 @@ export function recordSkillScore(skill, score, meta = {}) {
 export function recordLearningActivity(event = {}) {
   if (!event || typeof event !== 'object') return null;
   const at = typeof event.at === 'string' ? event.at : new Date().toISOString();
-  const stored = recordStudyEvent({ ...event, at, source: event.source || 'activity' });
+  // The raw trail gets session provenance too (the audit story wants to know
+  // WHICH visit produced an event, even when the producer could not know).
+  const stored = recordStudyEvent({ ...event, sessionId: event.sessionId || currentSessionId(), at, source: event.source || 'activity' });
   const score = Number.isFinite(Number(event.score))
     ? Math.max(0, Math.min(100, Math.round(Number(event.score))))
     : Number.isFinite(Number(event.accuracy))
@@ -1096,6 +1110,12 @@ export function recordLearningActivity(event = {}) {
     score,
     source: 'activity-event',
     detail: event.detail || null,
+    // Evidence identity rides through: the activity producers stamp which
+    // session/encounter/drill produced this event, and the recovery loop
+    // needs that provenance intact to tell distinct encounters apart.
+    sessionId: event.sessionId || currentSessionId(),
+    encounterId: event.encounterId || null,
+    activityId: event.activityId || null,
   };
   // Every scored skill feeds the SAME recovery loop — reading and writing
   // included — so a weakness surfaced in one mode is repaired by whichever
@@ -1667,6 +1687,16 @@ export function getDueCardIds(allIds) {
 export function rateCard(cardId, rating, opts={}) {
   const mode = opts.mode || 'receptive';
   const key = mode==='productive' ? `${cardId}::productive` : cardId;
+  // Encounter identity: ONE presentation of a card is one encounter. The
+  // caller may pin a presentation (retrying the same card must dedupe); by
+  // default each rateCard call for a card the learner is looking at is a
+  // fresh encounter, but a true re-answer of the SAME presentation must pass
+  // the SAME encounterId through so the model can dedupe it.
+  const identity = {
+    sessionId: opts.sessionId || currentSessionId(),
+    encounterId: opts.encounterId || newEncounterId(),
+    activityId: opts.activityId || cardId,
+  };
   const srs = getSrs();
   const existing = srs[key];
   // FSRS is the scheduler. It used to be gated on `existing?.S != null` — a
@@ -1690,6 +1720,7 @@ export function rateCard(cardId, rating, opts={}) {
       mode,
       itemLabel: opts.itemLabel,
       source: opts.source || 'srs',
+      ...identity,
     });
     // The vocabulary loop's producer AND consumer, in one place: a lapse is
     // a mistake (enters the learner-error model); a later clean recall of a
@@ -1704,9 +1735,7 @@ export function rateCard(cardId, rating, opts={}) {
       source: 'srs',
       // Evidence identity: the caller's encounter for this one presentation
       // (or a fresh one when the caller doesn't track presentations).
-      sessionId: opts.sessionId || currentSessionId(),
-      encounterId: opts.encounterId || newEncounterId(),
-      activityId: opts.activityId || cardId,
+      ...identity,
     });
     return next;
   }
@@ -1751,6 +1780,7 @@ export function rateCard(cardId, rating, opts={}) {
     mode,
     itemLabel: opts.itemLabel,
     source: opts.source || 'srs',
+    ...identity,
   });
   return srs[key];
 }
@@ -1759,7 +1789,7 @@ export function rateCard(cardId, rating, opts={}) {
 
 export const getReviewLog = () => read(KEYS.reviewLog, {});
 
-function logReview({ cardId, rating, elapsedMs, skill, intervalDays, mode, itemLabel, source } = {}) {
+function logReview({ cardId, rating, elapsedMs, skill, intervalDays, mode, itemLabel, source, sessionId, encounterId, activityId } = {}) {
   // Initialise before appending the new event because the first learner-model
   // migration also imports legacy review misses.
   getLearnerErrorModel();
@@ -1812,6 +1842,12 @@ function logReview({ cardId, rating, elapsedMs, skill, intervalDays, mode, itemL
     score: event.correct ? 100 : 0,
     source: 'per-review-event',
     detail: event.correct ? 'Successful recall.' : 'Card marked again.',
+    // Provenance of the presentation that produced this review. Session id
+    // anchors it to this app visit; the encounter id dedupes re-answers of
+    // the same presentation so a lucky double-tap cannot mint independence.
+    sessionId,
+    encounterId,
+    activityId,
   };
   if (event.correct) recordLearnerSuccess(learnerError);
   else recordLearnerError(learnerError);

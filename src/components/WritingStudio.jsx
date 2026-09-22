@@ -2,6 +2,8 @@ import { useMemo, useState } from 'react';
 import { WRITING_PROMPTS, ESSAY_PROMPTS, randomFrom } from '../lib/writing';
 import { writingFeedback, friendlyError } from '../lib/groq';
 import { recordSkillScore, recordLearnerError } from '../lib/storage';
+import { newEncounterId } from '../lib/evidenceIdentity';
+import { activeLanguage } from '../lib/i18n';
 import { recordCorpusEntry } from '../lib/stores/researchStoreHeavy.js';
 import { addErrorNotebook } from '../lib/errorNotebook';
 import { explainCorrection } from '../lib/writing';
@@ -33,7 +35,7 @@ export default function WritingStudio({ depth, apiKey, mockMode, level, onXp, on
       const overall = r.scores.overall || 50;
       onXp(Math.max(2, Math.round(overall / 10)));
       recordSkillScore('writing', overall);
-      onActivity?.({ type: 'writing', score: overall, mode: essay ? 'essay' : 'free-writing', label: essay ? 'Essay studio' : 'Free writing' });
+      onActivity?.({ type: 'writing', score: overall, mode: essay ? 'essay' : 'free-writing', label: essay ? 'Essay studio' : 'Free writing', encounterId: newEncounterId(), activityId: essay ? 'essay-studio' : 'free-writing' });
       // Corpus seed: store the AI side now so a human rater can pair their
       // mark against it later (updateCorpusHumanMark). Never fabricates the
       // human half — the entry simply waits as AI-only until a rater adds one.
@@ -104,8 +106,8 @@ export default function WritingStudio({ depth, apiKey, mockMode, level, onXp, on
             value={text}
             onChange={(e) => setText(e.target.value)}
             rows={essay ? 10 : 5}
-            lang="fr"
-            placeholder="Écrivez en français…"
+            lang={activeLanguage().id}
+            placeholder={`Write in ${activeLanguage().name}…`}
             aria-label="Your text"
             className="w-full bg-surface border border-line rounded-xl px-4 py-3 text-sm text-ink leading-relaxed placeholder:text-ink3 focus:outline-none focus:border-ink resize-y"
           />

@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
+import { allEntries } from '../lib/vocab';
+import { langCode as activeLangCode } from '../lib/i18n';
 import { randomPoolSentence as randomSentence, toWords, diffWords } from '../lib/sentences';
 import { recordSkillScore, recordListeningGap, getSrs } from '../lib/storage';
+import { newEncounterId } from '../lib/evidenceIdentity';
 import { speak, stopSpeaking } from '../lib/tts';
 import { Play, Volume, RefreshCw, Check } from './icons';
 import { dictationSpeed, diacriticStrict, DICTATION_LEVELS } from '../lib/dictationProgression';
-import { allEntries } from '../lib/vocab';
 import { getMetrics, getReviewEvents } from '../lib/storage';
 import { listeningDifficultyLadder } from '../lib/learningAdaptation';
 
@@ -44,14 +46,19 @@ export default function Dictation({ ttsRate, level: cefr = 'B1', onXp, onActivit
     const matched = hits.filter(Boolean).length;
     const accuracy = Math.round((matched / Math.max(1, target.length)) * 100);
     const gained = Math.max(1, Math.round(accuracy / 10));
+    // One dictation round = one presentation of one sentence = one encounter;
+    // minted once so every store recording this attempt cites the same id.
+    const encounterId = newEncounterId();
     recordListeningGap(sentence.id || sentence.text, {
       label: sentence.text,
       score: accuracy,
       source: 'dictation',
       context: { missedWords: target.filter((_, index) => !hits[index]).slice(0, 8) },
+      encounterId,
+      activityId: sentence.id || sentence.text,
     });
     onXp(gained);
-    onActivity?.({ type: 'dictation', accuracy, score: accuracy, mode: 'dictation', label: 'Dictée' });
+    onActivity?.({ type: 'dictation', accuracy, score: accuracy, mode: 'dictation', label: 'Dictée', encounterId, activityId: sentence.id || sentence.text });
     recordSkillScore('listening', accuracy);
     setResult({ hits, accuracy, gained });
   };
@@ -112,8 +119,8 @@ export default function Dictation({ ttsRate, level: cefr = 'B1', onXp, onActivit
               }}
               rows={2}
               disabled={!played}
-              placeholder={played ? 'Type what you heard…' : 'Listen first, then type here'}
-              lang="fr"
+              placeholder={played ? `Type what you heard…` : 'Listen first, then type here'}
+              lang={activeLangCode()}
               className="w-full bg-surface border border-line rounded-xl px-4 py-3 text-sm text-ink placeholder:text-ink3 focus:outline-none focus:border-ink resize-none disabled:opacity-50"
               aria-label="What you heard"
             />
@@ -136,7 +143,7 @@ export default function Dictation({ ttsRate, level: cefr = 'B1', onXp, onActivit
             </div>
             <div>
               <h4 className="text-[11px] font-bold uppercase tracking-wider text-ink2 mb-1">The sentence</h4>
-              <p className="text-[15px] leading-relaxed" lang="fr">
+              <p className="text-[15px] leading-relaxed" lang={activeLangCode()}>
                 {targetWords.map((w, i) => (
                   <span key={i} className={displayHits[i] ? 'text-ink' : 'text-ink3 underline decoration-2 underline-offset-2'}>
                     {w}{' '}
@@ -147,7 +154,7 @@ export default function Dictation({ ttsRate, level: cefr = 'B1', onXp, onActivit
             </div>
             <div>
               <h4 className="text-[11px] font-bold uppercase tracking-wider text-ink2 mb-1">You wrote</h4>
-              <p className="text-sm text-ink2" lang="fr">{input || '—'}</p>
+              <p className="text-sm text-ink2" lang={activeLangCode()}>{input || '—'}</p>
             </div>
             {/* Session mode: the segment ends once a clean pass repairs the
                 gap (recordLearningActivity fires the success on ≥80). Below

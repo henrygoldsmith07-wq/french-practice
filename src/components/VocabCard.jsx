@@ -3,6 +3,7 @@ import { useState } from 'react';
 // dynamically so components reachable from the entry chunk don't drag them in.
 const groqPromise = import('../lib/groq');
 const FREQ_LABELS = { 1: 'Top 100', 2: 'Top 500', 3: 'Top 1000', 4: 'Top 5000', 5: 'Niche' };
+import { contentLang } from '../lib/content/active';
 import { SpeakButton, Spinner } from './ui';
 import { Check, X, Bookmark, BookmarkFilled } from './icons';
 
@@ -82,13 +83,13 @@ export default function VocabCard({ entry, cardDue, saved, disabled, onRate, onT
               {entry.emoji && (
                 <div className="text-6xl mb-3" role="img" aria-hidden="true">{entry.emoji}</div>
               )}
-              <p className="text-3xl font-bold text-ink" lang="fr">{entry.fr}</p>
+              <p className="text-3xl font-bold text-ink" lang={contentLang()}>{entry.fr}</p>
               <p className="text-xs text-ink3 mt-3">Tap to reveal</p>
             </div>
           </div>
           <div className="flip-face flip-face-back bg-gradient-to-br from-surface2 to-surface border border-line rounded-3xl p-5 flex flex-col justify-center gap-2.5 shadow-xl overflow-y-auto" aria-hidden={!flipped}>
             <p className="text-lg font-bold text-ink">{entry.en}</p>
-            {entry.example && <p className="text-sm text-ink italic" lang="fr">« {entry.example} »</p>}
+            {entry.example && <p className="text-sm text-ink italic" lang={contentLang()}>« {entry.example} »</p>}
             {entry.exampleEn && <p className="text-xs text-ink2">{entry.exampleEn}</p>}
             <ChipRow label="Syn" items={entry.syn} />
             <ChipRow label="Ant" items={entry.ant} />

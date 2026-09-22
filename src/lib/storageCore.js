@@ -88,6 +88,9 @@ const KEYS = {
   learnerRegistry: 'fp.learnerRegistry.v1', // per-learner namespace registry + migration marker
   languageModel: 'fp.languageModel.v1', // explicit grammar transfer stages
   fieldNotes: 'fp.fieldNotes.v1', // learner-captured real-world phrases and transfer evidence
+  conversationMode: 'fp.conversationMode', // 'coach' | 'fluency' — Arena correction policy
+  cultureSeen: 'fp.cultureSeen', // [articleId] — Culture items already opened
+  realworldSeen: 'fp.realworldSeen', // [itemId] — RealWorld items already opened
 };
 
 export { KEYS };
@@ -133,6 +136,10 @@ const LEARNER_KEY_VALUES = [
   KEYS.studyState, KEYS.studyConsent, KEYS.studyChecks, KEYS.studyOutcomes,
   KEYS.lastPlacement, KEYS.errorNotebook, KEYS.starred,
   KEYS.xp, KEYS.xpDay, KEYS.xpLog, KEYS.timeLog, KEYS.active,
+  // Preferences/progress that used to live as raw component-level keys: with
+  // a household active each member now keeps their own mode and seen-lists;
+  // the one-shot claim keeps every pre-existing value with the first member.
+  KEYS.conversationMode, KEYS.cultureSeen, KEYS.realworldSeen,
 ];
 
 const LEARNER_KEY_SET = new Set(LEARNER_KEY_VALUES);

@@ -241,9 +241,23 @@ function withEvidence(entry, error, at) {
     score: error.score,
     source: error.source,
     detail: error.detail,
+    // Provenance travels WITH the evidence — without these fields a success
+    // can never prove which encounter it came from, and the recovery loop
+    // correctly refuses to treat it as independent.
+    sessionId: error.sessionId,
+    encounterId: error.encounterId,
+    activityId: error.activityId,
   }, at);
   const evidence = nextEvidence
-    ? [...entry.evidence.filter((item) => item.at !== nextEvidence.at || item.mode !== nextEvidence.mode), nextEvidence].slice(-MAX_EVIDENCE)
+    ? [...entry.evidence.filter((item) => (
+      // Legacy heuristic: an identity-less event recorded twice in the same
+      // millisecond+mode is a double-fire, not two answers. Identity-bearing
+      // evidence NEVER collapses: every re-answer persists (the encounter key,
+      // not evidence dropping, is what dedupes independence), so the audit
+      // trail stays complete and deterministic under fast double-taps.
+      nextEvidence.encounterId
+        || item.at !== nextEvidence.at
+        || item.mode !== nextEvidence.mode)), nextEvidence].slice(-MAX_EVIDENCE)
     : entry.evidence;
   const mode = String(error.mode || '').slice(0, 40);
   const modes = mode && !entry.modes.includes(mode) ? [...entry.modes, mode].slice(-MAX_MODES) : entry.modes;

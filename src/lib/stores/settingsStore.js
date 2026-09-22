@@ -23,6 +23,30 @@ export const getApiKey = () => {
 export const setApiKey = (k) => write(KEYS.apiKey, k);
 export const clearApiKey = () => localStorage.removeItem(KEYS.apiKey);
 
+// ---- Arena conversation mode ------------------------------------------------
+// A preference that used to live as a raw component-level `fp.conversationMode`
+// string. Adoption of the legacy bare (non-JSON) value runs at module load —
+// BEFORE any routed read can see it: read() would treat `fluency` as corrupt,
+// drop the key, and silently reset the learner's choice to 'coach' (and under
+// a household the claim migration would copy the un-parseable raw first).
+try {
+  const legacy = localStorage.getItem(KEYS.conversationMode);
+  if (legacy === 'fluency' || legacy === 'coach') {
+    localStorage.setItem(KEYS.conversationMode, JSON.stringify(legacy));
+  }
+} catch { /* storage unavailable — read() falls back below */ }
+
+const CONVERSATION_MODES = ['coach', 'fluency'];
+export function getConversationMode() {
+  const v = read(KEYS.conversationMode, 'coach');
+  return CONVERSATION_MODES.includes(v) ? v : 'coach';
+}
+export function setConversationMode(mode) {
+  const v = CONVERSATION_MODES.includes(mode) ? mode : 'coach';
+  write(KEYS.conversationMode, v);
+  return v;
+}
+
 const DEFAULT_SETTINGS = {
   ttsRate: 1,
   mockMode: false,

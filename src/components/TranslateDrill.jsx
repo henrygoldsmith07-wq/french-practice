@@ -1,13 +1,19 @@
 import { useMemo, useRef, useState } from 'react';
-import { langName } from '../lib/i18n';
+import { activeLanguage, langName } from '../lib/i18n';
 import { allEntries } from '../lib/vocab';
 import { recordSkillScore } from '../lib/storage';
 import { SpeakButton } from './ui';
 import { Play, RefreshCw, Check, X } from './icons';
 
-// Bidirectional translation drill: EN→FR and FR→EN sentence rounds drawn
-// from the vocabulary library's example sentences, so every sentence uses
-// words the packs teach. Checking is accent- and punctuation-tolerant.
+// The active language's content code ('fr'/'de'/'es') — used for the
+// direction chips and lang attributes so the drill never hard-codes French.
+const langCode = () => activeLanguage().id;
+
+// Bidirectional translation drill: EN→target and target→EN sentence rounds
+// drawn from the vocabulary library's example sentences, so every sentence
+// uses words the packs teach. Checking is accent- and punctuation-tolerant.
+// Direction labels are built from the ACTIVE language name — no hard-coded
+// "FR" chrome in a mode that must stay multilingual.
 
 const ROUNDS = 8;
 
@@ -78,7 +84,7 @@ export default function TranslateDrill({ onXp }) {
     return (
       <div className="bg-surface border border-line rounded-2xl p-6 text-center space-y-3 fade-in">
         <p className="text-3xl font-bold text-ink tabular-nums">{game.correct}/{ROUNDS}</p>
-        <p className="text-xs text-ink2">{game.score >= 75 ? 'Traduction solide dans les deux sens !' : 'Both directions — that is how it sticks.'}</p>
+        <p className="text-xs text-ink2">{game.score >= 75 ? `Solid translation in both directions!` : 'Both directions — that is how it sticks.'}</p>
         <button onClick={start} className="btn btn-secondary min-h-10 px-4 rounded-xl text-xs"><RefreshCw size={12} /> Again</button>
       </div>
     );
@@ -92,11 +98,11 @@ export default function TranslateDrill({ onXp }) {
     <div className="bg-surface border border-line rounded-2xl p-6 space-y-4">
       <div className="flex items-center justify-between text-[11px] text-ink3 tabular-nums">
         <span>Sentence {game.n}/{ROUNDS}</span>
-        <span className="font-semibold">{game.toFr ? 'EN → FR' : 'FR → EN'}</span>
+        <span className="font-semibold">{game.toFr ? `EN → ${langCode().toUpperCase()}` : `${langCode().toUpperCase()} → EN`}</span>
         <span>{game.correct} ✓</span>
       </div>
       <div className="flex items-start gap-2">
-        <p className="flex-1 text-[15px] text-ink leading-relaxed" lang={game.toFr ? 'en' : 'fr'}>{source}</p>
+        <p className="flex-1 text-[15px] text-ink leading-relaxed" lang={game.toFr ? 'en' : langCode()}>{source}</p>
         {!game.toFr && <SpeakButton text={source} label="Listen" />}
       </div>
       <textarea
@@ -105,8 +111,8 @@ export default function TranslateDrill({ onXp }) {
         onChange={(ev) => setGame({ ...game, input: ev.target.value })}
         disabled={game.checked}
         rows={2}
-        lang={game.toFr ? 'fr' : 'en'}
-        placeholder={game.toFr ? 'Écris-le en français…' : 'Write it in English…'}
+        lang={game.toFr ? langCode() : 'en'}
+        placeholder={game.toFr ? `Write it in ${activeLanguage().name}…` : 'Write it in English…'}
         aria-label="Your translation"
         className="w-full bg-surface2 border border-line rounded-xl px-4 py-2.5 text-sm text-ink placeholder:text-ink3 focus:outline-none focus:border-ink resize-none"
       />
@@ -114,9 +120,9 @@ export default function TranslateDrill({ onXp }) {
         <div className="space-y-2 fade-in">
           <p className={`text-sm font-semibold inline-flex items-center gap-1.5 ${game.lastOk ? 'text-ink' : 'text-ink2'}`}>
             {game.lastOk ? <Check size={14} /> : <X size={14} />}
-            {game.lastOk ? 'Ça passe !' : 'Not quite —'}
+            {game.lastOk ? 'That works!' : 'Not quite —'}
           </p>
-          <p className="text-sm text-ink bg-surface2 rounded-xl px-3 py-2" lang={game.toFr ? 'fr' : 'en'}>{target}</p>
+          <p className="text-sm text-ink bg-surface2 rounded-xl px-3 py-2" lang={game.toFr ? langCode() : 'en'}>{target}</p>
           <button onClick={next} className="btn btn-primary w-full min-h-11 rounded-xl text-sm">
             {game.n >= ROUNDS ? 'See my score' : 'Next'}
           </button>

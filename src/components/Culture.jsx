@@ -12,23 +12,12 @@ import { bumpChallengeMetric } from '../lib/storage';
 import { SpeakButton } from './ui';
 import { shuffleOptions } from './GrammarExercises';
 import { ChevronLeft, ChevronRight, Check, X, RefreshCw, Lightbulb, Trophy, Search } from './icons';
+import { getCultureSeen, saveCultureSeen } from '../lib/stores/seenStore';
 
-const SEEN_KEY = 'fp.cultureSeen';
-
-function loadSeen() {
-  try {
-    const raw = JSON.parse(localStorage.getItem(SEEN_KEY) || '[]');
-    return new Set(Array.isArray(raw) ? raw : []);
-  } catch {
-    return new Set();
-  }
-}
-
-function saveSeen(set) {
-  try {
-    localStorage.setItem(SEEN_KEY, JSON.stringify([...set]));
-  } catch { /* ignore */ }
-}
+// Seen progress lives in stores/seenStore (learner-routed); components never
+// touch browser storage directly (pinned by tests/storage-boundary.test.js).
+const loadSeen = () => getCultureSeen();
+const saveSeen = (set) => saveCultureSeen(set);
 
 // Cultural learning hub: themed sections with spoken phrases, daily tip,
 // search, persistent progress, and an XP quiz.

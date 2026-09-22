@@ -25,17 +25,19 @@ const TodaySession = lazy(() => import('./components/TodaySession'));
 // renders them directly (Learn hub owns them) and lib/prefetch.js owns their
 // intent/idle loading. Importing them here would drag them into App's chunk
 // graph for nothing.
-import { getPath, applyActivity } from './lib/path';
+import { getPath } from './lib/path'; // applyActivity is dynamically imported in onActivity (keeps roadmaps.js off first load)
 import { getScenarios } from './lib/data';
+import { contentLang } from './lib/content/active';
 import usePwaInstall from './hooks/usePwaInstall';
 import useOverlayNav from './hooks/useOverlayNav';
 import useStudioBoot from './hooks/useStudioBoot';
 import useSessionLifecycle from './hooks/useSessionLifecycle';
 import useAppearance from './hooks/useAppearance';
+import useRewards from './hooks/useRewards';
 import {
-  getApiKey, getSettings, setSettings as persistSettings, getStreak, getXp, addXp,
-  getTodayXp,
-  getCoins, addCoins, getAvatar, bumpChallengeMetric, addEventXp,
+  getApiKey, getSettings, setSettings as persistSettings, getStreak,
+  getConversationMode,
+  bumpChallengeMetric,
   getPrefs, setPrefs, getSessions,
   setApiKey as persistApiKey, setAvatar as persistAvatar, ownAvatar, setHabitList,
   setOnboarded, setLastActivity, getLastActivity, recordSpeakingGap, recordLearningActivity,
@@ -47,10 +49,11 @@ import {
 // below and inside their own screens' chunks.
 import { adaptiveLevel } from './lib/personalise';
 import { prefetchForTab } from './lib/prefetch';
-import { AVATARS, activeEvent, levelFromXp } from './lib/game';
+import { AVATARS } from './lib/game';
 import { useDueCount, loadAllEntries, warmScenarios } from './lib/vocabAsync';
 import { getLanguage, featureAvailableNow, hasCapabilityNow } from './lib/languages';
 import { overlayReducer, overlayIs, overlayPayload, initialOverlay } from './lib/overlayNav';
+import { currentSessionId } from './lib/evidenceIdentity';
 import { relayEnabled } from './lib/relay';
 import { Flame, Bolt, Sun, Moon, Gear, Key, ArrowRight, Home, MessageCircle, Layers, BookOpen, BarChart, Search, Coins as CoinsIcon, X, Download } from './components/icons';
 import Mascot from './components/Mascot';
@@ -100,17 +103,18 @@ export default function App() {
   const { isDark } = useAppearance(settings);
   const [lastScores, setLastScores] = useState(null);
   // Fluency mode state: the debrief is produced once, after the session.
-  const [conversationMode, setConversationMode] = useState(() => {
-    try { return localStorage.getItem('fp.conversationMode') === 'fluency' ? 'fluency' : 'coach'; } catch { return 'coach'; }
-  });
+  // Persistence lives in stores/settingsStore (learner-routed); App owns the
+  // live value so every screen re-renders together on a mode switch.
+  const [conversationMode, setConversationModeState] = useState(getConversationMode);
   const [fluencyReviewResult, setFluencyReviewResult] = useState(null);
   const [debriefPending, setDebriefPending] = useState(false);
-  const [streakTick, setStreakTick] = useState(0);
-  const [xp, setXp] = useState(getXp);
-  const [xpGain, setXpGain] = useState(null);
-  const [celebration, setCelebration] = useState(null);
-  const [coins, setCoins] = useState(getCoins);
-  const [avatarId, setAvatarId] = useState(getAvatar);
+  // XP/coins/celebration/avatar/streak-tick live in the rewards hook (they
+  // only ever change together, inside awardXp); App consumes them by name.
+  const {
+    xp, xpGain, celebration, setCelebration,
+    coins, setCoins, avatarId, setAvatarId,
+    streakTick, bumpStreak, awardXp,
+  } = useRewards({ dailyGoal: settings.dailyGoal || 30 });
   const [prefs, setPrefsState] = useState(getPrefs);
   const pwa = usePwaInstall();
   const [installDismissed, setInstallDismissed] = useState(false);
@@ -199,7 +203,17 @@ export default function App() {
   };
 
   const skipOnboarding = () => {
-    if (!apiKey && !settings.mockMode) updateSettings({ ...settings, mockMode: true });
+    // The picker step syncs the chosen language LIVE (Onboarding →
+    // syncLanguage → content/active) but historically a skip never wrote it
+    // to settings: settings.language stayed at its previous value while the
+    // content layer ran Spanish/German — so Settings claimed French, the
+    // language radio could never trigger a switch (its guard saw no change),
+    // and the next reload silently reverted the learner to French. Adopt the
+    // LIVE content language so picking a language and skipping still sticks.
+    const liveLanguage = contentLang();
+    const next = { ...settings, language: liveLanguage };
+    if (!apiKey && !settings.mockMode) next.mockMode = true;
+    updateSettings(next);
     setOnboarded();
     closeOverlay();
   };
@@ -214,31 +228,6 @@ export default function App() {
   const ready = Boolean(apiKey) || relayEnabled || settings.mockMode;
   const streak = getStreak();
   void streakTick;
-
-  const awardXp = (gained) => {
-    const beforeXp = getXp();
-    const beforeToday = getTodayXp();
-    const newXp = addXp(gained);
-    setXp(newXp);
-    setXpGain({ amount: gained, id: Date.now() });
-    setCoins(addCoins(Math.max(1, Math.round(gained / 3))));
-    const event = activeEvent();
-    if (event) addEventXp(event.id, gained);
-    const before = levelFromXp(beforeXp);
-    const after = levelFromXp(newXp);
-    const dailyGoal = settings.dailyGoal || 30;
-    try {
-      if (after.level > before.level) {
-        setCelebration({ kind: 'level', level: after.level, title: after.title, newTitle: after.title !== before.title });
-        navigator.vibrate?.([30, 50, 30, 50, 70]);
-      } else if (beforeToday < dailyGoal && getTodayXp() >= dailyGoal) {
-        setCelebration({ kind: 'goal' });
-        navigator.vibrate?.([25, 40, 45]);
-      } else {
-        navigator.vibrate?.(12);
-      }
-    } catch { /* no haptics */ }
-  };
 
   const handleTurn = (scores) => {
     if (!scenario) return; // registry still resolving (DE/ES cold start)
@@ -255,7 +244,10 @@ export default function App() {
 
   const handleActivity = (evt) => {
     if (!evt || typeof evt !== 'object') return;
-    recordLearningActivity(evt);
+    // Session provenance is stamped at the composition root (the producers
+    // cannot know the session id); encounter/activity ids come in on the
+    // event from the screen that ran the drill.
+    recordLearningActivity({ sessionId: currentSessionId(), ...evt });
     const labels = {
       cards: 'Flashcard review',
       dictation: 'Dictée practice',
@@ -283,12 +275,21 @@ export default function App() {
     if (['cards', 'session', 'dictation', 'quickfire', 'grammar'].includes(evt.type)) {
       bumpChallengeMetric(evt.type);
     }
-    const result = applyActivity(getPath(), evt);
-    if (!result.changed) return;
-    setPath({ ...result.path });
-    if (result.levelChange === 'up') {
-      updateSettings({ ...settings, level: result.path.cefr });
-    }
+    // Path/roadmap advancement is a DYNAMIC import: path.js statically pulls
+    // roadmaps.js (the full French-authored learning path), which must not sit
+    // in the first-load graph for any language. The import is cached after the
+    // first activity, and failure here must never block XP/streak recording
+    // (already handled above) — path advancement is enrichment, not evidence.
+    import('./lib/path')
+      .then(({ applyActivity }) => {
+        const result = applyActivity(getPath(), evt);
+        if (!result.changed) return;
+        setPath({ ...result.path });
+        if (result.levelChange === 'up') {
+          updateSettings({ ...settings, level: result.path.cefr });
+        }
+      })
+      .catch(() => { /* offline-first: path resumes on next successful load */ });
   };
 
   const startLesson = (lesson) => {
@@ -545,10 +546,7 @@ export default function App() {
               ttsRate={settings.ttsRate}
               level={effectiveLevel}
               conversationMode={conversationMode}
-              onConversationMode={(m) => {
-                setConversationMode(m);
-                try { localStorage.setItem('fp.conversationMode', m); } catch { /* ignore */ }
-              }}
+              onConversationMode={(m) => { setConversationModeState(m); }}
               onTtsRate={(r) => updateSettings({ ...settings, ttsRate: r })}
               onTurn={handleTurn}
               onXp={awardXp}
@@ -636,7 +634,7 @@ export default function App() {
         <SettingsModal open onClose={closeOverlay} apiKey={apiKey} onKeyChange={handleApiKeyChange} settings={settings} onSettingsChange={updateSettings} onReplayOnboarding={() => openOverlay('onboarding')} />
       )}
       {overlayIs(overlay, 'dashboard') && (
-        <SessionDashboard open onClose={closeDashboard} apiKey={apiKey} mockMode={settings.mockMode} scenario={scenario} history={history} level={effectiveLevel} onXp={awardXp} fluencyReview={fluencyReviewResult} fluencyPending={debriefPending} onSessionSaved={(report) => { setStreakTick((t) => t + 1); handleActivity({ type: 'session', scenarioId: scenario?.id, score: report?.average_scores?.overall ?? 0 }); }} />
+        <SessionDashboard open onClose={closeDashboard} apiKey={apiKey} mockMode={settings.mockMode} scenario={scenario} history={history} level={effectiveLevel} onXp={awardXp} fluencyReview={fluencyReviewResult} fluencyPending={debriefPending} onSessionSaved={(report) => { bumpStreak(); handleActivity({ type: 'session', scenarioId: scenario?.id, score: report?.average_scores?.overall ?? 0 }); }} />
       )}
       {overlayIs(overlay, 'personalise') && (<Personalise open onClose={closeOverlay} prefs={prefs} onPrefsChange={updatePrefs} baseLevel={settings.level} onRun={runRecommendation} />)}
       {overlayIs(overlay, 'offline') && <Offline open onClose={closeOverlay} pwa={pwa} />}

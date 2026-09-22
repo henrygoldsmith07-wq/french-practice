@@ -3,6 +3,7 @@ import { READING_KINDS, READING_TEXTS, getText } from '../lib/reading';
 import { allEntries } from '../lib/vocab';
 import { translateWord, friendlyError } from '../lib/groq';
 import { getCachedWord, cacheWord, saveToNotebook, isInNotebook, recordSkillScore } from '../lib/storage';
+import { newEncounterId } from '../lib/evidenceIdentity';
 import { SpeakButton, Spinner } from './ui';
 import { shuffleOptions } from './GrammarExercises';
 import { BookOpen, ChevronLeft, ChevronRight, Check, X, RefreshCw, Bookmark, BookmarkFilled } from './icons';
@@ -209,7 +210,7 @@ function TextReader({ text, apiKey, mockMode, onXp, onActivity, onBack }) {
       recordSkillScore('reading', score);
       // Feed the shared recovery loop: a weak reading comprehension is a gap
       // the next session targets, exactly like a listening or grammar slip.
-      onActivity?.({ type: 'reading', textId: text.id, score, label: text.title || 'Reading comprehension' });
+      onActivity?.({ type: 'reading', textId: text.id, score, label: text.title || 'Reading comprehension', encounterId: newEncounterId(), activityId: text.id });
       setQuiz({ ...quiz, done: true, gained });
     }
   };

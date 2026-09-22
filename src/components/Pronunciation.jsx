@@ -6,6 +6,7 @@ import { transcribe, accentFeedback, friendlyError } from '../lib/groq';
 import { speechMetrics } from '../lib/analytics';
 import { activeLanguage } from '../lib/i18n';
 import { recordSkillScore, recordPronunciationGap, getMistakeGraph, saveMistakeGraph } from '../lib/storage';
+import { newEncounterId } from '../lib/evidenceIdentity';
 import { speak, stopSpeaking, adaptiveTtsRate } from '../lib/tts';
 import { SpeakButton, Spinner } from './ui';
 import { accentToleranceScore, calibratedConfidence, PHONEMES, getPhonemeProfile, nextMinimalPair, recordPhonemeAttempt, weakestPhonemes } from '../lib/phonemeProfile';
@@ -122,6 +123,9 @@ export default function Pronunciation({ mode, apiKey, mockMode, level, onXp, onA
           score: accuracy,
           source: shadow ? 'shadowing' : 'read-aloud',
           context: { missedWords: target.filter((_, i) => !hits[i]).slice(0, 8), rawAccuracy: Math.round(rawAcc * 100), fluency: fluency.score, pauses: fluency.pausing.pauseCount },
+          // One spoken attempt at one sentence = one encounter.
+          encounterId: newEncounterId(),
+          activityId: sentence.id || sentence.text,
         });
         setPhonemeTick(t=>t+1);
         void phonemeTick; void PHONEMES; void getPhonemeProfile;

@@ -106,10 +106,10 @@ test.describe('German Beta journey', () => {
     await page.getByRole('button', { name: /^Skills/ }).first().click();
     await expect(page.getByText(/Pronunciation, shadowing/)).toBeVisible();
     await expect(page.getByText('Stories, articles, classics, tap-to-translate')).toHaveCount(0);
-    await expect(page.getByText(/Typing, completion/)).toBeVisible();
+    await expect(page.getByText(/Typing, translation/)).toBeVisible();
 
     // Writing — French-authored trainers gated, typing practice stays.
-    await page.getByRole('button', { name: /Typing, completion/ }).click();
+    await page.getByRole('button', { name: /Typing, translation/ }).click();
     await expect(page.getByText(/Conjugation trainer/i)).toHaveCount(0);
     await expect(page.getByText(/Accent trainer/i)).toHaveCount(0);
     await page.keyboard.press('Escape');

@@ -11,7 +11,10 @@
 // or deleting study data must not erase the fact that consent was asked and
 // what was agreed to (and a declined learner must never be auto-enrolled).
 import { read, write, KEYS } from '../storageCore.js';
-import { setArmOverrideReader } from '../evidenceStudy.js';
+// NOTE: this store must NOT import ../evidenceStudy.js. evidenceStudy is a
+// large lazy module; a static edge from this entry-graph store would drag the
+// whole study protocol (and heldOutBank) onto first load. The dependency runs
+// the other way: evidenceStudy (lazy) imports getStudyArmOverride from here.
 
 export const getStudyState = () => read(KEYS.studyState, null);
 
@@ -48,14 +51,14 @@ export function saveStudyOutcomes(list) {
 }
 
 // Operator-only arm override (test harness / study ops). The UI never writes
-// or displays it; evidenceStudy.assignArm reads it through the injector below.
+// or displays it; evidenceStudy.assignArm reads it directly via the import
+// above (lazy study graph → entry store, never the reverse).
 export const getStudyArmOverride = () => read(KEYS.studyArmOverride, null);
 export function setStudyArmOverride(arm) {
   if (arm !== 'adaptive' && arm !== 'balanced') return null;
   write(KEYS.studyArmOverride, arm);
   return arm;
 }
-setArmOverrideReader(getStudyArmOverride);
 
 // Imported study bundles (researcher aggregation). These NEVER mix into the
 // local participant's own outcomes — they are a read-only pool for combined

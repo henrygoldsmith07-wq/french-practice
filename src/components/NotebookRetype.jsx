@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';import { getErrorNotebook, markCorrectedByLearner,
 } from '../lib/errorNotebook';
 import { getLearnerErrors, recordLearnerSuccess } from '../lib/storage';
+import { currentSessionId, newEncounterId } from '../lib/evidenceIdentity';
 import { Pencil } from './icons';
 
 // Retype queue for notebook corrections: the mistake was captured in the
@@ -49,7 +50,7 @@ export function NotebookRetype({ onXp, onCleared }) {
           e.category === 'grammar'
           && (e.label === entry.original || e.label === entry.corrected
             || e.label.toLowerCase().includes(entry.original.toLowerCase())));
-        if (gap) recordLearnerSuccess({ category: 'grammar', key: gap.key, mode: 'retype', score: 100, source: 'notebook-retype' });
+        if (gap) recordLearnerSuccess({ category: 'grammar', key: gap.key, mode: 'retype', score: 100, source: 'notebook-retype', sessionId: currentSessionId(), encounterId: newEncounterId(), activityId: gap.key });
       } catch { /* loop bookkeeping must never break the retype */ }
     } else {
       // Rehearsed: the delayed proof arrives tomorrow.

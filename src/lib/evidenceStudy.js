@@ -19,6 +19,7 @@
 // or raw conversation content.
 
 import { PROTOCOL_VERSION, PROTOCOL } from './studyProtocol.js';
+import { getStudyArmOverride } from './stores/studyStore.js';
 
 export const STUDY_ENGINE_VERSION = 1;
 export { PROTOCOL_VERSION } from './studyProtocol.js';
@@ -145,12 +146,14 @@ export function assignArm(participantId, syncId = '') {
   return { arm: ARMS[Math.floor(h * ARMS.length) % ARMS.length], source: 'sync-id-hash' };
 }
 
-// Operator override plumbing (injected by storage.js; set here so the pure
-// lib owns the protocol while storage owns persistence).
-let _readArmOverride = () => null;
-export function setArmOverrideReader(fn) { _readArmOverride = typeof fn === 'function' ? fn : () => null; }
+// Operator override plumbing. The store (entry graph) owns persistence; this
+// lazy module reads it directly by import so the static edge never points
+// entry → study graph. setArmOverrideReader remains the injectable override
+// for tests and ops harnesses.
+let _readArmOverride = null;
+export function setArmOverrideReader(fn) { _readArmOverride = typeof fn === 'function' ? fn : null; }
 function readArmOverride() {
-  try { return _readArmOverride(); } catch { return null; }
+  try { return (_readArmOverride || getStudyArmOverride)(); } catch { return null; }
 }
 
 /** Withdraw: keeps the record (research value) but stops collection. */

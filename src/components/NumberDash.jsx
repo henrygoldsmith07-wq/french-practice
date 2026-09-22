@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { speak, stopSpeaking } from '../lib/tts';
 import { recordSkillScore } from '../lib/storage';
+import { newEncounterId } from '../lib/evidenceIdentity';
 import { Play, RefreshCw, Check, X } from './icons';
 
 // Numbers rapid-fire: hear a number, price, time or year in French, type the
@@ -55,7 +56,7 @@ export default function NumberDash({ ttsRate, onXp, onActivity }) {
       const score = Math.round((round.correct / ROUNDS) * 100);
       recordSkillScore('listening', score);
       onXp(Math.max(1, round.correct * 2));
-      onActivity?.({ type: 'listening', trackId: 'numbers', score, label: 'Les nombres', mode: 'numbers' });
+      onActivity?.({ type: 'listening', trackId: 'numbers', score, label: 'Les nombres', mode: 'numbers', encounterId: newEncounterId(), activityId: 'numbers' });
       setRound({ ...round, done: true, score });
       return;
     }

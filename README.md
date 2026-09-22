@@ -83,10 +83,17 @@ history in Progress.
 | 🇩🇪 German | **Beta** | Core loop: Today, conversations, vocabulary, dictée, phrasebook, AI tutor |
 | 🇪🇸 Spanish | **Beta** | Core loop, as above |
 
-French-only features are gated by one registry (`FULL_ONLY_FEATURES` in
-`src/lib/languages.js`). For Beta languages those surfaces are hidden — not
-half-working — across hubs, onboarding, search results and deep links, with
-honest copy about what *is* available (`tests/maturity-gating.test.js`).
+Language availability comes from ONE authoritative capability matrix
+(`src/lib/capabilities.js`): each row (`conversation`, `dictation`,
+`reading-library`, `essay-prompts`, `number-listening`, …) lists exactly the
+languages whose content actually exists, and every surface — Today, Home,
+Learn, Skills, Search, onboarding, deep links, session planning, prefetching —
+asks that matrix. The legacy `FULL_ONLY_FEATURES` set (`src/lib/languages.js`)
+is now a *derived compatibility API* (French-only feature ids read off the
+matrix), not the source of truth. For Beta languages French-authored surfaces
+are hidden — not half-working — with honest copy about what *is* available
+(`tests/maturity-gating.test.js`, `tests/submode-capabilities.test.js`, and
+behavioural coverage in `e2e/beta-languages`/`e2e/beta-submodes` specs).
 
 ## 7. Exam support (French)
 
@@ -164,14 +171,20 @@ CI's job.
 
 ```
 src/
-  App.jsx                 composition only: tabs, overlays, callbacks
+  App.jsx                 screen composition + domain wiring: tabs, one
+                          overlay reducer, session/activity callbacks,
+                          onboarding/settings fan-out
   hooks/                  useStudioBoot (warm-up, reminder, badge, clock),
-                          usePwaInstall, useOverlayNav, useScenarios
+                          useSessionLifecycle (persist/restore, language
+                          switch), useRewards (XP/coins/celebrations),
+                          usePwaInstall, useOverlayNav, useScenarios,
+                          useAppearance, useTodayDeps
   lib/
+    capabilities.js       authoritative language-capability matrix
     storageCore.js        physical layer: key map, learner (household) routing
     storage.js            compat facade over the domain stores
     stores/               domain stores: settings, learnerError, study,
-                          research (light/heavy split)
+                          seen-lists, research (light/heavy split)
     learnerErrors.js      pure recovery-loop model (evidence-weighted)
     fsrs.js mistakeGraph.js segmentExplain.js content/ ...
   components/             screens + hubs (all heavy screens lazy-loaded)
@@ -179,11 +192,14 @@ e2e/                      Playwright specs
 scripts/                  budget gate, content lint, validation tooling
 ```
 
-**Store boundaries.** `storageCore.js` is the only code that touches
+**Store boundaries.** `storageCore.js` is the sanctioned physical layer for
 `localStorage`: canonical `fp.*` key map plus transparent per-learner
-namespacing (households), lazy claim migration and quota pruning. Domain
-stores (`stores/*.js`) own their keys, shapes and caps and never import the
-facade (no cycles). `storage.js` remains a facade re-exporting the historical
+namespacing (households), lazy claim migration and quota pruning. Product
+components never touch browser storage directly — `tests/storage-boundary.test.js`
+pins the boundary and keeps every remaining direct access inside storage
+infrastructure or a short, documented list of deliberate lib-level exceptions.
+Domain stores (`stores/*.js`) own their keys, shapes and caps and never import
+the facade (no cycles). `storage.js` remains a facade re-exporting the historical
 surface so older imports keep working; contract tests
 (`tests/storage-stores.test.js`) pin store↔facade agreement, the key map and
 the legacy-data migration.**Performance budgets** (enforced post-build by `scripts/check-performance.mjs`):

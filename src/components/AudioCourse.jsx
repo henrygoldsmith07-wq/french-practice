@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { getVocabPacks } from '../lib/vocab';
+import { contentLang } from '../lib/content/active';
 import { speak, stopSpeaking } from '../lib/tts';
 import { Play, Square, ChevronRight } from './icons';
 
@@ -106,7 +107,7 @@ export default function AudioCourse({ ttsRate, onXp }) {
       </button>
       <div className="bg-surface border border-line rounded-2xl p-6 text-center space-y-4">
         <p className="text-[11px] font-bold uppercase tracking-wider text-ink2">{pack.title}</p>
-        <p className="text-2xl font-bold text-ink" lang="fr">{phase === 'idle' || phase === 'done' ? '🎧' : current.fr}</p>
+        <p className="text-2xl font-bold text-ink" lang={contentLang()}>{phase === 'idle' || phase === 'done' ? '🎧' : current.fr}</p>
         {phase !== 'idle' && phase !== 'done' && (
           <p className="text-xs text-ink3">{current.en}</p>
         )}

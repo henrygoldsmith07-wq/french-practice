@@ -1,6 +1,10 @@
 import { useMemo, useState } from 'react';
-import { langName } from '../lib/i18n';
+import { langName, activeLanguage } from '../lib/i18n';
 import { getVocabPacks, getPack, allEntries, groupedPacks } from '../lib/vocab';
+import { newEncounterId } from '../lib/evidenceIdentity';
+// The active content language code — direction chips read FR→EN / DE→EN /…
+// from THIS, never a hard-coded French pair.
+const langCode = () => activeLanguage().id;
 import {
   getSrs, rateCard, isCardDue,
   getNotebook, isInNotebook, saveToNotebook, removeFromNotebook,
@@ -384,6 +388,9 @@ function Deck({ packId, onBack, srs, onRated, onSavedChange, apiKey, mockMode, o
       itemLabel: entry.fr,
       label: entry.fr,
       source: 'flashcard',
+      // This tap IS the presentation of the card: a fresh encounter per
+      // rating (the advancing-guard already blocks double taps).
+      encounterId: newEncounterId(),
     });
     onRated();
     onActivity?.({ type: 'cards', rating, itemId: entry.id, itemLabel: entry.fr, mode: cardMode });
@@ -445,7 +452,7 @@ function Deck({ packId, onBack, srs, onRated, onSavedChange, apiKey, mockMode, o
               onClick={()=> setCardMode(m)}
               title={m==='productive' && !productiveReady ? 'Unlocks after 2 successful receptive reviews' : undefined}
               className={`flex-1 py-1 rounded-full text-[11px] font-semibold ${cardMode===m ? 'bg-ink text-bg' : 'text-ink3'} ${m==='productive' && !productiveReady ? 'opacity-40' : ''}`}>
-              {m==='receptive' ? 'FR→EN' : 'EN→FR'}
+              {m==='receptive' ? `${langCode().toUpperCase()}→EN` : `EN→${langCode().toUpperCase()}`}
             </button>
           ))}
         </div>
@@ -504,8 +511,8 @@ function Notebook({ notebook, onBack, onChange }) {
             value={fr}
             onChange={(e) => setFr(e.target.value)}
             placeholder={`${langName()} word…`}
-            lang="fr"
-            aria-label="French word"
+            lang={langCode()}
+            aria-label={`${langName()} word`}
             className="flex-1 min-w-0 bg-surface border border-line rounded-xl px-3 py-2.5 text-sm text-ink placeholder:text-ink3 focus:outline-none focus:border-ink"
           />
           <input
@@ -530,7 +537,7 @@ function Notebook({ notebook, onBack, onChange }) {
             {notebook.map((e) => (
               <li key={e.id} className="flex items-center gap-3 bg-surface border border-line rounded-xl px-3.5 py-2.5">
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-semibold text-ink truncate" lang="fr">{e.fr}</p>
+                  <p className="text-sm font-semibold text-ink truncate" lang={langCode()}>{e.fr}</p>
                   <p className="text-xs text-ink3 truncate">{e.en}{e.note ? ` · ${e.note}` : ''}</p>
                 </div>
                 <SpeakButton text={e.fr} label="Listen" />

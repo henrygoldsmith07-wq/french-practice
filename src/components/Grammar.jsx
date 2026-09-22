@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { GRAMMAR_TOPICS, getGrammarTopic, grammarTopicOfDay, grammarStatsByCefr } from '../lib/grammar';
 import { getGrammarProgress, recordGrammarQuiz, bumpChallengeMetric } from '../lib/storage';
 import { Drill, SentenceBuilder, Quiz } from './GrammarExercises';
 import { Markdown, SpeakButton } from './ui';
 import { categoriesForErrors } from '../lib/errorTaxonomy';
 import { getGrammarErrors } from '../lib/storage';
+import { currentSessionId, newEncounterId } from '../lib/evidenceIdentity';
 import { ChevronLeft, ChevronRight, Book, CheckCircle, Search, Target } from './icons';
 
 // Accent- and case-insensitive haystack match, so «etre» finds «être».
@@ -25,6 +26,10 @@ const STEPS = [
 
 export default function Grammar({ focusTopicId, onFocusConsumed, onXp, onActivity }) {
   const [topicId, setTopicId] = useState(null);
+  // Evidence identity: each quiz RUN over a topic is one encounter — the
+  // whole run's score is one presentation of the material, not N.
+  const encounterRef = useRef(null);
+  if (encounterRef.current === null) encounterRef.current = newEncounterId();
   const [tick, setTick] = useState(0);
   const [level, setLevel] = useState('all');
   const [query, setQuery] = useState('');
@@ -72,7 +77,7 @@ export default function Grammar({ focusTopicId, onFocusConsumed, onXp, onActivit
         onQuizFinish={(score) => {
           recordGrammarQuiz(topicId, score);
           onXp(Math.max(1, Math.round(score / 10)));
-          onActivity?.({ type: 'grammar', topicId, score });
+          onActivity?.({ type: 'grammar', topicId, score, sessionId: currentSessionId(), encounterId: encounterRef.current, activityId: topicId });
           bumpChallengeMetric('grammar', 1);
           setTick((t) => t + 1);
         }}

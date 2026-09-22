@@ -14,7 +14,7 @@ import {
 import { currentSessionId, newEncounterId } from '../lib/evidenceIdentity';
 import { recordAssistanceEvent, recordCorpusEntry } from '../lib/stores/researchStoreHeavy.js';
 import { recordMistake, typeForCategory, mistakeId as graphIdFor } from '../lib/mistakeGraph';
-import { saveMistakeGraph, getMistakeGraph } from '../lib/storage';
+import { saveMistakeGraph, getMistakeGraph, getConversationMode, setConversationMode } from '../lib/storage';
 import { addErrorNotebook } from '../lib/errorNotebook';
 import { categoryForTopic } from '../lib/errorTaxonomy';
 import { allEntries } from '../lib/vocab';
@@ -33,13 +33,8 @@ const CURVEBALL_TURN = 3; // the surprise lands on the learner's 3rd turn
 //   coach    â€” per-turn corrections, hints, redo (the classic Arena loop)
 //   fluency  â€” no interruptions during the conversation; one debrief after,
 //              surfacing only the highest-value 2â€“3 corrections
-const CONVERSATION_MODES = ['coach', 'fluency'];
-const MODE_KEY = 'fp.conversationMode';
 function readConversationMode() {
-  try {
-    const v = localStorage.getItem(MODE_KEY);
-    return CONVERSATION_MODES.includes(v) ? v : 'coach';
-  } catch { return 'coach'; }
+  return getConversationMode();
 }
 
 function readSessionBudget() {
@@ -71,7 +66,7 @@ export default function ChatArena({ apiKey, mockMode, ttsRate, level, onTtsRate,
   const isFluency = conversationMode === 'fluency';
   const setMode = (mode) => {
     setLocalMode(mode);
-    try { localStorage.setItem(MODE_KEY, mode); } catch { /* ignore */ }
+    setConversationMode(mode);
     onConversationMode?.(mode);
     // Switching mode restarts the conversation: corrections only make sense
     // if the policy was consistent for every turn.

@@ -1,7 +1,9 @@
 import { useMemo, useState } from 'react';
 import { rateCard } from '../lib/storage';
+import { newEncounterId } from '../lib/evidenceIdentity';
 import { speak, ttsSupported } from '../lib/tts';
 import { langName } from '../lib/i18n';
+import { contentLang } from '../lib/content/active';
 import { ChevronLeft, Check, X, Volume, RefreshCw } from './icons';
 
 // Active-recall quiz over a review deck. Cycles three question shapes so the
@@ -123,6 +125,8 @@ export default function VocabQuiz({ deck, library, title, onRate, onXp, onActivi
       itemLabel: entry.fr,
       label: entry.fr,
       source: 'vocab-quiz',
+      // This grade IS the presentation: a fresh encounter per question.
+      encounterId: newEncounterId(),
     });
     onRate?.();
     onActivity?.({ type: 'cards', rating: correct ? 'good' : 'again', itemId: entry.id, itemLabel: entry.fr, mode: cardMode });
@@ -165,7 +169,7 @@ export default function VocabQuiz({ deck, library, title, onRate, onXp, onActivi
           {mode === 'choice' && (
             <>
               <p className="text-[11px] font-bold uppercase tracking-wider text-ink3">What does this mean?</p>
-              <p className="text-2xl font-bold text-ink" lang="fr">{entry.fr}</p>
+              <p className="text-2xl font-bold text-ink" lang={contentLang()}>{entry.fr}</p>
             </>
           )}
           {mode === 'produce' && (

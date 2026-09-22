@@ -11,9 +11,9 @@ import { Mic, Volume, BookOpen, Pencil, ChevronLeft, ChevronRight } from './icon
 // (capability matrix) — beta languages see the areas that genuinely work.
 const AREAS_ALL = [
   { id: 'speaking', icon: Mic, title: 'Speaking', subtitle: 'Pronunciation, shadowing, quick-fire improv', cap: null },
-  { id: 'listening', icon: Volume, title: 'Listening', subtitle: 'Podcasts, dialogues, news, dictée', cap: null },
+  { id: 'listening', icon: Volume, title: 'Listening', subtitle: 'Audio course, dictée, typed drills', cap: null },
   { id: 'reading', icon: BookOpen, title: 'Reading', subtitle: 'Stories, articles, classics, tap-to-translate', cap: 'reading-library' },
-  { id: 'writing', icon: Pencil, title: 'Writing', subtitle: 'Typing, completion, free writing, essays', cap: null },
+  { id: 'writing', icon: Pencil, title: 'Writing', subtitle: 'Typing, translation, production drills', cap: null },
 ];
 const AREAS = () => AREAS_ALL.filter((a) => !a.cap || hasCapabilityNow(a.cap));
 

@@ -2,11 +2,18 @@
 // Require learner correction (retype) rather than just showing the answer.
 
 import { recordWritingGap } from './storage.js';
+import { read, write, KEYS } from './storageCore.js';
 
-const KEY = 'fp.errorNotebook';
-
-function readRaw(){ try{ const v=localStorage.getItem(KEY); return v? JSON.parse(v): []; }catch{ return []; } }
-function writeRaw(v){ try{ localStorage.setItem(KEY, JSON.stringify(v.slice(0,200))); }catch{} }
+// KEYS.errorNotebook is a LEARNER-ROUTED key: in a household the corrections
+// must live under the active member's namespace (and flow into exports) like
+// every other progress key. The old raw localStorage access here bypassed that
+// routing, so the notebook stayed shared at the legacy key while the claim
+// migration expected it under the member key — a split-brain across two
+// physical locations. storageCore read/write keeps the byte-identical raw key
+// when no household is active, and the one-shot claim carries pre-existing
+// data into the member namespace.
+function readRaw(){ return read(KEYS.errorNotebook, []); }
+function writeRaw(v){ write(KEYS.errorNotebook, v.slice(0,200)); }
 
 export function getErrorNotebook(){ return readRaw(); }
 

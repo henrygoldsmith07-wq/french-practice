@@ -171,7 +171,11 @@ for (const order of ORDERS) {
     try {
       assert.equal(grammarLoads, 0, 'the French grammar library never loads for German');
       assert.equal(listeningLoads, 0, 'the French listening library never loads for German');
-      assert.ok(text(uiDe.container).includes('Aujourd'), 'the German plan still builds');
+      // The German plan builds and uses the DYNAMIC language name: the header
+      // reads "Today" for German, "Aujourd'hui" only for French. Asserting
+      // the French string here would break the very honesty this section pins.
+      assert.ok(text(uiDe.container).includes('Today'), 'the German plan still builds (header localized, not French)');
+      assert.ok(!text(uiDe.container).includes("Aujourd'hui"), 'no French chrome leaks into the German plan');
     } finally {
       await close(uiDe);
     }
@@ -182,7 +186,7 @@ for (const order of ORDERS) {
     try {
       assert.ok(grammarLoads > 0, 'the grammar loader runs for French');
       assert.ok(listeningLoads > 0, 'the listening loader runs for French');
-      assert.ok(text(uiFr.container).includes('Aujourd'), 'the French plan builds');
+      assert.ok(text(uiFr.container).includes("Aujourd"), 'the French plan builds with its own chrome');
     } finally {
       await close(uiFr);
     }

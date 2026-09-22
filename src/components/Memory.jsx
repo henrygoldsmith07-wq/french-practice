@@ -13,6 +13,8 @@ import {
   memoryBuckets, weakEntries, curvePoints, heatmapWeeks, totalReviews,
   reviewOutlook, notebookAsEntries,
 } from '../lib/memory';
+import { currentSessionId, newEncounterId } from '../lib/evidenceIdentity';
+import { activeLanguage } from '../lib/i18n';
 import { ChevronLeft, ChevronRight, Check, X, Layers, Target, Book } from './icons';
 
 // Memory & revision dashboard: retention buckets from the forgetting curve,
@@ -259,6 +261,11 @@ function LearnerMistakeReview({ errors, onChange, onXp }) {
         mode: 'mistake-review',
         score: 100,
         source: 'cross-mode-recycle',
+        // Each reviewed card is its own encounter; identity is minted at the
+        // call site because the review advances immediately after.
+        sessionId: currentSessionId(),
+        encounterId: newEncounterId(),
+        activityId: error.key,
       });
       onXp(2);
     }
@@ -299,7 +306,7 @@ function LearnerMistakeReview({ errors, onChange, onXp }) {
   );
 }
 
-function FsrsLegend(){ return (<div className="bg-surface border border-line rounded-2xl p-4 space-y-2"><h3 className="text-[11px] font-bold uppercase tracking-wider text-ink2">FSRS recall</h3><p className="text-[11px] text-ink3 leading-snug">FSRS predicts <em>R = e^(ln 0.9 · t / S)</em> recall from Stability S. Productive (EN→FR) unlocks after 2 good receptive reviews so production is tested once recognition is stable. Old SM-2 cards migrate on next rating.</p></div>); }
+function FsrsLegend(){ return (<div className="bg-surface border border-line rounded-2xl p-4 space-y-2"><h3 className="text-[11px] font-bold uppercase tracking-wider text-ink2">FSRS recall</h3><p className="text-[11px] text-ink3 leading-snug">FSRS predicts <em>R = e^(ln 0.9 · t / S)</em> recall from Stability S. Productive (EN→{activeLanguage().name}) unlocks after 2 good receptive reviews so production is tested once recognition is stable. Old SM-2 cards migrate on next rating.</p></div>); }
 function Heatmap({ log }) {
   const grid = useMemo(() => heatmapWeeks(log, 15), [log]);
   const shades = [

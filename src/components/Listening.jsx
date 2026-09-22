@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { LISTENING_KINDS, allListeningTracks, getTrack } from '../lib/listening';
 import { recordSkillScore, recordListeningGap } from '../lib/storage';
+import { newEncounterId } from '../lib/evidenceIdentity';
 import { getListeningProgression } from '../lib/stores/researchStoreHeavy.js';
 import { speakLines, stopSpeaking } from '../lib/tts';
 import Dictation from './Dictation';
@@ -30,7 +31,7 @@ export default function Listening({ mode, onModeChange, ttsRate, level = 'B1', o
   const ladderStage = (() => {
     try { return getListeningProgression()?.currentStage || 1; } catch { return 1; }
   })();
-  if (mode === 'conditions') {
+  if (mode === 'conditions' && hasCapabilityNow('conditions-listening')) {
     return (
       <Shell title="Conditions gym" onBack={() => onModeChange(null)}>
         <ConditionsGym ttsRate={ttsRate} onBack={() => onModeChange(null)} />
@@ -51,7 +52,7 @@ export default function Listening({ mode, onModeChange, ttsRate, level = 'B1', o
       </Shell>
     );
   }
-  if (mode === 'numbers') {
+  if (mode === 'numbers' && hasCapabilityNow('number-listening')) {
     return (
       <Shell title="Les nombres" onBack={() => onModeChange(null)}>
         <NumberDash ttsRate={ttsRate} onXp={onXp} onActivity={onActivity} />
@@ -80,6 +81,10 @@ export default function Listening({ mode, onModeChange, ttsRate, level = 'B1', o
           </p>
         </div>
 
+        {/* Conditions gym drills the French track corpus under synthetic
+            noise/overlap conditions — capability-gated like the track library
+            it is built on. */}
+        {hasCapabilityNow('conditions-listening') && (
         <button
           onClick={() => onModeChange('conditions')}
           className="w-full flex items-center gap-3.5 bg-surface border border-line rounded-2xl px-4 py-3.5 text-left hover:border-ink3 transition-colors"
@@ -91,6 +96,7 @@ export default function Listening({ mode, onModeChange, ttsRate, level = 'B1', o
           </span>
           <ChevronRight size={16} className="text-ink3 shrink-0" />
         </button>
+        )}
 
         <button
           onClick={() => onModeChange('dictation')}
@@ -110,12 +116,15 @@ export default function Listening({ mode, onModeChange, ttsRate, level = 'B1', o
         >
           <span className="w-10 h-10 shrink-0 grid place-items-center rounded-xl bg-surface2 text-ink"><Play size={18} /></span>
           <span className="flex-1">
-            <span className="block text-sm font-semibold text-ink">Cours audio — hands-free</span>
+            <span className="block text-sm font-semibold text-ink">Audio course — hands-free</span>
             <span className="block text-xs text-ink3">Listen, repeat aloud, learn — no taps needed</span>
           </span>
           <ChevronRight size={16} className="text-ink3 shrink-0" />
         </button>
 
+        {/* Rapid-fire numbers speaks French number/price/time strings —
+            gated until a per-language generator exists. */}
+        {hasCapabilityNow('number-listening') && (
         <button
           onClick={() => onModeChange('numbers')}
           className="w-full flex items-center gap-3.5 bg-surface border border-line rounded-2xl px-4 py-3.5 text-left hover:border-ink3 transition-colors"
@@ -127,6 +136,7 @@ export default function Listening({ mode, onModeChange, ttsRate, level = 'B1', o
           </span>
           <ChevronRight size={16} className="text-ink3 shrink-0" />
         </button>
+        )}
 
         {/* The track library (mini-podcasts, dialogues, news, scenes) is
             French-authored — capability-gated so a beta language sees the
@@ -247,6 +257,10 @@ export function TrackPlayer({ track, baseRate, level = 'B1', onXp, onActivity, o
       score: correct ? 100 : 0,
       source: 'listening-quiz',
       context: { trackId: track.id, questionIndex: quiz.index },
+      // One answer attempt per question ⇒ one encounter; the picked-guard
+      // above already prevents double submission of the same presentation.
+      encounterId: newEncounterId(),
+      activityId: `${track.id}:q${quiz.index}`,
     });
     setQuiz({ ...quiz, picked: i, correct: quiz.correct + (correct ? 1 : 0) });
   };

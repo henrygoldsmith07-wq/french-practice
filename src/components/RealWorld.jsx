@@ -14,23 +14,12 @@ import { shuffleOptions } from './GrammarExercises';
 import {
   X, ChevronLeft, ChevronRight, Check, MessageCircle, FileText, Trophy, Search, Lightbulb, Bookmark, BookmarkFilled,
 } from './icons';
+import { getRealWorldSeen, saveRealWorldSeen } from '../lib/stores/seenStore';
 
-const SEEN_KEY = 'fp.realworldSeen';
-
-function loadSeen() {
-  try {
-    const raw = JSON.parse(localStorage.getItem(SEEN_KEY) || '[]');
-    return new Set(Array.isArray(raw) ? raw : []);
-  } catch {
-    return new Set();
-  }
-}
-
-function saveSeen(set) {
-  try {
-    localStorage.setItem(SEEN_KEY, JSON.stringify([...set]));
-  } catch { /* ignore */ }
-}
+// Seen progress lives in stores/seenStore (learner-routed); components never
+// touch browser storage directly (pinned by tests/storage-boundary.test.js).
+const loadSeen = () => getRealWorldSeen();
+const saveSeen = (set) => saveRealWorldSeen(set);
 
 // Real-world practice hub (full-screen): survival phrasebook by situation,
 // jump into matching Arena roleplay, search, tip of day, progress, mock exam.

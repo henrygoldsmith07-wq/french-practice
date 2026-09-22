@@ -21,6 +21,8 @@ function pushAiLanguage(id) {
 export const activeLanguage = () => getLanguage(contentLang());
 // Convenience for the very common "…French…" → "…German…" swaps in copy.
 export const langName = () => activeLanguage().name;
+// BCP-47-ish code of the active target language, for html lang attributes.
+export const langCode = () => contentLang();
 
 export function syncLanguage(id) {
   const lang = getLanguage(id);
