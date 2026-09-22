@@ -15,9 +15,78 @@ export const SEGMENT_WEIGHTS = {
   speak: 0.35,
   drill: 0.25,
   review: 0.15,
+  listen: 0.15,
 };
 
 const MIN_SEGMENT_MINUTES = 3;
+
+// When a short session cannot fit every eligible activity at a meaningful
+// length, keep the highest-value session roles instead of creating 1-minute
+// context switches. Listening outranks delayed review because it is a core
+// modality; review is the first optional segment to yield.
+const SEGMENT_KEEP_PRIORITY = ['speak', 'retrieve', 'drill', 'listen', 'review'];
+
+function allocateMinutes(sources, total) {
+  if (!sources.length) return [];
+
+  const maxSegments = Math.max(1, Math.floor(total / MIN_SEGMENT_MINUTES));
+  let active = sources;
+  if (active.length > maxSegments) {
+    const keep = new Set(
+      [...active]
+        .sort((a, b) => SEGMENT_KEEP_PRIORITY.indexOf(a.id) - SEGMENT_KEEP_PRIORITY.indexOf(b.id))
+        .slice(0, maxSegments)
+        .map((s) => s.id),
+    );
+    active = active.filter((s) => keep.has(s.id));
+  }
+
+  // Water-fill the requested weights with a hard minimum. This preserves the
+  // 20-minute reference split exactly when no constraint binds, while a plan
+  // with more active modalities gets normalized rather than over-allocating.
+  const target = new Map();
+  let remaining = [...active];
+  let remainingMinutes = total;
+
+  while (remaining.length) {
+    const weightTotal = remaining.reduce((sum, s) => sum + s.weight, 0);
+    const under = remaining.filter(
+      (s) => (remainingMinutes * s.weight) / Math.max(weightTotal, Number.EPSILON) < MIN_SEGMENT_MINUTES,
+    );
+    if (!under.length) {
+      for (const s of remaining) {
+        target.set(s.id, (remainingMinutes * s.weight) / Math.max(weightTotal, Number.EPSILON));
+      }
+      break;
+    }
+
+    // With maxSegments applied above, there is always enough budget to pin
+    // every constrained segment to the minimum.
+    for (const s of under) target.set(s.id, MIN_SEGMENT_MINUTES);
+    remainingMinutes -= under.length * MIN_SEGMENT_MINUTES;
+    const underIds = new Set(under.map((s) => s.id));
+    remaining = remaining.filter((s) => !underIds.has(s.id));
+  }
+
+  const allocated = active.map((s) => {
+    const raw = target.get(s.id) ?? MIN_SEGMENT_MINUTES;
+    const floor = Math.floor(raw);
+    return { ...s, raw, floor, frac: raw - floor };
+  });
+  let used = allocated.reduce((sum, s) => sum + s.floor, 0);
+  const remainderOrder = [...allocated].sort(
+    (a, b) => b.frac - a.frac
+      || b.weight - a.weight
+      || SEGMENT_KEEP_PRIORITY.indexOf(a.id) - SEGMENT_KEEP_PRIORITY.indexOf(b.id),
+  );
+  let i = 0;
+  while (used < total && remainderOrder.length) {
+    remainderOrder[i % remainderOrder.length].floor += 1;
+    used += 1;
+    i += 1;
+  }
+  return allocated;
+}
 
 /**
  * @param {{
@@ -50,34 +119,28 @@ export function buildDailyCurriculum(input = {}) {
   const effRecentCorrections = balanced ? 0 : recentCorrections;
   const effPendingRetypes = balanced ? 0 : pendingRetypes;
 
-  // Largest-remainder allocation: floors first, then leftover minutes go to
-  // the largest fractional shares — the segments always sum to the budget.
+  const scenarioId = effWeaknessScenarioId || suggestedScenarioId || null;
+
+  // Build only REAL runnable candidates. Previously Speak consumed budget even
+  // when no scenario existed, and listening was not a weighted source at all;
+  // because the allocator always filled 100% of the budget, a normal session
+  // with a valid track had zero minutes left and could never schedule Listen.
   const sources = [];
   const addSource = (id, weight, enabled) => {
-    if (!enabled) return;
-    const raw = total * weight;
-    sources.push({ id, weight, raw, floor: Math.floor(raw), frac: raw - Math.floor(raw) });
+    if (enabled) sources.push({ id, weight });
   };
   addSource('retrieve', SEGMENT_WEIGHTS.retrieve, srsDue > 0);
-  addSource('speak', SEGMENT_WEIGHTS.speak, true);
+  addSource('speak', SEGMENT_WEIGHTS.speak, Boolean(scenarioId));
   addSource('drill', SEGMENT_WEIGHTS.drill, Boolean(effTopMistake || effPendingRetypes > 0 || balancedDrillTopic));
   addSource('review', SEGMENT_WEIGHTS.review, effRecentCorrections > 0);
-  if (!sources.length) addSource('speak', 1, true);
+  addSource('listen', SEGMENT_WEIGHTS.listen, Boolean(listeningTrack));
 
-  let allocated = sources.reduce((a, s) => a + s.floor, 0);
-  const byFraction = [...sources].sort((a, b) => b.frac - a.frac || b.weight - a.weight);
-  let gi = 0;
-  while (allocated < total && byFraction.length) {
-    byFraction[gi % byFraction.length].floor += 1;
-    allocated += 1;
-    gi += 1;
-  }
-  const minutesFor = (id) => sources.find((s) => s.id === id)?.floor ?? 0;
+  const allocatedSources = allocateMinutes(sources, total);
+  const minutesFor = (id) => allocatedSources.find((s) => s.id === id)?.floor ?? 0;
   const segments = [];
   const skipped = [];
 
-  // ── Speak: always present; production is the point ──────────────────────
-  const scenarioId = effWeaknessScenarioId || suggestedScenarioId || null;
+  // ── Speak: productive use of the target language ────────────────────────
   if (scenarioId) {
     segments.push({
       id: 'speak', label: 'Speak', minutes: minutesFor('speak'),
@@ -135,21 +198,15 @@ export function buildDailyCurriculum(input = {}) {
     });
   }
 
-  // ── Listen: any remaining minutes ────────────────────────────────────────
-  const used = segments.reduce((a, s) => a + s.minutes, 0);
-  const remaining = total - used;
-  if (listeningTrack && remaining >= MIN_SEGMENT_MINUTES) {
+  // ── Listen: a first-class Today modality when content exists ────────────
+  if (listeningTrack && minutesFor('listen') > 0) {
     segments.push({
-      id: 'listen', label: 'Listen', minutes: remaining,
+      id: 'listen', label: 'Listen', minutes: minutesFor('listen'),
       payload: { track: listeningTrack },
       why: listeningTrack.audioSrc
         ? 'Authentic native audio at your current stage.'
-        : 'Ear training while minutes remain.',
+        : 'Ear training at your current stage.',
     });
-  } else if (remaining > 0) {
-    // Redistribute leftover minutes to speak.
-    const speak = segments.find((s) => s.id === 'speak');
-    if (speak) speak.minutes += remaining;
   }
 
   for (const wouldBe of ['retrieve', 'drill', 'review', 'listen']) {
