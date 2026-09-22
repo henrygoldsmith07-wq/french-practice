@@ -76,7 +76,7 @@ test('legacy ISO rehearsal timestamps can still retire after the delay', async (
   rows[0].rehearsedAt = new Date(now - notebook.REHEARSE_GAP_MS - 1000).toISOString();
   // Persist through the public first pass: this keeps the fixture at the same
   // storage boundary as a restored legacy backup.
-  localStorage.setItem('fp.errors.v1', JSON.stringify(rows));
+  localStorage.setItem('fp.errorNotebook', JSON.stringify(rows));
 
   assert.equal(
     notebook.markCorrectedByLearner(id, 'Je vais au parc.', now),
