@@ -390,9 +390,41 @@ for (const order of ORDERS) {
     const trials = storage.getSelectionTrial();
     assert.equal(trials.length, 1, 'StrictMode effect replay must not duplicate selection trials');
     assert.ok(trials[0].id?.startsWith('selection:'), 'new trials carry a durable unique id');
+    assert.equal(trials[0].completed, null, 'StrictMode fake unmount must not record a false abandonment');
   } finally {
     await close({ root, container });
   }
+}
+
+// ---- 10. real unmount persists an abandoned Today trial ------------------
+
+{
+  localStorage.clear();
+  storage.saveMistakeGraph([{
+    id: 'mg-abandon', concept: 'passe-compose', type: 'grammar',
+    errorCount: 3, lastMissAt: Date.now() - 86400000, mastery: 0.2, recurrence: 2,
+    modes: ['conversation'], overdueBy: 86400000,
+  }]);
+  const immediateImpl = {
+    entries: () => Promise.resolve(ENTRIES),
+    scenarios: () => Promise.resolve(SCENARIOS),
+    grammar: () => Promise.resolve(true),
+    listening: () => Promise.resolve(TRACKS),
+    study: () => Promise.resolve(STUDY),
+  };
+  const ui = await renderToday(immediateImpl);
+  await act(async () => { await new Promise((r) => setTimeout(r, 80)); });
+  let trials = storage.getSelectionTrial();
+  assert.equal(trials.length, 1, 'session start creates one frozen trial');
+  assert.equal(trials[0].completed, null, 'open session has not been classified yet');
+
+  await close(ui);
+  await new Promise((r) => setTimeout(r, 20));
+
+  trials = storage.getSelectionTrial();
+  assert.equal(trials[0].completed, false, 'real overlay dismissal records abandonment');
+  assert.ok(Number.isFinite(trials[0].timeSpent), 'partial session keeps elapsed time');
+  assert.ok(Array.isArray(trials[0].delivered), 'partial delivery facts are persisted');
 }
 
 console.log('Today-deps lifecycle render tests: PASS');
