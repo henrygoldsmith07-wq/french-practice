@@ -727,4 +727,59 @@ for (const order of ORDERS) {
   }
 }
 
+// ---- 15. delayed-review double tap cannot skip the next correction --------
+
+{
+  localStorage.clear();
+  const notebook = await import('../src/lib/errorNotebook.js');
+  const now = Date.now();
+  const firstList = notebook.addErrorNotebook({
+    original: 'Je aller au parc.',
+    corrected: 'Je vais au parc.',
+    why: 'Conjugate aller.',
+    ruleId: 'present-aller',
+  });
+  const first = firstList[0];
+  notebook.markCorrectedByLearner(first.id, first.corrected, now - notebook.REHEARSE_GAP_MS - 1000);
+  notebook.markCorrectedByLearner(first.id, first.corrected, now);
+
+  const secondList = notebook.addErrorNotebook({
+    original: 'Il avoir faim.',
+    corrected: 'Il a faim.',
+    why: 'Conjugate avoir.',
+    ruleId: 'present-avoir',
+  });
+  const second = secondList.find((entry) => entry.original === 'Il avoir faim.');
+  notebook.markCorrectedByLearner(second.id, second.corrected, now - notebook.REHEARSE_GAP_MS - 1000);
+  notebook.markCorrectedByLearner(second.id, second.corrected, now);
+
+  let xp = 0;
+  const container = document.createElement('div');
+  document.body.appendChild(container);
+  const root = createRoot(container);
+  try {
+    await act(async () => {
+      root.render(React.createElement(DelayedReview, {
+        count: 2,
+        onDone: () => {},
+        onXp: (n) => { xp += n; },
+      }));
+    });
+    const reveal = [...container.querySelectorAll('button')].find((b) => b.textContent === 'Say it, then reveal');
+    assert.ok(reveal);
+    await act(async () => { reveal.click(); });
+    const remembered = [...container.querySelectorAll('button')].find((b) => b.textContent === 'I said it right');
+    assert.ok(remembered);
+    await act(async () => {
+      remembered.click();
+      remembered.click();
+      await new Promise((r) => setTimeout(r, 20));
+    });
+    assert.ok(container.textContent.includes('Prompt 2/2'), 'double tap advances exactly one review item');
+    assert.equal(xp, 2, 'double tap awards one review result');
+  } finally {
+    await close({ root, container });
+  }
+}
+
 console.log('Today-deps lifecycle render tests: PASS');
