@@ -26,7 +26,7 @@ import {
   getSrs, getNotebook, getDueWeaknesses, rateCard,
   getMistakeGraph, saveMistakeGraph, getStudyChecks, getLearnerErrors,
 } from '../lib/storage';
-import { getErrorNotebook } from '../lib/errorNotebook';
+import { getErrorNotebook, selectCorrectedErrors } from '../lib/errorNotebook';
 // The vocab library is a separate lazy chunk (per-language registries) — it
 // must be awaited, never statically imported from the entry graph. The hook
 // centralises the null-means-loading discipline and reloads on language switch.
@@ -231,7 +231,7 @@ export default function TodaySession({ open, onClose, minutes = 20, apiKey, mock
       pendingRetypes,
       srsDue,
       listeningTrack: listeningTrack ? { id: listeningTrack.id, title: listeningTrack.title, audioSrc: listeningTrack.audioSrc || null } : null,
-      recentCorrections: notebook.filter((e) => e.correctedByLearner && Date.now() - Date.parse(e.at || e.lastSeenAt || 0) <= 48 * 3600000).length,
+      recentCorrections: selectCorrectedErrors(notebook, { since: Date.now() - 48 * 3600000 }).length,
       // Capability gating for French-authored drill producers: conj/accent/
       // authored links exist only where the registry offers them (fr).
       languageCaps: { conj: conjCap, authored: authoredCap, accent: accentCap },
@@ -977,7 +977,7 @@ export function RecallRunner({ cardCap, onDone, onXp, onActivity }) {
 // self-marked "said it right" feeds the mistake graph's mastery lifecycle.
 export function DelayedReview({ count, onXp, onDone }) {
   const items = useMemo(
-    () => getErrorNotebook().filter((e) => e.correctedByLearner).slice(0, Math.max(1, count)),
+    () => selectCorrectedErrors(getErrorNotebook(), { limit: Math.max(1, count) }),
     [count],
   );
   const [idx, setIdx] = useState(0);
