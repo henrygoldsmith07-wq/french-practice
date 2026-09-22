@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { langName, activeLanguage } from '../lib/i18n';
 import { getVocabPacks, getPack, allEntries, groupedPacks } from '../lib/vocab';
 import { newEncounterId } from '../lib/evidenceIdentity';
@@ -300,6 +300,7 @@ function Deck({ packId, onBack, srs, onRated, onSavedChange, apiKey, mockMode, o
   // in the render body, and a conditional hook order corrupts state when the
   // deck empties or the quiz mounts.
   const [advancing, setAdvancing] = useState(false);
+  const advancingRef = useRef(false);
 
   // Virtual packs: 'review' = every due card (packs + notebook), 'weak' =
   // high-lapse stumblers, 'notebook' = the learner's custom flashcards.
@@ -380,7 +381,8 @@ function Deck({ packId, onBack, srs, onRated, onSavedChange, apiKey, mockMode, o
   // Guard against a double-tap firing two ratings for one card (two SRS
   // updates, doubled XP and one skipped card) during the advance delay.
   const rate = (rating) => {
-    if (advancing) return;
+    if (advancingRef.current) return;
+    advancingRef.current = true;
     setAdvancing(true);
     rateCard(entry.id, rating, {
       mode: cardMode,
@@ -396,6 +398,7 @@ function Deck({ packId, onBack, srs, onRated, onSavedChange, apiKey, mockMode, o
     onActivity?.({ type: 'cards', rating, itemId: entry.id, itemLabel: entry.fr, mode: cardMode });
     setTimeout(() => {
       setIndex((i) => (i + 1) % deck.length);
+      advancingRef.current = false;
       setAdvancing(false);
     }, 250);
   };
