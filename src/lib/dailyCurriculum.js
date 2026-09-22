@@ -1,3 +1,5 @@
+import { localDayKey } from './localDay.js';
+
 // Daily curriculum — answers "what is the most valuable French practice for
 // this learner TODAY?" and can explain why.
 //
@@ -214,7 +216,7 @@ export function buildDailyCurriculum(input = {}) {
   }
 
   return {
-    date: new Date().toISOString().slice(0, 10),
+    date: localDayKey(),
     totalMinutes: segments.reduce((a, s) => a + s.minutes, 0),
     segments,
     skipped,
