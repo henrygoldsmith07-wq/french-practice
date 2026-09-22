@@ -53,6 +53,7 @@ test('retype eligibility matches the 24-hour delayed-proof gate', async () => {
   const entries = [
     { id: 'fresh', correctedByLearner: false },
     { id: 'rehearsed-recently', correctedByLearner: false, rehearsedAt: t0 },
+    { id: 'legacy-iso-recent', correctedByLearner: false, rehearsedAt: new Date(t0).toISOString() },
     { id: 'rehearsed-yesterday', correctedByLearner: false, rehearsedAt: t0 - notebook.REHEARSE_GAP_MS - 1 },
     { id: 'retired', correctedByLearner: true, rehearsedAt: t0 - 2 * notebook.REHEARSE_GAP_MS },
   ];
