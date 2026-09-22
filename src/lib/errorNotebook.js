@@ -64,6 +64,14 @@ export function addErrorNotebook({ original, corrected, why, ruleId, mistakeId }
 //   >= REHEARSE_GAP_MS
 export const REHEARSE_GAP_MS = 86400000; // one day
 
+export function selectDueRetypes(entries, now = Date.now()) {
+  return (Array.isArray(entries) ? entries : []).filter((entry) => {
+    if (!entry || entry.correctedByLearner) return false;
+    const rehearsedAt = Number(entry.rehearsedAt);
+    return !Number.isFinite(rehearsedAt) || now - rehearsedAt >= REHEARSE_GAP_MS;
+  });
+}
+
 export function markCorrectedByLearner(id, typed, now = Date.now()){
   const list = readRaw();
   const e = list.find(x=> x.id===id);
