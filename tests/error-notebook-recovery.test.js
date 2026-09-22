@@ -47,6 +47,21 @@ test('a recurring notebook mistake reopens the correction loop', async () => {
   assert.equal(list[0].rehearsedAt, null, 'old delayed-proof timestamp cannot shortcut the new recurrence');
 });
 
+test('retype eligibility matches the 24-hour delayed-proof gate', async () => {
+  const notebook = await freshNotebook();
+  const t0 = Date.parse('2026-09-20T09:00:00Z');
+  const entries = [
+    { id: 'fresh', correctedByLearner: false },
+    { id: 'rehearsed-recently', correctedByLearner: false, rehearsedAt: t0 },
+    { id: 'rehearsed-yesterday', correctedByLearner: false, rehearsedAt: t0 - notebook.REHEARSE_GAP_MS - 1 },
+    { id: 'retired', correctedByLearner: true, rehearsedAt: t0 - 2 * notebook.REHEARSE_GAP_MS },
+  ];
+  assert.deepEqual(
+    notebook.selectDueRetypes(entries, t0).map((entry) => entry.id),
+    ['fresh', 'rehearsed-yesterday'],
+  );
+});
+
 test('corrected errors are selected by repair activity, not original creation time', async () => {
   const notebook = await freshNotebook();
   const old = '2026-08-01T09:00:00Z';
