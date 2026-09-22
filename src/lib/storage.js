@@ -892,7 +892,18 @@ export function recordWeaknessRetestResult(topicId, passed, { scenarioId = null,
   }
   writeWeakness(list);
   if (passed) {
-    recordLearnerSuccess({ category: 'grammar', key: id, label: id, mode: 'conversation', source: 'weakness-retest', score: 80, sessionId, encounterId, activityId: activityId || scenarioId });
+    recordLearnerSuccess({
+      category: 'grammar',
+      key: id,
+      label: id,
+      mode: 'conversation',
+      source: 'weakness-retest',
+      score: 80,
+      delayed: Boolean(delayed),
+      sessionId,
+      encounterId,
+      activityId: activityId || scenarioId,
+    });
   } else {
     recordLearnerError({ category: 'grammar', key: id, label: id, mode: 'conversation', source: 'weakness-retest', score: 0 });
   }
