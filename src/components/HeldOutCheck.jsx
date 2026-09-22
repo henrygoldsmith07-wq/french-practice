@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { ChevronRight, Volume, Mic } from './icons';
 import useRecorder from '../hooks/useRecorder';
 import { transcribe, evaluateTurn, friendlyError } from '../lib/groq';
+import { summarizeCheckEvidence } from '../lib/evidenceStudy';
 
 // Held-out transfer check (Evidence Study, measurement-only).
 //
@@ -351,15 +352,9 @@ export default function HeldOutCheck({ check, onDone, apiKey, mockMode, level, t
     });
     if (idx + 1 >= items.length) {
       const perItem = evidenceRef.current;
-      const scored = perItem.filter((p) => p.status === 'scored' && p.correct != null);
-      const correct = scored.filter((p) => p.correct).length;
-      const speakingScored = perItem.filter((p) => p.skill === 'speaking' && p.status === 'scored' && typeof p.aiScore === 'number');
+      const summary = summarizeCheckEvidence(perItem);
       onDone?.({
-        correct,
-        total: perItem.length,
-        quizScore: scored.length ? Math.round((correct / scored.length) * 100) : null,
-        unscored: perItem.filter((p) => p.status !== 'scored').length,
-        speakingMean: speakingScored.length ? Math.round(speakingScored.reduce((a, p) => a + p.aiScore, 0) / speakingScored.length) : null,
+        ...summary,
         secondsSpent: Math.round((Date.now() - startedRef.current) / 1000),
         perItem,
       });
