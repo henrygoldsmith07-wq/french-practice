@@ -528,6 +528,7 @@ function TodayBody({ plan, trialId, segIndex, setSegIndex, close, apiKey, mockMo
         && !deliveredRef.current.some((d) => d.skipped && d.seconds < 5);
       saveSelectionTrial(trials);
       callStudy('updateOutcomeDelivery', {
+        trialId: trial.id,
         trialAt: trial.at,
         timeSpent: trial.timeSpent,
         completed: trial.completed,
