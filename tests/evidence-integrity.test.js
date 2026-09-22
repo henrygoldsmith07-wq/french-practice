@@ -56,10 +56,10 @@ test('one SRS lapse creates one canonical learner-error entry', async () => {
   const vocab = storage.getLearnerErrors({ limit: 50 })
     .filter((entry) => entry.category === 'vocabulary');
   assert.equal(vocab.length, 1, 'one physical lapse cannot become two weaknesses');
-  assert.equal(vocab[0].id, 'vocabulary:bonjour');
+  assert.equal(vocab[0].id, 'vocabulary:item:bonjour');
   assert.equal(vocab[0].errorCount, 1);
-  assert.equal(vocab.some((entry) => entry.id === 'vocabulary:item:bonjour'), false,
-    'the old duplicate item:<id> key is no longer written');
+  assert.equal(vocab.some((entry) => entry.id === 'vocabulary:bonjour'), false,
+    'the duplicate plain card key is no longer written');
 });
 
 test('legacy SM-2 reviews use the same single learner-error path as FSRS', async () => {
@@ -74,7 +74,7 @@ test('legacy SM-2 reviews use the same single learner-error path as FSRS', async
   const vocab = storage.getLearnerErrors({ limit: 50 })
     .filter((entry) => entry.category === 'vocabulary');
   assert.equal(vocab.length, 1);
-  assert.equal(vocab[0].id, 'vocabulary:salut');
+  assert.equal(vocab[0].id, 'vocabulary:item:salut');
   assert.equal(vocab[0].errorCount, 1);
 });
 
