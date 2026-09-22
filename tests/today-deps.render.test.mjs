@@ -154,7 +154,48 @@ for (const order of ORDERS) {
   }
 }
 
-// ---- 4. capability gating: French-only deps never load for beta languages -
+// ---- 4. optional content failure degrades instead of blocking practice ----
+
+{
+  const d = loaders();
+  const ui = await renderToday(impl(d));
+  try {
+    await resolveAll(d, ['entries', 'scenarios', 'grammar']);
+    await act(async () => {
+      d.listening.reject(new Error('listening chunk unavailable'));
+      await new Promise((r) => setTimeout(r, 20));
+    });
+    // Study is deliberately left unresolved: degraded learning disables
+    // measurement immediately instead of making ordinary practice wait.
+    assert.ok(text(ui.container).includes('Aujourd'), 'Today still opens when optional listening fails');
+    assert.ok(!text(ui.container).includes("couldn't load"), 'optional failure does not become a fatal session error');
+    assert.ok(text(ui.container).includes('adapted to the activities available'), 'degraded practice is disclosed');
+    assert.ok(text(ui.container).includes('without research measurement'), 'degraded treatment is excluded from research measurement');
+  } finally {
+    // Settle the abandoned study promise to keep the test harness tidy.
+    d.study.resolve(STUDY);
+    await close(ui);
+  }
+}
+
+{
+  const d = loaders();
+  const ui = await renderToday(impl(d));
+  try {
+    await resolveAll(d, ['entries', 'scenarios', 'listening']);
+    await act(async () => {
+      d.grammar.reject(new Error('grammar chunk unavailable'));
+      await new Promise((r) => setTimeout(r, 20));
+    });
+    assert.ok(text(ui.container).includes('Aujourd'), 'Today still opens when the authored grammar library fails');
+    assert.ok(text(ui.container).includes('adapted to the activities available'));
+  } finally {
+    d.study.resolve(STUDY);
+    await close(ui);
+  }
+}
+
+// ---- 14. capability gating: French-only deps never load for beta languages -
 
 {
   const active = await import('../src/lib/content/active.js');
