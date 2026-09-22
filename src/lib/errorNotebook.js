@@ -67,7 +67,12 @@ export const REHEARSE_GAP_MS = 86400000; // one day
 export function selectDueRetypes(entries, now = Date.now()) {
   return (Array.isArray(entries) ? entries : []).filter((entry) => {
     if (!entry || entry.correctedByLearner) return false;
-    const rehearsedAt = Number(entry.rehearsedAt);
+    if (entry.rehearsedAt == null) return true;
+    const rehearsedAt = typeof entry.rehearsedAt === 'number'
+      ? entry.rehearsedAt
+      : Date.parse(entry.rehearsedAt);
+    // A malformed legacy timestamp cannot prove a recent rehearsal, so fail
+    // open into practice rather than hiding the correction indefinitely.
     return !Number.isFinite(rehearsedAt) || now - rehearsedAt >= REHEARSE_GAP_MS;
   });
 }
