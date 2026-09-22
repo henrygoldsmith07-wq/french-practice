@@ -26,6 +26,7 @@ const storage = await import('../src/lib/storage.js');
 const todayModule = await import('../src/components/TodaySession.jsx');
 const TodaySession = todayModule.default;
 const { RecallRunner, DelayedReview, claimForwardTransition } = todayModule;
+const { NotebookRetype } = await import('../src/components/NotebookRetype.jsx');
 const { setGrammarTopics } = await import('../src/lib/todayCapabilities.js');
 // The REAL study module — injected like the lazy chunk would deliver it.
 const STUDY = await import('../src/lib/studyFlow.js');
@@ -321,6 +322,36 @@ for (const order of ORDERS) {
   assert.equal(claimForwardTransition(gate, 0), false, 'a stale callback from an older segment cannot advance the session');
   assert.equal(claimForwardTransition(gate, 1), false, 'duplicate skip/completion races are ignored');
   assert.equal(claimForwardTransition(gate, 2), true, 'forward progress remains available after rejected races');
+}
+
+// ---- 8. empty retype queues emit completion once across parent rerenders --
+
+{
+  localStorage.clear();
+  let completed = 0;
+  const container = document.createElement('div');
+  document.body.appendChild(container);
+  const root = createRoot(container);
+  try {
+    await act(async () => {
+      root.render(React.createElement(NotebookRetype, {
+        onXp: () => {},
+        onCleared: () => { completed += 1; },
+      }));
+      await new Promise((r) => setTimeout(r, 20));
+    });
+    await act(async () => {
+      // New callback identity simulates a normal parent rerender.
+      root.render(React.createElement(NotebookRetype, {
+        onXp: () => {},
+        onCleared: () => { completed += 1; },
+      }));
+      await new Promise((r) => setTimeout(r, 20));
+    });
+    assert.equal(completed, 1, 'empty retype completion is one-shot, not callback-identity driven');
+  } finally {
+    await close({ root, container });
+  }
 }
 
 console.log('Today-deps lifecycle render tests: PASS');
