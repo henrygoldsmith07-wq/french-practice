@@ -1752,7 +1752,7 @@ export function rateCard(cardId, rating, opts={}) {
       mode,
       score: rating === 'again' ? 0 : null,
       label: opts.itemLabel || cardId,
-      source: 'srs',
+      source: 'per-review-event',
       // Evidence identity: the caller's encounter for this one presentation
       // (or a fresh one when the caller doesn't track presentations).
       ...identity,
@@ -1808,7 +1808,7 @@ export function rateCard(cardId, rating, opts={}) {
     mode,
     score: rating === 'again' ? 0 : null,
     label: opts.itemLabel || cardId,
-    source: 'srs',
+    source: 'per-review-event',
     ...identity,
   });
   return srs[key];
