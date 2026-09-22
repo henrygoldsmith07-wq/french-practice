@@ -25,7 +25,7 @@ const { act } = await import('react');
 const storage = await import('../src/lib/storage.js');
 const todayModule = await import('../src/components/TodaySession.jsx');
 const TodaySession = todayModule.default;
-const { RecallRunner, DelayedReview, claimForwardTransition } = todayModule;
+const { RecallRunner, DelayedReview, DrillChainRunner, claimForwardTransition } = todayModule;
 const { NotebookRetype } = await import('../src/components/NotebookRetype.jsx');
 const { setGrammarTopics } = await import('../src/lib/todayCapabilities.js');
 // The REAL study module — injected like the lazy chunk would deliver it.
@@ -425,6 +425,46 @@ for (const order of ORDERS) {
   assert.equal(trials[0].completed, false, 'real overlay dismissal records abandonment');
   assert.ok(Number.isFinite(trials[0].timeSpent), 'partial session keeps elapsed time');
   assert.ok(Array.isArray(trials[0].delivered), 'partial delivery facts are persisted');
+}
+
+// ---- 11. invalid focused conjugation falls through the drill chain --------
+
+{
+  let completed = 0;
+  const payload = {
+    kind: 'conj-drill',
+    verb: 'not-a-real-verb',
+    tense: 'present',
+    chain: [
+      { kind: 'conj-drill', verb: 'not-a-real-verb', tense: 'present' },
+      {
+        kind: 'authored-drill',
+        title: 'Fallback grammar drill',
+        exercises: [{ q: 'Choose one', options: ['A', 'B'], answer: 0, why: 'Because A is correct.' }],
+      },
+    ],
+  };
+  const container = document.createElement('div');
+  document.body.appendChild(container);
+  const root = createRoot(container);
+  try {
+    await act(async () => {
+      root.render(React.createElement(DrillChainRunner, {
+        payload,
+        level: 'B1',
+        apiKey: '',
+        mockMode: true,
+        ttsRate: 1,
+        onXp: () => {},
+        onDone: () => { completed += 1; },
+      }));
+      await new Promise((r) => setTimeout(r, 80));
+    });
+    assert.ok(container.textContent.includes('Fallback grammar drill'), 'next runnable fallback replaces the unavailable trainer');
+    assert.equal(completed, 0, 'producer unavailability must not complete the whole segment');
+  } finally {
+    await close({ root, container });
+  }
 }
 
 console.log('Today-deps lifecycle render tests: PASS');
