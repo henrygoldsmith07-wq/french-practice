@@ -749,7 +749,17 @@ function DrillChainRunner({ payload, level, apiKey, mockMode, ttsRate, onXp, onD
   const kind = current?.kind || payload?.kind;
 
   if (kind === 'conj-drill') {
-    return <TrainerDrill focus={{ ...current, personIndex: current.personIndex ?? payload.personIndex ?? null }} onXp={onXp} onDone={onDone} />;
+    return (
+      <TrainerDrill
+        focus={{ ...current, personIndex: current.personIndex ?? payload.personIndex ?? null }}
+        onXp={onXp}
+        onDone={onDone}
+        onUnavailable={() => {
+          const next = nextFallback(payload.chain, 'conj-drill');
+          if (next) setCurrent(next); else onDone();
+        }}
+      />
+    );
   }
   if (kind === 'dictation-drill') {
     // sessionMode: the segment ends when the repair lands — a clean pass
@@ -908,13 +918,13 @@ function AiDrillRunner({ concept, level, apiKey, mockMode, onXp, onDone, onEmpty
 // Conjugation-trainer drill link: repairs the trainer gap in-session with
 // the trainer itself, focused on the exact weak form (no level picker, no
 // browsing) so a missed form gets one more chance within today's plan.
-function TrainerDrill({ focus, onXp, onDone }) {
+function TrainerDrill({ focus, onXp, onDone, onUnavailable }) {
   return (
     <div className="h-full overflow-y-auto nice-scroll px-4 py-6">
       <div className="max-w-md mx-auto">
         <p className="text-[11px] uppercase tracking-wider text-ink3 mb-2">Verb drill — your weak form</p>
         <Suspense fallback={<div className="h-40 grid place-items-center"><p className="text-sm text-ink2">Loading the trainer…</p></div>}>
-          <ConjugationTrainer focus={focus} onXp={onXp} onDone={onDone} />
+          <ConjugationTrainer focus={focus} onXp={onXp} onDone={onDone} onUnavailable={onUnavailable} />
         </Suspense>
       </div>
     </div>
