@@ -80,6 +80,20 @@ test('day 5 new-context success, then spontaneous conversation: mastery rises to
   assert.ok(!dueRetests(g, T0 + 7 * DAY).some((m) => m.id === id), 'retired nodes leave the due queue');
 });
 
+test('context novelty is measured against all prior delayed contexts', () => {
+  let g = recordMistake(fresh(), {
+    type: 'grammar', concept: 'articles', source: 'conversation',
+    attempt: 'x', corrected: 'y', confidence: 0.8, at: new Date(T0).toISOString(),
+  });
+  const id = g[0].id;
+  g = recordRetest(g, { id, at: new Date(T0 + 1 * DAY).toISOString(), correct: true, context: 'drill' });
+  g = recordRetest(g, { id, at: new Date(T0 + 3 * DAY).toISOString(), correct: true, context: 'reading' });
+  g = recordRetest(g, { id, at: new Date(T0 + 5 * DAY).toISOString(), correct: true, context: 'drill' });
+  const third = g[0].retests[2];
+  assert.equal(third.evidenceClass, 'DELAYED', 'returning to a previously used context is not new');
+  assert.equal(third.contextNovel, false, 'audit metadata agrees with evidence classification');
+});
+
 test('a recurring mistake after retirement reactivates at half mastery', () => {
   let g = recordMistake(fresh(), {
     type: 'tense', concept: 'passe-compose', source: 'conversation',
