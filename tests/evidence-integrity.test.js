@@ -43,6 +43,41 @@ function vocabCheck(pid, day) {
   };
 }
 
+// ── SRS evidence identity --------------------------------------------------
+
+test('one SRS lapse creates one canonical learner-error entry', async () => {
+  const { storage } = await fresh();
+  storage.rateCard('bonjour', 'again', {
+    itemLabel: 'bonjour',
+    sessionId: 'ses-srs',
+    encounterId: 'ses-srs:enc1',
+    activityId: 'bonjour',
+  });
+  const vocab = storage.getLearnerErrors({ limit: 50 })
+    .filter((entry) => entry.category === 'vocabulary');
+  assert.equal(vocab.length, 1, 'one physical lapse cannot become two weaknesses');
+  assert.equal(vocab[0].id, 'vocabulary:bonjour');
+  assert.equal(vocab[0].errorCount, 1);
+  assert.equal(vocab.some((entry) => entry.id === 'vocabulary:item:bonjour'), false,
+    'the old duplicate item:<id> key is no longer written');
+});
+
+test('legacy SM-2 reviews use the same single learner-error path as FSRS', async () => {
+  const { storage } = await fresh();
+  storage.rateCard('salut', 'again', {
+    fsrs: false,
+    itemLabel: 'salut',
+    sessionId: 'ses-sm2',
+    encounterId: 'ses-sm2:enc1',
+    activityId: 'salut',
+  });
+  const vocab = storage.getLearnerErrors({ limit: 50 })
+    .filter((entry) => entry.category === 'vocabulary');
+  assert.equal(vocab.length, 1);
+  assert.equal(vocab[0].id, 'vocabulary:salut');
+  assert.equal(vocab[0].errorCount, 1);
+});
+
 // ── per-item evidence survives the full pipeline ───────────────────────────
 
 test('perItem evidence survives record → storage → export → import → pool unchanged', async () => {
