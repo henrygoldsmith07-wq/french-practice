@@ -86,13 +86,19 @@ export function markCorrectedByLearner(id, typed, now = Date.now()){
   const norm = (s) => String(s).trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
   const ok = norm(e.corrected) === norm(typed);
   if(!ok) return false;
-  if (e.rehearsedAt && now - e.rehearsedAt >= REHEARSE_GAP_MS) {
+  const priorRehearsal = e.rehearsedAt == null
+    ? null
+    : (typeof e.rehearsedAt === 'number' ? e.rehearsedAt : Date.parse(e.rehearsedAt));
+  if (Number.isFinite(priorRehearsal) && now - priorRehearsal >= REHEARSE_GAP_MS) {
     // Delayed proof: the correction was reproduced from memory a day later.
+    // Legacy backups may store rehearsedAt as an ISO string; normalise it on
+    // the successful delayed proof rather than leaving that row unretirable.
     e.correctedByLearner = true;
     e.rehearsedAt = now;
   } else {
-    // Exposure only — schedule the delayed proof, do not retire.
-    e.rehearsedAt = e.rehearsedAt || now;
+    // Exposure only — schedule the delayed proof, do not retire. A malformed
+    // legacy timestamp cannot establish prior learning, so restart its clock.
+    e.rehearsedAt = Number.isFinite(priorRehearsal) ? priorRehearsal : now;
   }
   writeRaw(list);
   return e.correctedByLearner ? 'retired' : 'rehearsed';
