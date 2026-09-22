@@ -335,35 +335,33 @@ export default function TodaySession({ open, onClose, minutes = 20, apiKey, mock
       }
       } catch { /* a broken check plan is no reason to lose the session */ }
     }
-    // P1 selection-trial record: frozen before any practice happens, with
-    // the resolved activity so analysis knows what was actually delivered.
-    // This is the product's own scheduler diagnostic (fp.selectionTrial.v1),
-    // not fp.study.* research data — it is recorded with or without study
-    // enrolment, so scheduler quality is observable for every learner.
-    try {
-      const drillSeg = planResolved.segments.find((s) => s.id === 'drill');
-      const trial = recordSelectionTrial({
-        engineVersion: EVIDENCE_ENGINE_VERSION,
-        candidates,
-        selectedId: top?.id || null,
-        selectedConcept: top?.concept || (balanced ? rotationTopic : null),
-        activity: drillSeg?.payload?.kind || (planResolved.segments[0]?.id || null),
-        masteryBefore: top?.mastery ?? null,
-        recurrenceBefore: top?.recurrence ?? null,
-        why: drillSeg?.why || '',
-        segments: planResolved.segments.map((s) => ({ id: s.id, minutes: s.minutes })),
-        variant,
-        calibrationReady: Boolean(calibration.ready),
-      });
-      // Longitudinal outcome skeleton for this trial: a genuine fp.study.*
-      // research write, so it happens only for an enrolled participant
-      // (startOutcomeRecord additionally self-guards on consent/protocol).
-      if (study) {
-        const consistency = studyApi.verifyTreatmentConsistency({ deliveredVariant: variant, study });
-        studyApi.startOutcomeRecord({ trial, graph, arm: variant, day: sDay, consistency });
-      }
-    } catch { /* trial logging must never break the session */ }
-    return { ...planResolved, study, heldOut, studyDay: sDay };
+    // Freeze the scheduler diagnostics with the plan, but DO NOT persist them
+    // during render/useMemo. React may evaluate a memo more than once
+    // (StrictMode) and ordinary prop changes can legitimately re-evaluate it.
+    // The committed plan is logged exactly once in the effect below.
+    const drillSeg = planResolved.segments.find((s) => s.id === 'drill');
+    const trialDraft = {
+      engineVersion: EVIDENCE_ENGINE_VERSION,
+      candidates,
+      selectedId: top?.id || null,
+      selectedConcept: top?.concept || (balanced ? rotationTopic : null),
+      activity: drillSeg?.payload?.kind || (planResolved.segments[0]?.id || null),
+      masteryBefore: top?.mastery ?? null,
+      recurrenceBefore: top?.recurrence ?? null,
+      why: drillSeg?.why || '',
+      segments: planResolved.segments.map((s) => ({ id: s.id, minutes: s.minutes })),
+      variant,
+      calibrationReady: Boolean(calibration.ready),
+    };
+    return {
+      ...planResolved,
+      study,
+      heldOut,
+      studyDay: sDay,
+      trialDraft,
+      trialGraph: graph,
+      trialVariant: variant,
+    };
   // deps: every async dependency's arrival (or failure, or retry) changes the
   // deps object → these primitives change → the plan replans no matter what
   // order modules resolve in.
@@ -383,7 +381,41 @@ export default function TodaySession({ open, onClose, minutes = 20, apiKey, mock
   const [segIndex, setSegIndex] = useState(0);
   const [, setXp] = useState(0);
   const [history, setHistory] = useState([]);
+  const [trialAt, setTrialAt] = useState(null);
+  const trialLoggedRef = useRef(false);
   const award = (n) => { setXp((x) => x + n); onXp?.(n); };
+
+  // Persistent scheduler/evidence writes belong after commit, never in
+  // useMemo. The ref survives StrictMode's effect replay, so one opened Today
+  // session creates one trial even when React deliberately re-runs effects.
+  useEffect(() => {
+    if (!open) {
+      trialLoggedRef.current = false;
+      setTrialAt(null);
+      return;
+    }
+    if (!plan || trialLoggedRef.current) return;
+    trialLoggedRef.current = true;
+    try {
+      const trial = recordSelectionTrial(plan.trialDraft || {});
+      setTrialAt(trial?.at || null);
+      if (trial && plan.study && studyReady && studyModule) {
+        const consistency = studyModule.verifyTreatmentConsistency({
+          deliveredVariant: plan.trialVariant,
+          study: plan.study,
+        });
+        studyModule.startOutcomeRecord({
+          trial,
+          graph: plan.trialGraph || [],
+          arm: plan.trialVariant,
+          day: plan.studyDay,
+          consistency,
+        });
+      }
+    } catch {
+      // Trial logging is diagnostic; it must never block practice.
+    }
+  }, [open, plan, studyReady, studyModule]);
 
   if (!open) return null;
   const close = () => { onClose(); setSegIndex(0); setHistory([]); setXp(0); };
@@ -418,6 +450,7 @@ export default function TodaySession({ open, onClose, minutes = 20, apiKey, mock
     <Suspense fallback={null}>
     <TodayBody
       plan={plan}
+      trialAt={trialAt}
       segIndex={segIndex}
       setSegIndex={setSegIndex}
       close={close}
@@ -445,7 +478,7 @@ export function claimForwardTransition(ref, index) {
   return true;
 }
 
-function TodayBody({ plan, segIndex, setSegIndex, close, apiKey, mockMode, level, ttsRate, onTurn, onActivity, award, history, setHistory }) {
+function TodayBody({ plan, trialAt, segIndex, setSegIndex, close, apiKey, mockMode, level, ttsRate, onTurn, onActivity, award, history, setHistory }) {
   // Track content lives in the lazy listening chunk; today's payload only
   // carries ids, so resolve the real track when the listen segment renders.
   const liveTracks = useListeningTracks();
@@ -478,25 +511,30 @@ function TodayBody({ plan, segIndex, setSegIndex, close, apiKey, mockMode, level
 
   const advance = useCallback(() => moveNext(false), [moveNext]);
   const skip = useCallback(() => moveNext(true), [moveNext]);
-  // Persist the delivery record onto the newest selection trial once the
-  // session ends (the trial was frozen at start; outcomes join later).
+  // Persist delivery onto THIS session's frozen selection trial. Never patch
+  // "the newest" row: another tab/session can append a trial while this one is
+  // still open, and that would cross-wire evidence between sessions.
   useEffect(() => {
-    if (segIndex < totalSteps || recordedRef.current) return;
-    recordedRef.current = true;
+    if (segIndex < totalSteps || recordedRef.current || !trialAt) return;
     try {
       const trials = getSelectionTrial();
-      const last = trials[trials.length - 1];
-      if (last) {
-        last.delivered = deliveredRef.current;
-        last.timeSpent = Math.round((Date.now() - startRef.current) / 1000);
-        last.completed = deliveredRef.current.length === plan.segments.length
-          && !deliveredRef.current.some((d) => d.skipped && d.seconds < 5);
-        saveSelectionTrial(trials);
-        // Study: fold delivery into the outcome record for this trial.
-        callStudy('updateOutcomeDelivery', { trialAt: last.at, timeSpent: last.timeSpent, completed: last.completed, delivered: last.delivered });
-      }
+      const trial = trials.find((row) => row.at === trialAt);
+      if (!trial) return;
+      recordedRef.current = true;
+      trial.delivered = deliveredRef.current;
+      trial.timeSpent = Math.round((Date.now() - startRef.current) / 1000);
+      trial.completed = deliveredRef.current.length === plan.segments.length
+        && !deliveredRef.current.some((d) => d.skipped && d.seconds < 5);
+      saveSelectionTrial(trials);
+      // Study: fold delivery into the outcome record for this exact trial.
+      callStudy('updateOutcomeDelivery', {
+        trialAt: trial.at,
+        timeSpent: trial.timeSpent,
+        completed: trial.completed,
+        delivered: trial.delivered,
+      });
     } catch { /* delivery logging must never break the close */ }
-  }, [segIndex, plan, totalSteps]);
+  }, [segIndex, plan, totalSteps, trialAt]);
 
   const done = segIndex >= totalSteps;
   // The held-out check is an implicit extra step after the last normal segment.
