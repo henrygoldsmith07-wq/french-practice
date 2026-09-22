@@ -23,7 +23,9 @@ const { createRoot } = await import('react-dom/client');
 const { act } = await import('react');
 
 const storage = await import('../src/lib/storage.js');
-const TodaySession = (await import('../src/components/TodaySession.jsx')).default;
+const todayModule = await import('../src/components/TodaySession.jsx');
+const TodaySession = todayModule.default;
+const { RecallRunner } = todayModule;
 const { setGrammarTopics } = await import('../src/lib/todayCapabilities.js');
 // The REAL study module — injected like the lazy chunk would deliver it.
 const STUDY = await import('../src/lib/studyFlow.js');
@@ -192,6 +194,46 @@ for (const order of ORDERS) {
     }
   } finally {
     active.setContentLanguage('fr');
+  }
+}
+
+// ---- 5. SRS recall hands control back after the final rated card ----------
+
+{
+  localStorage.clear();
+  const active = await import('../src/lib/content/active.js');
+  const { loadAllEntries } = await import('../src/lib/vocabAsync.js');
+  active.setContentLanguage('fr');
+  await loadAllEntries();
+
+  let completed = 0;
+  const container = document.createElement('div');
+  document.body.appendChild(container);
+  const root = createRoot(container);
+  try {
+    await act(async () => {
+      root.render(React.createElement(RecallRunner, {
+        cardCap: 1,
+        onDone: () => { completed += 1; },
+        onXp: () => {},
+      }));
+      await new Promise((r) => setTimeout(r, 25));
+    });
+
+    const flip = container.querySelector('button[aria-label="Flip the card (back)"]');
+    assert.ok(flip, 'a due/new recall card renders');
+    await act(async () => { flip.click(); });
+
+    const good = [...container.querySelectorAll('button')].find((b) => b.textContent === 'Good');
+    assert.ok(good, 'recall ratings are available after reveal');
+    await act(async () => {
+      good.click();
+      await new Promise((r) => setTimeout(r, 700));
+    });
+
+    assert.equal(completed, 1, 'the recall segment advances exactly once after the last card');
+  } finally {
+    await close({ root, container });
   }
 }
 
