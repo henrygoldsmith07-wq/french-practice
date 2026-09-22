@@ -27,6 +27,7 @@ const todayModule = await import('../src/components/TodaySession.jsx');
 const TodaySession = todayModule.default;
 const { RecallRunner, DelayedReview, DrillChainRunner, claimForwardTransition } = todayModule;
 const { NotebookRetype } = await import('../src/components/NotebookRetype.jsx');
+const HeldOutCheck = (await import('../src/components/HeldOutCheck.jsx')).default;
 const { setGrammarTopics } = await import('../src/lib/todayCapabilities.js');
 // The REAL study module — injected like the lazy chunk would deliver it.
 const STUDY = await import('../src/lib/studyFlow.js');
@@ -462,6 +463,62 @@ for (const order of ORDERS) {
     });
     assert.ok(container.textContent.includes('Fallback grammar drill'), 'next runnable fallback replaces the unavailable trainer');
     assert.equal(completed, 0, 'producer unavailability must not complete the whole segment');
+  } finally {
+    await close({ root, container });
+  }
+}
+
+// ---- 12. held-out rapid double-tap cannot skip an assessment item --------
+
+{
+  const check = {
+    id: 'chk-double-tap',
+    scheduledSkill: 'vocabulary',
+    items: [
+      {
+        assessmentId: 'a1', sourceItemId: 'w1', skill: 'vocabulary', cefr: 'A1',
+        content: { prompt: 'House' },
+        options: [{ id: 'o1', text: 'maison' }, { id: 'o2', text: 'chat' }],
+        correctOptionId: 'o1',
+      },
+      {
+        assessmentId: 'a2', sourceItemId: 'w2', skill: 'vocabulary', cefr: 'A1',
+        content: { prompt: 'Cat' },
+        options: [{ id: 'o3', text: 'chat' }, { id: 'o4', text: 'chien' }],
+        correctOptionId: 'o3',
+      },
+    ],
+  };
+  let completed = 0;
+  const container = document.createElement('div');
+  document.body.appendChild(container);
+  const root = createRoot(container);
+  try {
+    await act(async () => {
+      root.render(React.createElement(HeldOutCheck, {
+        check,
+        onDone: () => { completed += 1; },
+        apiKey: '',
+        mockMode: true,
+        level: 'A1',
+      }));
+    });
+
+    const firstChoice = [...container.querySelectorAll('button')].find((b) => b.textContent === 'maison');
+    assert.ok(firstChoice);
+    await act(async () => { firstChoice.click(); });
+
+    const next = [...container.querySelectorAll('button')].find((b) => b.textContent.includes('Record & next'));
+    assert.ok(next);
+    await act(async () => {
+      next.click();
+      next.click();
+      await new Promise((r) => setTimeout(r, 20));
+    });
+
+    assert.ok(container.textContent.includes('Check 2/2'), 'double tap advances exactly one item');
+    assert.ok(container.textContent.includes('Cat'), 'the second assessment item is not skipped');
+    assert.equal(completed, 0, 'check cannot finish from the duplicated first-item tap');
   } finally {
     await close({ root, container });
   }
