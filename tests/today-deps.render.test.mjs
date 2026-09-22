@@ -25,7 +25,7 @@ const { act } = await import('react');
 const storage = await import('../src/lib/storage.js');
 const todayModule = await import('../src/components/TodaySession.jsx');
 const TodaySession = todayModule.default;
-const { RecallRunner, DelayedReview } = todayModule;
+const { RecallRunner, DelayedReview, claimForwardTransition } = todayModule;
 const { setGrammarTopics } = await import('../src/lib/todayCapabilities.js');
 // The REAL study module — injected like the lazy chunk would deliver it.
 const STUDY = await import('../src/lib/studyFlow.js');
@@ -309,6 +309,18 @@ for (const order of ORDERS) {
   } finally {
     await close({ root, container });
   }
+}
+
+// ---- 7. segment transitions are idempotent and stale-safe -----------------
+
+{
+  const gate = { current: -1 };
+  assert.equal(claimForwardTransition(gate, 0), true, 'first completion for a segment is accepted');
+  assert.equal(claimForwardTransition(gate, 0), false, 'duplicate completion for the same segment is ignored');
+  assert.equal(claimForwardTransition(gate, 1), true, 'the next segment may transition');
+  assert.equal(claimForwardTransition(gate, 0), false, 'a stale callback from an older segment cannot advance the session');
+  assert.equal(claimForwardTransition(gate, 1), false, 'duplicate skip/completion races are ignored');
+  assert.equal(claimForwardTransition(gate, 2), true, 'forward progress remains available after rejected races');
 }
 
 console.log('Today-deps lifecycle render tests: PASS');
