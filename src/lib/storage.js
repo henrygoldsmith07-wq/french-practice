@@ -712,21 +712,30 @@ export function recordGrammarError(topicId, { mode = 'conversation', score = nul
 }
 
 export function recordVocabularyOutcome(cardKey, outcome, { mode = 'receptive', score = null, label = null, source = 'srs', sessionId = null, encounterId = null, activityId = null } = {}) {
-  const entry = getLearnerErrors({ limit: 240 }).find((e) => e.id === `vocabulary:${cardKey}`);
+  // Vocabulary cards have historically used item:<card-id> in the unified
+  // learner-error model. Keep that namespace stable so legacy review-event
+  // migration and live SRS evidence resolve the SAME weakness.
+  const learnerKey = String(cardKey || '').startsWith('item:')
+    ? String(cardKey)
+    : `item:${cardKey}`;
+  const entry = getLearnerErrors({ limit: 240 }).find((e) => e.id === `vocabulary:${learnerKey}`);
   if (!entry && outcome !== 'error') return null;
   if (outcome === 'error') {
     return recordLearnerError({
       category: 'vocabulary',
-      key: cardKey,
+      key: learnerKey,
       label: label || cardKey,
       mode,
       score,
       source,
+      sessionId,
+      encounterId,
+      activityId: activityId || cardKey,
     });
   }
   return recordLearnerSuccess({
     category: 'vocabulary',
-    key: cardKey,
+    key: learnerKey,
     mode,
     score,
     source,
