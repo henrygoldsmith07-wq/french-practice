@@ -185,9 +185,44 @@ test('shorter and longer sessions keep the shape', () => {
     listeningTrack: { id: 't1', title: 'Track' },
   });
   assert.equal(long.totalMinutes, 30);
-  for (const id of ['speak', 'retrieve', 'drill', 'review']) {
+  for (const id of ['speak', 'retrieve', 'drill', 'review', 'listen']) {
     assert.ok(long.segments.some((s) => s.id === id), `${id} present in long session`);
   }
+  assert.ok(long.segments.every((s) => s.minutes >= 3), 'long-session segments stay meaningful');
+});
+
+test('a normal 20-minute plan actually includes listening when a track exists', () => {
+  const plan = buildDailyCurriculum({
+    minutes: 20,
+    srsDue: 12,
+    topMistake: { id: 'm', concept: 'passe-compose', type: 'grammar', mastery: 30, recurrence: 2 },
+    recentCorrections: 2,
+    suggestedScenarioId: 'cafe',
+    listeningTrack: { id: 't1', title: 'Track' },
+  });
+  assert.equal(plan.totalMinutes, 20);
+  const byId = Object.fromEntries(plan.segments.map((s) => [s.id, s]));
+  for (const id of ['speak', 'retrieve', 'drill', 'review', 'listen']) assert.ok(byId[id], `${id} scheduled`);
+  assert.deepEqual(
+    Object.fromEntries(plan.segments.map((s) => [s.id, s.minutes])),
+    { speak: 6, retrieve: 4, drill: 4, review: 3, listen: 3 },
+  );
+});
+
+test('short sessions drop micro-segments instead of scheduling 1-minute context switches', () => {
+  const plan = buildDailyCurriculum({
+    minutes: 10,
+    srsDue: 12,
+    topMistake: { id: 'm', concept: 'passe-compose', type: 'grammar', mastery: 30, recurrence: 2 },
+    recentCorrections: 2,
+    suggestedScenarioId: 'cafe',
+    listeningTrack: { id: 't1', title: 'Track' },
+  });
+  assert.equal(plan.totalMinutes, 10);
+  assert.deepEqual(plan.segments.map((s) => s.id), ['speak', 'retrieve', 'drill']);
+  assert.ok(plan.segments.every((s) => s.minutes >= 3));
+  assert.ok(plan.skipped.includes('listen'));
+  assert.ok(plan.skipped.includes('review'));
 });
 
 test('exam pressure routes speak through the exam-style note', () => {
