@@ -439,6 +439,12 @@ export default function TodaySession({ open, onClose, minutes = 20, apiKey, mock
 // completion, recorded onto the frozen selection trial) and renders the
 // current segment. All hooks run unconditionally — the early return for the
 // finished state lives in the child below, never here.
+export function claimForwardTransition(ref, index) {
+  if (index <= ref.current) return false;
+  ref.current = index;
+  return true;
+}
+
 function TodayBody({ plan, segIndex, setSegIndex, close, apiKey, mockMode, level, ttsRate, onTurn, onActivity, award, history, setHistory }) {
   // Track content lives in the lazy listening chunk; today's payload only
   // carries ids, so resolve the real track when the listen segment renders.
@@ -448,33 +454,30 @@ function TodayBody({ plan, segIndex, setSegIndex, close, apiKey, mockMode, level
   const deliveredRef = useRef([]);
   const recordedRef = useRef(false);
   const missingRef = useRef(null);
+  const transitionRef = useRef(-1);
   const totalSteps = plan.segments.length + (plan.heldOut ? 1 : 0);
-  const advance = () => {
+
+  // Every segment transition is single-consumer. A completion callback can
+  // race a skip, fire twice, or arrive late after its child unmounted. Because
+  // segment indexes only move forward, rejecting any index already claimed (or
+  // older than the latest claim) makes all of those paths idempotent.
+  const moveNext = useCallback((skipped) => {
+    if (!claimForwardTransition(transitionRef, segIndex)) return;
     const seg = plan.segments[segIndex];
     if (seg) {
       deliveredRef.current.push({
         id: seg.id,
         minutes: seg.minutes,
         seconds: Math.round((Date.now() - segStartRef.current) / 1000),
-        skipped: false,
-      });
-    }
-    segStartRef.current = Date.now();
-    setSegIndex((i) => i + 1);
-  };
-  const skip = useCallback(() => {
-    const seg = plan.segments[segIndex];
-    if (seg) {
-      deliveredRef.current.push({
-        id: seg.id,
-        minutes: seg.minutes,
-        seconds: Math.round((Date.now() - segStartRef.current) / 1000),
-        skipped: true,
+        skipped,
       });
     }
     segStartRef.current = Date.now();
     setSegIndex((i) => i + 1);
   }, [plan, segIndex, setSegIndex]);
+
+  const advance = useCallback(() => moveNext(false), [moveNext]);
+  const skip = useCallback(() => moveNext(true), [moveNext]);
   // Persist the delivery record onto the newest selection trial once the
   // session ends (the trial was frozen at start; outcomes join later).
   useEffect(() => {
