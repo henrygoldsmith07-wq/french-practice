@@ -121,11 +121,20 @@ function TypedRunner({ item, objective, hint, onAnswer }) {
 }
 
 function ListeningRunner({ item, objective, setObjective, onPick, ttsRate = 1 }) {
-  // Audio-first: options stay locked until at least one play succeeded; if
-  // speechSynthesis is missing or every play fails, the item is unavailable.
+  // Audio-first: options unlock only after the browser confirms playback
+  // actually STARTED. speechSynthesis.speak() merely queues an utterance and
+  // can succeed synchronously even when the voice pipeline later fails.
   const [plays, setPlays] = useState(0);
   const [played, setPlayed] = useState(false);
+  const [starting, setStarting] = useState(false);
+  const startTimerRef = useRef(null);
+
+  useEffect(() => () => {
+    if (startTimerRef.current) clearTimeout(startTimerRef.current);
+  }, []);
+
   const play = () => {
+    if (starting || objective) return;
     if (!('speechSynthesis' in window)) {
       setObjective({ status: 'unavailable', reason: 'tts-unavailable' });
       return;
@@ -134,10 +143,29 @@ function ListeningRunner({ item, objective, setObjective, onPick, ttsRate = 1 })
       const u = new SpeechSynthesisUtterance(item.content?.audio || '');
       u.lang = 'fr-FR';
       u.rate = ttsRate || 1;
+      let settled = false;
+      const settle = (fn) => {
+        if (settled) return;
+        settled = true;
+        if (startTimerRef.current) clearTimeout(startTimerRef.current);
+        startTimerRef.current = null;
+        setStarting(false);
+        fn();
+      };
+      u.onstart = () => settle(() => {
+        setPlays((p) => p + 1);
+        setPlayed(true);
+      });
+      u.onerror = () => settle(() => {
+        setObjective({ status: 'unavailable', reason: 'tts-failed' });
+      });
+      setStarting(true);
+      startTimerRef.current = setTimeout(() => {
+        settle(() => setObjective({ status: 'unavailable', reason: 'tts-timeout' }));
+      }, 5000);
       window.speechSynthesis.speak(u);
-      setPlays((p) => p + 1);
-      setPlayed(true);
     } catch {
+      setStarting(false);
       setObjective({ status: 'unavailable', reason: 'tts-failed' });
     }
   };
@@ -147,11 +175,11 @@ function ListeningRunner({ item, objective, setObjective, onPick, ttsRate = 1 })
       <div className="grid place-items-center py-2">
         <button
           onClick={play}
-          disabled={Boolean(objective)}
+          disabled={Boolean(objective) || starting}
           aria-label={`Play listening item${plays ? ` (${plays} replays)` : ''}`}
           className="btn btn-primary min-h-14 px-6 rounded-2xl text-sm inline-flex items-center gap-2"
         >
-          <Volume size={18} /> {plays ? 'Replay' : 'Play'}
+          <Volume size={18} /> {starting ? 'Starting…' : plays ? 'Replay' : 'Play'}
         </button>
       </div>
       {!played && !objective && (
