@@ -241,7 +241,7 @@ export default function TodaySession({ open, onClose, minutes = 20, apiKey, mock
       srsDue,
       topMistake: top,
       pendingRetypes,
-      recentCorrections: caps.recentCorrections ? 1 : 0,
+      recentCorrections: caps.recentCorrections,
       weaknessScenarioId: weakness?.scenarioId || null,
       suggestedScenarioId: suggested?.id || null,
       listeningTrack: listeningTrack ? { id: listeningTrack.id, title: listeningTrack.title, audioSrc: listeningTrack.audioSrc || null } : null,
