@@ -93,6 +93,7 @@ export default function TodaySession({ open, onClose, minutes = 20, apiKey, mock
   // import failures deterministically.
   const deps = useTodayDeps(depsImpl);
   const { entries, retry } = deps;
+  const entriesFailed = deps.failed.includes('entries');
   const scenarioFailed = deps.failed.includes('scenarios');
   const grammarFailed = deps.failed.includes('grammar');
   const listeningFailed = deps.failed.includes('listening');
@@ -108,7 +109,7 @@ export default function TodaySession({ open, onClose, minutes = 20, apiKey, mock
   const studyModule = deps.study;
   const studyReady = Boolean(studyModule);
   const degradedLearning = scenarioFailed || grammarFailed || listeningFailed;
-  const learningDepsSettled = entries !== null
+  const learningDepsSettled = (entries !== null || entriesFailed)
     && scenariosReg !== null
     && Boolean(grammarReady)
     && listeningTracks !== null;
@@ -444,7 +445,7 @@ export default function TodaySession({ open, onClose, minutes = 20, apiKey, mock
   // Loading: genuine learning dependencies (vocab, scenarios, grammar,
   // listening) still resolving. Never more than the actual chunk downloads —
   // and never a timer: deps resolve as soon as their chunks land.
-  if (!plan && (!learningDepsSettled || !studySettled)) {
+  if (!plan && !entriesFailed && (!learningDepsSettled || !studySettled)) {
     return (
       <div className="fixed inset-0 z-[60] bg-bg grid place-items-center" role="dialog" aria-modal="true" aria-label="Loading today's session">
         <div className="text-center space-y-3 px-6">
