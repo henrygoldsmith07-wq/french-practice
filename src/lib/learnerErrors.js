@@ -122,10 +122,12 @@ export const evidenceStrength = (success, entry) => {
   const lastError = entry?.lastErrorAt ? Date.parse(entry.lastErrorAt) : null;
   const at = Date.parse(success.at || success.lastSeen || '') || null;
   if (lastError && at) {
-    return new Date(at).getUTCDate() !== new Date(lastError).getUTCDate()
-      || new Date(at).getUTCMonth() !== new Date(lastError).getUTCMonth()
-      ? 'delayed'
-      : 'same-session';
+    const errorDate = new Date(lastError);
+    const successDate = new Date(at);
+    const sameUtcDay = successDate.getUTCFullYear() === errorDate.getUTCFullYear()
+      && successDate.getUTCMonth() === errorDate.getUTCMonth()
+      && successDate.getUTCDate() === errorDate.getUTCDate();
+    return sameUtcDay ? 'same-session' : 'delayed';
   }
   return 'unknown';
 };
