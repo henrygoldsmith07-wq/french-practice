@@ -511,30 +511,58 @@ function TodayBody({ plan, trialId, segIndex, setSegIndex, close, apiKey, mockMo
 
   const advance = useCallback(() => moveNext(false), [moveNext]);
   const skip = useCallback(() => moveNext(true), [moveNext]);
-  // Persist delivery onto THIS session's frozen selection trial. Never patch
-  // "the newest" row: another tab/session can append a trial while this one is
-  // still open, and that would cross-wire evidence between sessions.
-  useEffect(() => {
-    if (segIndex < totalSteps || recordedRef.current || !trialId) return;
+  const flushDelivery = useCallback((finishedAllSteps) => {
+    if (recordedRef.current || !trialId) return null;
     try {
       const trials = getSelectionTrial();
       const trial = trials.find((row) => row.id === trialId);
-      if (!trial) return;
+      if (!trial) return null;
       recordedRef.current = true;
-      trial.delivered = deliveredRef.current;
+      trial.delivered = [...deliveredRef.current];
       trial.timeSpent = Math.round((Date.now() - startRef.current) / 1000);
-      trial.completed = deliveredRef.current.length === plan.segments.length
+      // Completion means the WHOLE composed session ended, including the
+      // held-out step when one exists. Finishing all ordinary segments is not
+      // enough if the learner abandoned measurement afterward.
+      trial.completed = Boolean(finishedAllSteps)
+        && deliveredRef.current.length === plan.segments.length
         && !deliveredRef.current.some((d) => d.skipped && d.seconds < 5);
       saveSelectionTrial(trials);
-      // Study: fold delivery into the outcome record for this exact trial.
       callStudy('updateOutcomeDelivery', {
         trialAt: trial.at,
         timeSpent: trial.timeSpent,
         completed: trial.completed,
         delivered: trial.delivered,
       });
-    } catch { /* delivery logging must never break the close */ }
-  }, [segIndex, plan, totalSteps, trialId]);
+      return trial;
+    } catch {
+      return null;
+    }
+  }, [trialId, plan.segments.length]);
+
+  // Persist a fully completed run as soon as its final step advances.
+  useEffect(() => {
+    if (segIndex < totalSteps) return;
+    flushDelivery(true);
+  }, [segIndex, totalSteps, flushDelivery]);
+
+  // Escape / Android Back close the parent overlay directly, so TodayBody can
+  // disappear without its own close button running. A delayed unmount flush
+  // captures that partial session. The mounted flag is intentional: React
+  // StrictMode performs a fake cleanup+setup cycle; by the next task the
+  // component is mounted again, so that development-only cleanup writes
+  // nothing. A real unmount stays false and records the abandonment.
+  const mountedRef = useRef(false);
+  const flushRef = useRef(flushDelivery);
+  flushRef.current = flushDelivery;
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      setTimeout(() => {
+        if (!mountedRef.current) flushRef.current(false);
+      }, 0);
+    };
+  }, []);
 
   const done = segIndex >= totalSteps;
   // The held-out check is an implicit extra step after the last normal segment.
