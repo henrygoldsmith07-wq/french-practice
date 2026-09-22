@@ -381,7 +381,7 @@ export default function TodaySession({ open, onClose, minutes = 20, apiKey, mock
   const [segIndex, setSegIndex] = useState(0);
   const [, setXp] = useState(0);
   const [history, setHistory] = useState([]);
-  const [trialAt, setTrialAt] = useState(null);
+  const [trialId, setTrialId] = useState(null);
   const trialLoggedRef = useRef(false);
   const award = (n) => { setXp((x) => x + n); onXp?.(n); };
 
@@ -391,14 +391,14 @@ export default function TodaySession({ open, onClose, minutes = 20, apiKey, mock
   useEffect(() => {
     if (!open) {
       trialLoggedRef.current = false;
-      setTrialAt(null);
+      setTrialId(null);
       return;
     }
     if (!plan || trialLoggedRef.current) return;
     trialLoggedRef.current = true;
     try {
       const trial = recordSelectionTrial(plan.trialDraft || {});
-      setTrialAt(trial?.at || null);
+      setTrialId(trial?.id || null);
       if (trial && plan.study && studyReady && studyModule) {
         const consistency = studyModule.verifyTreatmentConsistency({
           deliveredVariant: plan.trialVariant,
@@ -450,7 +450,7 @@ export default function TodaySession({ open, onClose, minutes = 20, apiKey, mock
     <Suspense fallback={null}>
     <TodayBody
       plan={plan}
-      trialAt={trialAt}
+      trialId={trialId}
       segIndex={segIndex}
       setSegIndex={setSegIndex}
       close={close}
@@ -478,7 +478,7 @@ export function claimForwardTransition(ref, index) {
   return true;
 }
 
-function TodayBody({ plan, trialAt, segIndex, setSegIndex, close, apiKey, mockMode, level, ttsRate, onTurn, onActivity, award, history, setHistory }) {
+function TodayBody({ plan, trialId, segIndex, setSegIndex, close, apiKey, mockMode, level, ttsRate, onTurn, onActivity, award, history, setHistory }) {
   // Track content lives in the lazy listening chunk; today's payload only
   // carries ids, so resolve the real track when the listen segment renders.
   const liveTracks = useListeningTracks();
@@ -515,10 +515,10 @@ function TodayBody({ plan, trialAt, segIndex, setSegIndex, close, apiKey, mockMo
   // "the newest" row: another tab/session can append a trial while this one is
   // still open, and that would cross-wire evidence between sessions.
   useEffect(() => {
-    if (segIndex < totalSteps || recordedRef.current || !trialAt) return;
+    if (segIndex < totalSteps || recordedRef.current || !trialId) return;
     try {
       const trials = getSelectionTrial();
-      const trial = trials.find((row) => row.at === trialAt);
+      const trial = trials.find((row) => row.id === trialId);
       if (!trial) return;
       recordedRef.current = true;
       trial.delivered = deliveredRef.current;
@@ -534,7 +534,7 @@ function TodayBody({ plan, trialAt, segIndex, setSegIndex, close, apiKey, mockMo
         delivered: trial.delivered,
       });
     } catch { /* delivery logging must never break the close */ }
-  }, [segIndex, plan, totalSteps, trialAt]);
+  }, [segIndex, plan, totalSteps, trialId]);
 
   const done = segIndex >= totalSteps;
   // The held-out check is an implicit extra step after the last normal segment.
