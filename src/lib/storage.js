@@ -712,30 +712,21 @@ export function recordGrammarError(topicId, { mode = 'conversation', score = nul
 }
 
 export function recordVocabularyOutcome(cardKey, outcome, { mode = 'receptive', score = null, label = null, source = 'srs', sessionId = null, encounterId = null, activityId = null } = {}) {
-  // Vocabulary cards have historically used item:<card-id> in the unified
-  // learner-error model. Keep that namespace stable so legacy review-event
-  // migration and live SRS evidence resolve the SAME weakness.
-  const learnerKey = String(cardKey || '').startsWith('item:')
-    ? String(cardKey)
-    : `item:${cardKey}`;
-  const entry = getLearnerErrors({ limit: 240 }).find((e) => e.id === `vocabulary:${learnerKey}`);
+  const entry = getLearnerErrors({ limit: 240 }).find((e) => e.id === `vocabulary:${cardKey}`);
   if (!entry && outcome !== 'error') return null;
   if (outcome === 'error') {
     return recordLearnerError({
       category: 'vocabulary',
-      key: learnerKey,
+      key: cardKey,
       label: label || cardKey,
       mode,
       score,
       source,
-      sessionId,
-      encounterId,
-      activityId: activityId || cardKey,
     });
   }
   return recordLearnerSuccess({
     category: 'vocabulary',
-    key: learnerKey,
+    key: cardKey,
     mode,
     score,
     source,
@@ -1752,7 +1743,7 @@ export function rateCard(cardId, rating, opts={}) {
       mode,
       score: rating === 'again' ? 0 : null,
       label: opts.itemLabel || cardId,
-      source: 'per-review-event',
+      source: 'srs',
       // Evidence identity: the caller's encounter for this one presentation
       // (or a fresh one when the caller doesn't track presentations).
       ...identity,
@@ -1802,15 +1793,6 @@ export function rateCard(cardId, rating, opts={}) {
     source: opts.source || 'srs',
     ...identity,
   });
-  // The learner-error model has ONE canonical write per card presentation,
-  // independent of whether this review used FSRS or the legacy SM-2 fallback.
-  recordVocabularyOutcome(key, rating === 'again' ? 'error' : 'success', {
-    mode,
-    score: rating === 'again' ? 0 : null,
-    label: opts.itemLabel || cardId,
-    source: 'per-review-event',
-    ...identity,
-  });
   return srs[key];
 }
 
@@ -1819,9 +1801,8 @@ export function rateCard(cardId, rating, opts={}) {
 export const getReviewLog = () => read(KEYS.reviewLog, {});
 
 function logReview({ cardId, rating, elapsedMs, skill, intervalDays, mode, itemLabel, source, sessionId, encounterId, activityId } = {}) {
-  // Prime legacy learner-model migration before appending the new review
-  // event. The actual learner-error outcome is written exactly once by
-  // rateCard() after this logging function returns.
+  // Initialise before appending the new event because the first learner-model
+  // migration also imports legacy review misses.
   getLearnerErrorModel();
   const log = getReviewLog();
   const today = dayStamp();
@@ -1860,6 +1841,27 @@ function logReview({ cardId, rating, elapsedMs, skill, intervalDays, mode, itemL
     mode: event.mode,
     score: event.correct ? 100 : 0,
   });
+  const learnerError = {
+    category: 'vocabulary',
+    key: `item:${event.itemId}`,
+    label: itemLabel || event.itemId,
+    mode: 'cards',
+    // An SRS review is a spaced, independent recall of material the learner
+    // last saw days ago — exactly the delayed evidence the recovery loop
+    // treats as the strong signal (one clean delayed pass resolves).
+    delayed: true,
+    score: event.correct ? 100 : 0,
+    source: 'per-review-event',
+    detail: event.correct ? 'Successful recall.' : 'Card marked again.',
+    // Provenance of the presentation that produced this review. Session id
+    // anchors it to this app visit; the encounter id dedupes re-answers of
+    // the same presentation so a lucky double-tap cannot mint independence.
+    sessionId,
+    encounterId,
+    activityId,
+  };
+  if (event.correct) recordLearnerSuccess(learnerError);
+  else recordLearnerError(learnerError);
   // The evidence ledger tracks the same miss under its own cross-mode
   // vocabulary, so the delayed-retest queue keeps seeing card reviews.
   recordVocabularyGap(cardId, {
