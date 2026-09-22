@@ -63,6 +63,27 @@ test('retype eligibility matches the 24-hour delayed-proof gate', async () => {
   );
 });
 
+test('accent-only corrections require the corrected accent', async () => {
+  const notebook = await freshNotebook();
+  const list = notebook.addErrorNotebook({
+    original: 'ou',
+    corrected: 'où',
+    why: 'Use the accented form for “where”.',
+    ruleId: 'accent-ou',
+  });
+  const id = list[0].id;
+  assert.equal(
+    notebook.markCorrectedByLearner(id, 'ou', Date.now()),
+    false,
+    'repeating the original unaccented mistake must not count as repair',
+  );
+  assert.equal(
+    notebook.markCorrectedByLearner(id, 'où', Date.now()),
+    'rehearsed',
+    'the corrected diacritic is accepted',
+  );
+});
+
 test('legacy ISO rehearsal timestamps can still retire after the delay', async () => {
   const notebook = await freshNotebook();
   const now = Date.parse('2026-09-22T12:00:00Z');
