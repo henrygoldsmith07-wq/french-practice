@@ -41,7 +41,7 @@ import { getScenarios } from '../lib/data';
 // dialogues, news, scenes, authentic audio) must not ride the entry graph.
 // The session resolves tracks dynamically; loader, cache and React binding
 // live in lib/listeningAsync.js (failures are never cached there).
-import { useListeningTracks } from '../lib/listeningAsync';
+import { resolveListeningTrack, useListeningTracks } from '../lib/listeningAsync';
 
 // The arena, the held-out check and the track player are heavy (audio, LLM,
 // recording, content) and only rendered mid-session — load them with the
@@ -860,12 +860,20 @@ function AuthoredDrill({ exercises, topicTitle, onXp, onDone }) {
 // Listen fallback inside the drill chain.
 function ListenFallback({ track, onDone }) {
   const tracks = useListeningTracks();
-  const real = (tracks || []).find((t) => t.id === track?.id);
+  const resolved = resolveListeningTrack(tracks, track?.id);
+  const firedRef = useRef(false);
+
   useEffect(() => {
-    if (!real) onDone();
-  }, [real, onDone]);
-  if (!real) return null;
-  return <TrackPlayer track={real} baseRate={1} level="B1" onXp={() => {}} onActivity={() => {}} onDone={onDone} />;
+    if (resolved.status !== 'missing' || firedRef.current) return;
+    firedRef.current = true;
+    onDone();
+  }, [resolved.status, onDone]);
+
+  if (resolved.status === 'loading') {
+    return <div className="h-full grid place-items-center"><p className="text-sm text-ink2">Loading listening…</p></div>;
+  }
+  if (resolved.status !== 'ready') return null;
+  return <TrackPlayer track={resolved.track} baseRate={1} level="B1" onXp={() => {}} onActivity={() => {}} onDone={onDone} />;
 }
 
 // Compact SRS recall: due cards, capped, rated through the real scheduler.
