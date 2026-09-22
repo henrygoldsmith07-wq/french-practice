@@ -524,4 +524,47 @@ for (const order of ORDERS) {
   }
 }
 
+// ---- 13. rapid SRS rating double-tap creates one review outcome -----------
+
+{
+  localStorage.clear();
+  const active = await import('../src/lib/content/active.js');
+  const { loadAllEntries } = await import('../src/lib/vocabAsync.js');
+  active.setContentLanguage('fr');
+  const entries = await loadAllEntries();
+  assert.ok(entries.length > 0, 'French vocab library available');
+  let completed = 0;
+  const container = document.createElement('div');
+  document.body.appendChild(container);
+  const root = createRoot(container);
+  try {
+    await act(async () => {
+      root.render(React.createElement(RecallRunner, {
+        cardCap: 1,
+        onDone: () => { completed += 1; },
+        onXp: () => {},
+      }));
+      await new Promise((r) => setTimeout(r, 30));
+    });
+    const flip = container.querySelector('button[aria-label="Flip the card (back)"]');
+    assert.ok(flip, 'recall card rendered');
+    await act(async () => { flip.click(); });
+    const again = [...container.querySelectorAll('button')].find((b) => b.textContent === 'Again');
+    assert.ok(again, 'Again rating available');
+    await act(async () => {
+      again.click();
+      again.click();
+      await new Promise((r) => setTimeout(r, 30));
+    });
+    const vocabErrors = storage.getLearnerErrors({ limit: 50 })
+      .filter((entry) => entry.category === 'vocabulary');
+    assert.equal(vocabErrors.length, 1, 'double tap produces one vocabulary weakness');
+    assert.equal(vocabErrors[0].errorCount, 1, 'double tap produces one lapse');
+    assert.equal(storage.getReviewEvents().length, 1, 'double tap logs one review event');
+    assert.equal(completed, 0, 'segment does not prematurely complete during the advance delay');
+  } finally {
+    await close({ root, container });
+  }
+}
+
 console.log('Today-deps lifecycle render tests: PASS');
