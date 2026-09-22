@@ -329,6 +329,13 @@ export default function HeldOutCheck({ check, onDone, apiKey, mockMode, level, t
   const [confidence, setConfidence] = useState(null);
   const startedRef = useRef(Date.now());
   const evidenceRef = useRef([]);
+  const finalisingRef = useRef(false);
+
+  // A rapid double-tap on "Record & next" must never append the same item
+  // twice or advance over the following assessment item.
+  useEffect(() => {
+    finalisingRef.current = false;
+  }, [idx]);
 
   const item = items[idx];
   const isSpeaking = item?.skill === 'speaking';
@@ -336,7 +343,8 @@ export default function HeldOutCheck({ check, onDone, apiKey, mockMode, level, t
 
   // Finalise the current item: objective result + separate confidence.
   const finalise = () => {
-    if (!item || !objective) return;
+    if (!item || !objective || finalisingRef.current) return;
+    finalisingRef.current = true;
     evidenceRef.current.push({
       sourceItemId: item.sourceItemId,
       skill: item.skill,
