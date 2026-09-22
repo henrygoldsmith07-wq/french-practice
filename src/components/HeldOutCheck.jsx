@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { ChevronRight, Volume, Mic } from './icons';
 import useRecorder from '../hooks/useRecorder';
 import { transcribe, evaluateTurn, friendlyError } from '../lib/groq';
@@ -226,22 +226,37 @@ function ReadingRunner({ item, objective, onPick }) {
   );
 }
 
+export function claimMeasurement(ref) {
+  if (ref.current) return false;
+  ref.current = true;
+  return true;
+}
+
 function SpeakingRunner({ item, objective, setObjective, confidence, setConfidence, apiKey, mockMode, level }) {
   // record → transcribe → validate ASR → AI evaluate → numeric objective
   // score. Any infrastructure failure ends the item as unscored/unavailable —
   // never as incorrect. The learner's confidence is captured separately.
   const [stage, setStage] = useState('idle'); // idle|ready|recording|processing|awaiting-confidence
   const [tappedMic, setTappedMic] = useState(false);
+  const settledRef = useRef(false);
+  const commitObjective = useCallback((next) => {
+    if (!claimMeasurement(settledRef)) return false;
+    setObjective(next);
+    return true;
+  }, [setObjective]);
   const recorder = useRecorder({
     onComplete: async (blob) => {
+      if (settledRef.current) return;
       setStage('processing');
       try {
         const transcript = await transcribe(apiKey, blob, { mock: mockMode });
+        if (settledRef.current) return;
         const words = String(transcript || '').split(/\s+/).filter(Boolean);
         if (!words.length) {
           // ASR validation: an empty recognition is not learner failure.
-          setObjective({ status: 'unavailable', asrConfidence: 'none', reason: 'empty-transcription' });
-          setStage('awaiting-confidence');
+          if (commitObjective({ status: 'unavailable', asrConfidence: 'none', reason: 'empty-transcription' })) {
+            setStage('awaiting-confidence');
+          }
           return;
         }
         const evaluation = await evaluateTurn(apiKey, {
@@ -251,21 +266,25 @@ function SpeakingRunner({ item, objective, setObjective, confidence, setConfiden
           level,
           mock: mockMode,
         });
+        if (settledRef.current) return;
         const raw = Number(evaluation?.scores?.overall);
-        if (Number.isFinite(raw)) {
-          // A numeric valid score makes the item scored — success alone does not.
-          setObjective({
-            status: 'scored',
-            aiScore: Math.max(0, Math.min(100, Math.round(raw))),
-            asrConfidence: words.length >= 3 ? 'usable' : 'low',
-          });
-        } else {
-          setObjective({ status: 'unscored', asrConfidence: words.length >= 3 ? 'usable' : 'low', reason: 'non-numeric-evaluation' });
-        }
+        const next = Number.isFinite(raw)
+          ? {
+              status: 'scored',
+              aiScore: Math.max(0, Math.min(100, Math.round(raw))),
+              asrConfidence: words.length >= 3 ? 'usable' : 'low',
+            }
+          : {
+              status: 'unscored',
+              asrConfidence: words.length >= 3 ? 'usable' : 'low',
+              reason: 'non-numeric-evaluation',
+            };
+        if (commitObjective(next)) setStage('awaiting-confidence');
       } catch (e) {
-        setObjective({ status: 'unscored', reason: friendlyError(e).slice(0, 120) });
+        if (commitObjective({ status: 'unscored', reason: friendlyError(e).slice(0, 120) })) {
+          setStage('awaiting-confidence');
+        }
       }
-      setStage('awaiting-confidence');
     },
   });
 
@@ -273,36 +292,35 @@ function SpeakingRunner({ item, objective, setObjective, confidence, setConfiden
   // recorder; surface it as an explicit unavailable measurement.
   // setObjective is stable state-setter identity; listed for lint clarity.
   useEffect(() => {
-    if (recorder.error && !objective) {
-      setObjective({ status: 'unavailable', reason: 'microphone-unavailable' });
+    if (recorder.error && !objective
+      && commitObjective({ status: 'unavailable', reason: 'microphone-unavailable' })) {
       setStage('awaiting-confidence');
     }
-  }, [recorder.error, objective, setObjective]);
+  }, [recorder.error, objective, commitObjective]);
   // An evaluation pipeline that never resolves (offline, hung API, silent
   // recorder) must NOT trap the check: after a bounded wait the attempt is
   // recorded unscored — infrastructure failure, never learner failure.
   useEffect(() => {
     if (stage !== 'processing' || objective) return undefined;
     const t = setTimeout(() => {
-      if (!objective) {
-        setObjective({ status: 'unscored', reason: 'evaluation-timeout' });
+      if (!objective && commitObjective({ status: 'unscored', reason: 'evaluation-timeout' })) {
         setStage('awaiting-confidence');
       }
     }, 15000);
     return () => clearTimeout(t);
-  }, [stage, objective, setObjective]);
+  }, [stage, objective, commitObjective]);
   // A microphone that opens but never produces media is equally an
   // infrastructure failure — surface it instead of trapping the learner.
   useEffect(() => {
     if (stage !== 'ready' || objective || recorder.recording || !tappedMic) return undefined;
     const t = setTimeout(() => {
-      if (!objective && !recorder.recording) {
-        setObjective({ status: 'unavailable', reason: 'microphone-silent' });
+      if (!objective && !recorder.recording
+        && commitObjective({ status: 'unavailable', reason: 'microphone-silent' })) {
         setStage('awaiting-confidence');
       }
     }, 10000);
     return () => clearTimeout(t);
-  }, [stage, objective, recorder.recording, tappedMic, setObjective]);
+  }, [stage, objective, recorder.recording, tappedMic, commitObjective]);
 
   return (
     <div className="space-y-4">
@@ -315,7 +333,14 @@ function SpeakingRunner({ item, objective, setObjective, confidence, setConfiden
       )}
       {stage === 'ready' && !objective && (
         <div className="grid place-items-center gap-2">
-          <button onClick={() => { setTappedMic(true); recorder.start().catch(() => { if (!objective) { setObjective({ status: 'unavailable', reason: 'microphone-unavailable' }); setStage('awaiting-confidence'); } }); }} aria-label="Record my speaking attempt" className="btn btn-primary w-16 h-16 rounded-full grid place-items-center">
+          <button onClick={() => {
+            setTappedMic(true);
+            recorder.start().catch(() => {
+              if (!objective && commitObjective({ status: 'unavailable', reason: 'microphone-unavailable' })) {
+                setStage('awaiting-confidence');
+              }
+            });
+          }} aria-label="Record my speaking attempt" className="btn btn-primary w-16 h-16 rounded-full grid place-items-center">
             <Mic size={22} />
           </button>
           <p className="text-[11px] text-ink3">Tap, speak, then tap again to stop.</p>
