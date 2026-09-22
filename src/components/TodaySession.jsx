@@ -744,7 +744,7 @@ function WhyPanel({ explain, recovery }) {
 // full ordered chain from the capability resolver; if the AI drill returns
 // nothing (offline, quota, error), the runner walks to the next link instead
 // of showing "unavailable" — the session always stays complete.
-function DrillChainRunner({ payload, level, apiKey, mockMode, ttsRate, onXp, onDone }) {
+export function DrillChainRunner({ payload, level, apiKey, mockMode, ttsRate, onXp, onDone }) {
   const [current, setCurrent] = useState(payload);
   const kind = current?.kind || payload?.kind;
 
