@@ -1,0 +1,71 @@
+import assert from 'node:assert/strict';
+import { test } from 'node:test';
+
+function memoryStorage() {
+  const values = new Map();
+  return {
+    getItem: (key) => values.get(key) ?? null,
+    setItem: (key, value) => values.set(key, String(value)),
+    removeItem: (key) => values.delete(key),
+    key: (i) => [...values.keys()][i] ?? null,
+    get length() { return values.size; },
+  };
+}
+
+async function freshNotebook() {
+  globalThis.localStorage = memoryStorage();
+  return import(`../src/lib/errorNotebook.js?notebook-${Date.now()}-${Math.random()}`);
+}
+
+test('a recurring notebook mistake reopens the correction loop', async () => {
+  const notebook = await freshNotebook();
+  const t0 = Date.parse('2026-09-01T09:00:00Z');
+
+  let list = notebook.addErrorNotebook({
+    original: 'Je aller au parc.',
+    corrected: 'Je vais au parc.',
+    why: 'Conjugate aller.',
+    ruleId: 'present-aller',
+  });
+  const id = list[0].id;
+
+  assert.equal(notebook.markCorrectedByLearner(id, 'Je vais au parc.', t0), 'rehearsed');
+  assert.equal(
+    notebook.markCorrectedByLearner(id, 'Je vais au parc.', t0 + notebook.REHEARSE_GAP_MS + 1),
+    'retired',
+  );
+  assert.equal(notebook.getErrorNotebook()[0].correctedByLearner, true);
+
+  list = notebook.addErrorNotebook({
+    original: 'Je aller au parc.',
+    corrected: 'Je vais au parc.',
+    why: 'Conjugate aller.',
+    ruleId: 'present-aller',
+  });
+  assert.equal(list[0].recurrence, 1);
+  assert.equal(list[0].correctedByLearner, false, 'recurrence must require repair again');
+  assert.equal(list[0].rehearsedAt, null, 'old delayed-proof timestamp cannot shortcut the new recurrence');
+});
+
+test('corrected errors are selected by repair activity, not original creation time', async () => {
+  const notebook = await freshNotebook();
+  const old = '2026-08-01T09:00:00Z';
+  const recent = '2026-09-22T12:00:00Z';
+  const middle = '2026-09-21T12:00:00Z';
+
+  const entries = [
+    { id: 'old-created-repaired-now', correctedByLearner: true, at: old, rehearsedAt: recent },
+    { id: 'created-yesterday', correctedByLearner: true, at: middle },
+    { id: 'stale', correctedByLearner: true, at: old },
+    { id: 'pending', correctedByLearner: false, at: recent },
+  ];
+
+  const selected = notebook.selectCorrectedErrors(entries, {
+    since: Date.parse('2026-09-20T00:00:00Z'),
+    limit: 5,
+  });
+  assert.deepEqual(selected.map((entry) => entry.id), [
+    'old-created-repaired-now',
+    'created-yesterday',
+  ]);
+});
