@@ -656,8 +656,19 @@ for (const order of ORDERS) {
       utterance.onstart?.();
       await new Promise((r) => setTimeout(r, 0));
     });
-    const helloAfter = [...container.querySelectorAll('button')].find((b) => b.textContent === 'Hello');
+    let helloAfter = [...container.querySelectorAll('button')].find((b) => b.textContent === 'Hello');
     assert.equal(helloAfter.disabled, false, 'answers unlock only after confirmed playback start');
+
+    const replay = [...container.querySelectorAll('button')].find((b) => b.textContent.includes('Replay'));
+    assert.ok(replay, 'a successful first playback exposes replay');
+    await act(async () => {
+      replay.click();
+      utterance.onerror?.();
+      await new Promise((r) => setTimeout(r, 0));
+    });
+    helloAfter = [...container.querySelectorAll('button')].find((b) => b.textContent === 'Hello');
+    assert.equal(helloAfter.disabled, false, 'failed replay does not erase a successful first playback');
+    assert.ok(!container.textContent.includes('Audio could not be played'), 'replay failure does not invalidate scorable evidence');
   } finally {
     await close({ root, container });
     if (originalUtterance === undefined) delete globalThis.SpeechSynthesisUtterance;
