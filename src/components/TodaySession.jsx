@@ -548,8 +548,17 @@ function TodayBody({ plan, segIndex, setSegIndex, close, apiKey, mockMode, level
     } else if (seg.id === 'review') {
       body = <DelayedReview count={seg.payload.count} onXp={award} onDone={advance} />;
     } else if (seg.id === 'listen' && seg.payload.track) {
-      const track = (liveTracks || []).find((t) => t.id === seg.payload.track.id);
-      if (track) body = <TrackPlayer track={track} baseRate={ttsRate} level={level} onXp={award} onActivity={onActivity} onDone={advance} />;
+      const resolved = resolveListeningTrack(liveTracks, seg.payload.track.id);
+      if (resolved.status === 'loading') {
+        // A null library means the lazy listening chunk is still in flight,
+        // not that the planned track disappeared. Render a real body so the
+        // generic missing-body auto-skip cannot discard valid listening.
+        body = <div className="h-full grid place-items-center"><p className="text-sm text-ink2">Loading listening…</p></div>;
+      } else if (resolved.status === 'ready') {
+        body = <TrackPlayer track={resolved.track} baseRate={ttsRate} level={level} onXp={award} onActivity={onActivity} onDone={advance} />;
+      }
+      // Once the library has resolved, a genuinely missing id leaves body
+      // null and the generic fallback below advances to the next segment.
     }
   }
 
