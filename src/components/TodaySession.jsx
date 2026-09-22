@@ -639,6 +639,10 @@ function TodayBody({ plan, trialId, segIndex, setSegIndex, close, apiKey, mockMo
     body = (
       <HeldOutCheck
         check={plan.heldOut}
+        apiKey={apiKey}
+        mockMode={mockMode}
+        level={level}
+        ttsRate={ttsRate}
         onDone={(finished) => {
           // Full per-item evidence is persisted first, then the check's
           // per-skill summary (speaking from numeric scores, correctness
