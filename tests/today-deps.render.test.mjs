@@ -25,7 +25,7 @@ const { act } = await import('react');
 const storage = await import('../src/lib/storage.js');
 const todayModule = await import('../src/components/TodaySession.jsx');
 const TodaySession = todayModule.default;
-const { RecallRunner } = todayModule;
+const { RecallRunner, DelayedReview } = todayModule;
 const { setGrammarTopics } = await import('../src/lib/todayCapabilities.js');
 // The REAL study module — injected like the lazy chunk would deliver it.
 const STUDY = await import('../src/lib/studyFlow.js');
@@ -232,6 +232,80 @@ for (const order of ORDERS) {
     });
 
     assert.equal(completed, 1, 'the recall segment advances exactly once after the last card');
+  } finally {
+    await close({ root, container });
+  }
+}
+
+// ---- 6. delayed review advances for both empty and completed queues -------
+
+{
+  localStorage.clear();
+  let completed = 0;
+  const container = document.createElement('div');
+  document.body.appendChild(container);
+  const root = createRoot(container);
+  try {
+    await act(async () => {
+      root.render(React.createElement(DelayedReview, {
+        count: 2,
+        onDone: () => { completed += 1; },
+        onXp: () => {},
+      }));
+      await new Promise((r) => setTimeout(r, 25));
+    });
+    assert.equal(completed, 1, 'an empty delayed-review queue skips exactly once');
+  } finally {
+    await close({ root, container });
+  }
+}
+
+{
+  localStorage.clear();
+  const notebook = await import('../src/lib/errorNotebook.js');
+  const list = notebook.addErrorNotebook({
+    original: 'Je suis allé hier.',
+    corrected: 'Je suis allé hier.',
+    why: 'seed',
+  });
+  // addErrorNotebook intentionally ignores no-op corrections, so seed a real
+  // corrected item and promote it through the delayed-retype lifecycle.
+  const seeded = notebook.addErrorNotebook({
+    original: 'Je aller au parc.',
+    corrected: 'Je vais au parc.',
+    why: 'Use the conjugated present form.',
+    ruleId: 'present-aller',
+  });
+  const entry = seeded[0] || list[0];
+  assert.ok(entry, 'a corrected notebook entry is available');
+  notebook.markCorrectedByLearner(entry.id, entry.corrected, Date.now());
+  notebook.markCorrectedByLearner(entry.id, entry.corrected, Date.now() + notebook.REHEARSE_GAP_MS + 1);
+
+  let completed = 0;
+  const container = document.createElement('div');
+  document.body.appendChild(container);
+  const root = createRoot(container);
+  try {
+    await act(async () => {
+      root.render(React.createElement(DelayedReview, {
+        count: 1,
+        onDone: () => { completed += 1; },
+        onXp: () => {},
+      }));
+      await new Promise((r) => setTimeout(r, 25));
+    });
+
+    const reveal = [...container.querySelectorAll('button')].find((b) => b.textContent === 'Say it, then reveal');
+    assert.ok(reveal, 'a corrected item enters delayed review');
+    await act(async () => { reveal.click(); });
+
+    const remembered = [...container.querySelectorAll('button')].find((b) => b.textContent === 'I said it right');
+    assert.ok(remembered, 'the learner can self-mark delayed recall');
+    await act(async () => {
+      remembered.click();
+      await new Promise((r) => setTimeout(r, 500));
+    });
+    assert.equal(completed, 1, 'completed delayed review advances exactly once');
   } finally {
     await close({ root, container });
   }
