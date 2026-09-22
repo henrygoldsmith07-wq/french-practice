@@ -65,6 +65,9 @@ test('probe capabilities gate on environment, not wishes', () => {
   assert.equal(caps['ai-drill'], false, 'no AI → no AI drill');
   assert.equal(caps['authored-drill'], true, 'library is always available');
   assert.equal(caps['speak'], true);
+  assert.equal(caps.srsDue, 0, 'raw SRS count is carried with the gate');
+  assert.equal(caps.listeningTrack, null, 'raw listening payload is carried with the gate');
+  assert.equal(caps.recentCorrections, 0, 'raw review count is carried with the gate');
   const caps2 = probeCapabilities({ hasAi: true, concept: 'passe-compose', hasScenario: false });
   assert.equal(caps2['ai-drill'], true);
   assert.equal(caps2['speak'], false);
@@ -83,6 +86,9 @@ test('drill chain follows the spec order and every link knows its fallbacks', ()
   assert.deepEqual(chain[0].fallbacks,
     ['authored-drill', 'retype', 'srs-retrieval', 'listen', 'review']);
   assert.equal(chain[0].concept, 'passe-compose');
+  assert.equal(chain.find((p) => p.kind === 'srs-retrieval').cardCap, 6, 'retrieval fallback keeps the real due count');
+  assert.equal(chain.find((p) => p.kind === 'listen').track.id, 't1', 'listening fallback keeps its real track');
+  assert.equal(chain.find((p) => p.kind === 'review').count, 3, 'review fallback keeps its real correction count');
   assert.deepEqual(chain[chain.length - 1].fallbacks, []);
 });
 
