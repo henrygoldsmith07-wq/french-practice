@@ -27,7 +27,9 @@ const todayModule = await import('../src/components/TodaySession.jsx');
 const TodaySession = todayModule.default;
 const { RecallRunner, DelayedReview, DrillChainRunner, claimForwardTransition } = todayModule;
 const { NotebookRetype } = await import('../src/components/NotebookRetype.jsx');
-const HeldOutCheck = (await import('../src/components/HeldOutCheck.jsx')).default;
+const heldOutModule = await import('../src/components/HeldOutCheck.jsx');
+const HeldOutCheck = heldOutModule.default;
+const { claimMeasurement } = heldOutModule;
 const { setGrammarTopics } = await import('../src/lib/todayCapabilities.js');
 // The REAL study module — injected like the lazy chunk would deliver it.
 const STUDY = await import('../src/lib/studyFlow.js');
@@ -843,6 +845,15 @@ for (const order of ORDERS) {
   } finally {
     await close({ root, container });
   }
+}
+
+// ---- 17. speaking measurement settlement is first-writer-wins ------------
+
+{
+  const gate = { current: false };
+  assert.equal(claimMeasurement(gate), true, 'the first objective result settles the attempt');
+  assert.equal(claimMeasurement(gate), false, 'late async completions cannot overwrite a settled attempt');
+  assert.equal(claimMeasurement(gate), false, 'multiple timeout/error races remain ignored');
 }
 
 console.log('Today-deps lifecycle render tests: PASS');
