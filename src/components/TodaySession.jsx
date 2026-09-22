@@ -987,6 +987,7 @@ export function RecallRunner({ cardCap, onDone, onXp, onActivity }) {
   }, [entries, cardCap]);
   const [idx, setIdx] = useState(0);
   const firedRef = useRef(false);
+  const ratingRef = useRef(false);
   const loaded = deck !== null;
 
   // Empty decks skip immediately; completed non-empty decks briefly show the
@@ -1008,8 +1009,13 @@ export function RecallRunner({ cardCap, onDone, onXp, onActivity }) {
   // A changed cap or language library means a fresh recall segment.
   useEffect(() => {
     firedRef.current = false;
+    ratingRef.current = false;
     setIdx(0);
   }, [cardCap, entries]);
+
+  useEffect(() => {
+    ratingRef.current = false;
+  }, [idx]);
 
   if (!loaded || deck.length === 0) return null;
   if (idx >= deck.length) {
@@ -1021,6 +1027,8 @@ export function RecallRunner({ cardCap, onDone, onXp, onActivity }) {
   }
   const entry = deck[idx];
   const rate = (rating) => {
+    if (ratingRef.current) return;
+    ratingRef.current = true;
     rateCard(entry.id, rating, { mode: 'receptive', skill: 'vocabulary', itemLabel: entry.fr, label: entry.fr, source: 'today-recall', encounterId: newEncounterId() });
     onActivity?.({ type: 'cards', rating, itemId: entry.id, itemLabel: entry.fr, mode: 'receptive' });
     onXp(rating === 'again' ? 1 : 2);
