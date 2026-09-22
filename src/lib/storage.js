@@ -1992,8 +1992,10 @@ export const getSelectionTrial = () => {
 
 export function recordSelectionTrial(record) {
   const list = getSelectionTrial();
+  const at = new Date().toISOString();
   list.push({
-    at: new Date().toISOString(),
+    id: String(record?.id || `selection:${at}:${Math.random().toString(36).slice(2, 10)}`),
+    at,
     engineVersion: record.engineVersion || null,
     candidates: record.candidates || [],
     selectedId: record.selectedId || null,
