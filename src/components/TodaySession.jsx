@@ -546,7 +546,7 @@ function TodayBody({ plan, segIndex, setSegIndex, close, apiKey, mockMode, level
         ? { ...seg.payload }
         : (seg.payload?.chain || []).find((p) => p.kind === 'conj-drill') || null;
     } else if (seg.id === 'review') {
-      body = <DelayedReview count={seg.payload.count} onXp={award} />;
+      body = <DelayedReview count={seg.payload.count} onXp={award} onDone={advance} />;
     } else if (seg.id === 'listen' && seg.payload.track) {
       const track = (liveTracks || []).find((t) => t.id === seg.payload.track.id);
       if (track) body = <TrackPlayer track={track} baseRate={ttsRate} level={level} onXp={award} onActivity={onActivity} onDone={advance} />;
@@ -709,7 +709,7 @@ function DrillChainRunner({ payload, level, apiKey, mockMode, ttsRate, onXp, onD
     return <ListenFallback track={current.track} onDone={onDone} />;
   }
   if (kind === 'review') {
-    return <DelayedReview count={current.count} onXp={onXp} />;
+    return <DelayedReview count={current.count} onXp={onXp} onDone={onDone} />;
   }
   // Default: the AI targeted drill (first link of the chain).
   return (
@@ -955,14 +955,36 @@ export function RecallRunner({ cardCap, onDone, onXp, onActivity }) {
 
 // Delayed review: recent corrections replayed as retrieval prompts. A
 // self-marked "said it right" feeds the mistake graph's mastery lifecycle.
-export function DelayedReview({ count, onXp }) {
+export function DelayedReview({ count, onXp, onDone }) {
   const items = useMemo(
     () => getErrorNotebook().filter((e) => e.correctedByLearner).slice(0, Math.max(1, count)),
     [count],
   );
   const [idx, setIdx] = useState(0);
   const [revealed, setRevealed] = useState(false);
-  if (!items.length || idx >= items.length) {
+  const firedRef = useRef(false);
+  const complete = !items.length || idx >= items.length;
+
+  // Review is a session segment, not a terminal screen: empty review queues
+  // skip immediately and completed queues hand control back after a brief
+  // acknowledgement. The guard prevents StrictMode/re-render duplicates.
+  useEffect(() => {
+    if (!complete || firedRef.current) return undefined;
+    const timer = setTimeout(() => {
+      if (firedRef.current) return;
+      firedRef.current = true;
+      onDone?.();
+    }, items.length ? 300 : 0);
+    return () => clearTimeout(timer);
+  }, [complete, items.length, onDone]);
+
+  useEffect(() => {
+    firedRef.current = false;
+    setIdx(0);
+    setRevealed(false);
+  }, [count]);
+
+  if (complete) {
     return (
       <div className="h-full grid place-items-center px-4">
         <p className="text-sm text-ink2">Review complete.</p>
