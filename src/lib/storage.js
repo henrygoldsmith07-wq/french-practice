@@ -46,6 +46,7 @@ export { KEYS, readLearnerValue, purgeLearnerData, activeLearnerId, isLearnerKey
 
 
 
+
 // A stable per-account id, created on first use. Because it exports/imports
 // with the snapshot, two devices restored from the same code share one id —
 // the closest thing to an "account" without a backend.
@@ -1639,6 +1640,19 @@ export function removeFieldNote(id) {
   write(KEYS.fieldNotes, next);
   return next;
 }
+
+// ---- conjugation drill progress ----
+// Per-cell counters only: {seen, right, wrong, accentWrong}. The drill's own
+// module owns the shape and the maths; storage just persists it.
+
+export const getConjugationProgress = () => {
+  const raw = read(KEYS.conjugation, {});
+  return raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
+};
+
+export const saveConjugationProgress = (stats) => {
+  write(KEYS.conjugation, stats && typeof stats === 'object' && !Array.isArray(stats) ? stats : {});
+};
 
 // ---- grammar quiz progress ----
 

@@ -34,6 +34,7 @@ const KEYS = {
   habits: 'fp.habits', // [{ text, key, count, lastSeen }] — recurring mistakes
   notebook: 'fp.notebook', // [{ id, fr, en, note, addedAt }] — saved words
   grammar: 'fp.grammar', // { [topicId]: { best, attempts, lastAt } } — quiz results
+  conjugation: 'fp.conjugation.v1', // { [itemId]: { seen, right, wrong, accentWrong } } — conjugation drill
   wordCache: 'fp.wordCache', // { [word]: translation } — tap-to-translate lookups
   reviewLog: 'fp.reviewLog', // { 'YYYY-MM-DD': count } — daily review activity (heatmap)
   reminderDay: 'fp.reminderDay', // last day a smart reminder fired
