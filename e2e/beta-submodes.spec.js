@@ -185,7 +185,149 @@ test.describe('German full-tab sweep', () => {
   });
 });
 
-// --- Spanish spot-check + French return ---------------------------------------
+// --- Pronunciation (read-aloud + shadowing) for Beta languages ---------------
+
+// French-authored phonology labels that must NEVER appear on a German or
+// Spanish pronunciation surface (per-language phoneme profiles).
+const FRENCH_PHONOLOGY = [
+  /uvular/,
+  /nasal/,
+  /liaison/,
+  /gn \(ɲ\)/,
+  /j \(ʒ\)/,
+  /u \/ ou/,
+];
+
+async function openPronunciation(page) {
+  await openTab(page, 'Learn');
+  await page.getByRole('button', { name: /^Skills/ }).first().click();
+  await page.getByRole('button', { name: /Pronunciation, shadowing/ }).click();
+  await page.locator('body').getByRole('button', { name: /^Pronunciation/ }).click();
+}
+
+test.describe('German Pronunciation submodes', () => {
+  test('read-aloud opens German phonology and minimal pairs; shadowing gates on listening', async ({ page }) => {
+    test.setTimeout(90_000);
+    await freshLearner(page);
+    await completeOnboardingAs(page, /German · Beta/);
+
+    await openPronunciation(page);
+    const body = page.locator('body');
+
+    // The screen opens on German learner content: the target sentence and the
+    // minimal-pair strip carry lang="de", never lang="fr".
+    await expect(body.locator('p[lang="de"]').first()).toBeVisible({ timeout: 15_000 });
+    await expect(body.locator('[lang="fr"]')).toHaveCount(0);
+    // The minimal-pair queue draws from the GERMAN catalogue (ich/ach, ü/u,
+    // ö/o, devoicing, stress) — no French phoneme labels anywhere.
+    await expect(body.getByText(/Minimal pair · de-(ich-ach|u-u|o-o|devoicing|stress)/)).toBeVisible();
+    for (const pattern of FRENCH_PHONOLOGY) {
+      await expect(body.getByText(pattern)).toHaveCount(0);
+    }
+
+    // Retry UI sanity: the record control and the per-sentence controls exist.
+    await expect(body.getByRole('button', { name: /Read it aloud/ })).toBeVisible();
+
+    // Shadowing mode: re-enter the Speaking area, then its second mode.
+    await page.getByRole('button', { name: 'All skills' }).click();
+    await page.getByRole('button', { name: /Pronunciation, shadowing/ }).click();
+    await page.locator('body').getByRole('button', { name: /^Shadowing/ }).click();
+    await expect(body.getByText('Play the sentence first')).toBeVisible({ timeout: 15_000 });
+    await expect(body.getByRole('button', { name: /Listen first/ })).toBeVisible();
+    await expect(body.locator('[lang="fr"]')).toHaveCount(0);
+    await expect(body.getByText(/Minimal pair · de-(ich-ach|u-u|o-o|devoicing|stress)/)).toBeVisible();
+  });
+});
+
+// --- Today completion for Beta languages --------------------------------------
+
+// French-authored completion/Today copy that must never appear for de/es.
+const FRENCH_TODAY_COPY = [
+  /C'est tout\./,
+  /Today's French/,
+  /Aujourd'hui/,
+];
+
+// Drives one Today session to the completion screen the way a learner would:
+// rating or skipping each drill, talking (or typing) one Arena turn, then
+// ending the session. Every segment type in a Beta plan is either runnable
+// here or auto-skips when it has nothing to run — both routes reach the end.
+async function runTodayToCompletion(page, todayDialog) {
+  for (let guard = 0; guard < 25; guard += 1) {
+    if (await todayDialog.getByText('Session complete.').isVisible().catch(() => false)) return;
+    const skip = todayDialog.getByRole('button', { name: 'Skip', exact: true });
+    if (await skip.isVisible().catch(() => false)) { await skip.click(); continue; }
+    const end = todayDialog.getByRole('button', { name: 'End Session' });
+    if (await end.isVisible().catch(() => false)) { await end.click(); continue; }
+    const input = todayDialog.getByRole('textbox', { name: /Typed reply/i });
+    if (await input.isVisible().catch(() => false)) {
+      await input.fill('Guten Tag, ich möchte ein Brötchen kaufen.');
+      await input.press('Enter');
+      continue;
+    }
+    const reveal = todayDialog.getByRole('button', { name: /Say it, then reveal/ });
+    if (await reveal.isVisible().catch(() => false)) {
+      await reveal.click();
+      await todayDialog.getByRole('button', { name: /I said it right/ }).click();
+      continue;
+    }
+    const rate = todayDialog.getByRole('group', { name: 'How well did you recall it?' });
+    if (await rate.isVisible().catch(() => false)) {
+      await rate.getByRole('button', { name: 'Good' }).click();
+      continue;
+    }
+    await page.waitForTimeout(500);
+  }
+  throw new Error('Today session never reached the completion screen');
+}
+
+async function assertNoFrenchTodayCopy(page) {
+  const body = page.locator('body');
+  for (const pattern of FRENCH_TODAY_COPY) {
+    await expect(body.getByText(pattern)).toHaveCount(0);
+  }
+}
+
+async function completeTodayFor(page, languageCardName, langAttr) {
+  await freshLearner(page);
+  await completeOnboardingAs(page, languageCardName);
+
+  await openTab(page, 'Today');
+  await page.getByRole('button', { name: /Speak today/ }).click();
+  const todayDialog = page.getByRole('dialog', { name: new RegExp(`Today's ${languageCardName.source.replace(/\s*·\s*Beta/, '')}`, 'i') });
+  await expect(todayDialog).toBeVisible({ timeout: 20_000 });
+
+  await runTodayToCompletion(page, todayDialog);
+
+  // The completion screen: active-language chrome only. The takeaway phrase
+  // is learner-language content with the ACTIVE lang attribute — never fr.
+  await expect(todayDialog.getByText('Session complete.')).toBeVisible();
+  await assertNoFrenchTodayCopy(page);
+  await expect(page.locator('[lang="fr"]')).toHaveCount(0);
+  await expect(page.locator(`[lang="${langAttr}"]`).first()).toBeVisible();
+
+  // Retry behaviour sanity: closing returns to the studio with no French
+  // submodes reachable (completion must not leave ghost state).
+  await todayDialog.getByRole('button', { name: 'Close' }).click();
+  await expect(todayDialog).toBeHidden({ timeout: 10_000 });
+  await assertNoFrenchSubmodes(page);
+}
+
+test.describe('German Today completion', () => {
+  test('a full German session ends on a German-only completion screen', async ({ page }) => {
+    test.setTimeout(120_000);
+    await completeTodayFor(page, /German · Beta/, 'de');
+  });
+});
+
+test.describe('Spanish Today completion', () => {
+  test('a full Spanish session ends on a Spanish-only completion screen', async ({ page }) => {
+    test.setTimeout(120_000);
+    await completeTodayFor(page, /Spanish · Beta/, 'es');
+  });
+});
+
+// --- Spanish and French return -------------------------------------------------
 
 test.describe('Spanish and French return', () => {
   test('Spanish dictation is Spanish; French restores the gated modes', async ({ page }) => {

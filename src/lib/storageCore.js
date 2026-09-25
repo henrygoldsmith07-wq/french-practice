@@ -91,6 +91,7 @@ const KEYS = {
   conversationMode: 'fp.conversationMode', // 'coach' | 'fluency' — Arena correction policy
   cultureSeen: 'fp.cultureSeen', // [articleId] — Culture items already opened
   realworldSeen: 'fp.realworldSeen', // [itemId] — RealWorld items already opened
+  path: 'fp.path', // Learning Path state: goal, CEFR, unit/lesson progress, checkpoints
 };
 
 export { KEYS };
@@ -140,6 +141,10 @@ const LEARNER_KEY_VALUES = [
   // a household active each member now keeps their own mode and seen-lists;
   // the one-shot claim keeps every pre-existing value with the first member.
   KEYS.conversationMode, KEYS.cultureSeen, KEYS.realworldSeen,
+  // Learning-path progress (goal/CEFR/unit/lesson) and the pronunciation
+  // profile (per-phoneme weaknesses, minimal-pair queue) are learner-owned:
+  // household members must not share path progress or accent weaknesses.
+  KEYS.path, KEYS.phonemeProfile,
 ];
 
 const LEARNER_KEY_SET = new Set(LEARNER_KEY_VALUES);
@@ -268,6 +273,14 @@ function writeRaw(key, value) {
 export function write(key, value) {
   if (LEARNER_KEY_SET.has(key)) { learnerWrite(key, value); return; }
   writeRaw(key, value);
+}
+
+/** Learner-aware removal (the DELETE half of the read/write pair). */
+export function remove(key) {
+  const memberId = activeLearnerId();
+  if (!memberId) { try { localStorage.removeItem(key); } catch { /* unavailable */ } return; }
+  claimLegacyFor(key, memberId);
+  try { localStorage.removeItem(learnerKey(key, memberId)); } catch { /* unavailable */ }
 }
 
 function blankHousehold() {

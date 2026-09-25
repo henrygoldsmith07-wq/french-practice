@@ -33,7 +33,7 @@ import { getErrorNotebook } from '../lib/errorNotebook';
 import { useAllEntries } from '../lib/vocabAsync';
 import { useTodayDeps } from '../hooks/useTodayDeps';
 import { hasCapabilityNow } from '../lib/capabilities';
-import { langName } from '../lib/i18n';
+import { activeLanguage, langName } from '../lib/i18n';
 import { notebookAsEntries, dueEntries, reviewOrder, NEW_CARD_CAP } from '../lib/memory';
 import { getScenarios } from '../lib/data';
 
@@ -585,18 +585,21 @@ function TodayBody({ plan, segIndex, setSegIndex, close, apiKey, mockMode, level
     const speakSeg = plan.segments.find((s) => s.id === 'speak');
     const speakScenario = speakSeg ? getScenarios().find((x) => x.id === speakSeg.payload.scenarioId) : null;
     const takeaway = takeawayPhrase(history, speakScenario);
+    // The takeaway is learner-language content — it must carry the ACTIVE
+    // language, never a hard-coded French attribute.
+    const activeId = activeLanguage().id;
     return (
       <div className="fixed inset-0 z-[65] overflow-y-auto bg-bg" role="dialog" aria-modal="true" aria-label={`Today's ${langName()} complete`}>
         <div className="mx-auto min-h-full max-w-lg px-4 py-10 text-center space-y-5">
-          <p className="text-3xl font-black text-ink">C'est tout.</p>
+          <p className="text-3xl font-black text-ink">Session complete.</p>
           {takeaway ? (
             <p className="text-lg text-ink leading-relaxed">
               You can now say<br />
-              <span className="font-bold" lang="fr">«{takeaway}»</span>
+              <span className="font-bold" lang={activeId}>«{takeaway}»</span>
             </p>
           ) : (
             <p className="text-sm text-ink2">
-              Today's French — {plan.totalMinutes} minutes · {plan.segments.map((s) => s.label).join(' → ')}.
+              Today's {langName()} — {plan.totalMinutes} minutes · {plan.segments.map((s) => s.label).join(' → ')}.
             </p>
           )}
           <button onClick={close} className="btn btn-primary w-full max-w-xs mx-auto min-h-12 rounded-xl text-sm">Close</button>
@@ -649,7 +652,7 @@ function WhyPanel({ explain, recovery }) {
     <div className="shrink-0 bg-surface2 border-b border-line px-4 py-3">
       <div className="max-w-lg mx-auto space-y-1.5">
         <div className="flex items-baseline justify-between gap-3">
-          <p className="text-sm font-semibold text-ink" lang="fr">{explain.headline}</p>
+          <p className="text-sm font-semibold text-ink" lang={activeLanguage().id}>{explain.headline}</p>
           {recovery && <RecoveryBadge status={recovery} />}
         </div>
         <p className="text-xs text-ink2">{explain.why}</p>
@@ -886,6 +889,16 @@ export function RecallRunner({ cardCap, onDone, onXp, onActivity }) {
   }, [entries, cardCap]);
   const [idx, setIdx] = useState(0);
   const firedRef = useRef(false);
+  // Evidence identity + double-tap guard: ONE encounter per DISPLAYED card.
+  // The id is minted per deck index (per presentation), not inside the rating
+  // callback, and the first rating wins: ratedRef closes synchronously so a
+  // fast double-tap (or a tap racing the 250 ms advance) is a no-op.
+  const ratedRef = useRef(false);
+  const encounterRef = useRef(null);
+  useEffect(() => {
+    ratedRef.current = false;
+    encounterRef.current = newEncounterId();
+  }, [idx]);
   const loaded = deck !== null;
   useEffect(() => { if (loaded && deck.length === 0 && !firedRef.current) { firedRef.current = true; setTimeout(onDone, 0); } }, [loaded, deck, onDone]);
   useEffect(() => { firedRef.current = false; }, [cardCap]);
@@ -899,7 +912,9 @@ export function RecallRunner({ cardCap, onDone, onXp, onActivity }) {
   }
   const entry = deck[idx];
   const rate = (rating) => {
-    rateCard(entry.id, rating, { mode: 'receptive', skill: 'vocabulary', itemLabel: entry.fr, label: entry.fr, source: 'today-recall', encounterId: newEncounterId() });
+    if (ratedRef.current) return; // duplicate tap: one presentation, one rating
+    ratedRef.current = true;
+    rateCard(entry.id, rating, { mode: 'receptive', skill: 'vocabulary', itemLabel: entry.fr, label: entry.fr, source: 'today-recall', encounterId: encounterRef.current });
     onActivity?.({ type: 'cards', rating, itemId: entry.id, itemLabel: entry.fr, mode: 'receptive' });
     onXp(rating === 'again' ? 1 : 2);
     // Mistake-graph cards close their loop: the SRS resurface IS the
@@ -925,7 +940,7 @@ export function RecallRunner({ cardCap, onDone, onXp, onActivity }) {
     <div className="h-full overflow-y-auto nice-scroll px-4 py-6">
       <div className="max-w-md mx-auto space-y-4">
         <p className="text-center text-[11px] text-ink3 tabular-nums">{idx + 1}/{deck.length}</p>
-        <VocabCard entry={entry} cardDue saved={false} onRate={rate} onToggleSave={() => {}} apiKey="" mockMode />
+        <VocabCard entry={entry} cardDue saved={false} disabled={ratedRef.current} onRate={rate} onToggleSave={() => {}} apiKey="" mockMode />
         <p className="text-[11px] text-ink3 text-center">Rate honestly — the scheduler decides when this returns.</p>
       </div>
     </div>
@@ -941,6 +956,9 @@ export function DelayedReview({ count, onXp }) {
   );
   const [idx, setIdx] = useState(0);
   const [revealed, setRevealed] = useState(false);
+  // Double-tap guard: one self-mark per presented prompt.
+  const markedRef = useRef(false);
+  useEffect(() => { markedRef.current = false; }, [idx]);
   if (!items.length || idx >= items.length) {
     return (
       <div className="h-full grid place-items-center px-4">
@@ -950,6 +968,8 @@ export function DelayedReview({ count, onXp }) {
   }
   const entry = items[idx];
   const mark = (remembered) => {
+    if (markedRef.current) return;
+    markedRef.current = true;
     try {
       const graph = getMistakeGraph();
       const match = graph.find((m) => m.original === entry.original || m.concept === entry.ruleId);
@@ -967,10 +987,10 @@ export function DelayedReview({ count, onXp }) {
     <div className="h-full grid place-items-center px-4">
       <div className="w-full max-w-md space-y-4 text-center">
         <p className="text-[11px] uppercase tracking-wider text-ink3">Prompt {idx + 1}/{items.length}</p>
-        <p className="text-lg text-ink" lang="fr">«{entry.original}»</p>
+        <p className="text-lg text-ink" lang={activeLanguage().id}>«{entry.original}»</p>
         {revealed ? (
           <>
-            <p className="text-lg font-semibold text-ink" lang="fr">{entry.corrected}</p>
+            <p className="text-lg font-semibold text-ink" lang={activeLanguage().id}>{entry.corrected}</p>
             <div className="grid grid-cols-2 gap-2">
               <button onClick={() => mark(true)} className="btn btn-secondary min-h-11 rounded-xl text-sm">I said it right</button>
               <button onClick={() => mark(false)} className="btn btn-secondary min-h-11 rounded-xl text-sm">Needed the answer</button>

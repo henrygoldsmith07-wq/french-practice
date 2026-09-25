@@ -150,7 +150,7 @@ test('Today delivery is recorded on the selection trial after a run', async ({ p
     await skipButton.click();
     await page.waitForTimeout(200);
   }
-  await expect(page.getByText(/C'est tout/i).first()).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByText('Session complete.')).toBeVisible({ timeout: 10_000 });
   const trial = await page.evaluate(() => {
     const list = JSON.parse(localStorage.getItem('fp.selectionTrial.v1') || '[]');
     return list[list.length - 1] || null;

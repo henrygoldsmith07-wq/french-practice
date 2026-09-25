@@ -1,4 +1,4 @@
-﻿import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { langName } from '../lib/i18n';
 import useRecorder from '../hooks/useRecorder';
 import Waveform from './Waveform';
@@ -23,6 +23,15 @@ import { buildLearningPlan } from '../lib/learningAdaptation';
 import { SpeakButton, RateSlider, Spinner } from './ui';
 import { speak, stopSpeaking } from '../lib/tts';
 import { ArrowRight, Lightbulb, Mic, Square, scenarioIcon } from './icons';
+
+// Per-language hesitation filler suggested when the coach detects a long
+// pause mid-answer. The map (not a hard-coded French phrase) keeps the tip
+// truthful for every studio language.
+const PAUSE_FILLER = {
+  fr: 'et puis…',
+  de: 'ähm, also…',
+  es: 'este…',
+};
 import ScenarioPicker from './ScenarioPicker';
 import { Avatar, AiBubble, UserBubble, RedoCompare, STRONG_LEVELS } from './ArenaCorrections';
 import { markOutcomeRecurrence } from '../lib/studyFlow';
@@ -30,9 +39,9 @@ import { markOutcomeRecurrence } from '../lib/studyFlow';
 const CURVEBALL_TURN = 3; // the surprise lands on the learner's 3rd turn
 
 // Conversation modes:
-//   coach    â€” per-turn corrections, hints, redo (the classic Arena loop)
-//   fluency  â€” no interruptions during the conversation; one debrief after,
-//              surfacing only the highest-value 2â€“3 corrections
+//   coach    — per-turn corrections, hints, redo (the classic Arena loop)
+//   fluency  — no interruptions during the conversation; one debrief after,
+//              surfacing only the highest-value 2–3 corrections
 function readConversationMode() {
   return getConversationMode();
 }
@@ -131,7 +140,7 @@ export default function ChatArena({ apiKey, mockMode, ttsRate, level, onTtsRate,
   const [reversed, setReversed] = useState(false);
 
   // Mic-failure fallback line: the partner's latest message, else the opener.
-  // Speech failure always falls back to tap-to-listen + typing â€” never a dead
+  // Speech failure always falls back to tap-to-listen + typing — never a dead
   // mic screen.
   const fallbackListenText = (() => {
     for (let i = history.length - 1; i >= 0; i -= 1) {
@@ -264,17 +273,17 @@ export default function ChatArena({ apiKey, mockMode, ttsRate, level, onTtsRate,
         learner,
         mock: mockMode,
       });
-      if (stale()) return; // scenario switched mid-flight â€” discard, don't append
+      if (stale()) return; // scenario switched mid-flight — discard, don't append
       if (evaluation.grammar_topic) recordWeaknessError(evaluation.grammar_topic, { scenarioId: scenario.id, sessionId: currentSessionId(), encounterId });
       if (evaluation.grammar_topic) recordGrammarError(evaluation.grammar_topic);
       // Permanent learning object: definite/likely errors become notebook
-      // entries automatically â€” retype drill now, recurrence tracking forever.
+      // entries automatically — retype drill now, recurrence tracking forever.
       // Stylistic suggestions are advice, not mistakes; they don't get kept.
       try {
         const strong = (evaluation.corrections_detailed || []).find((c) => STRONG_LEVELS.has(c.level));
         if (strong && conversationMode !== 'fluency') {
           // Permanent learning object: definite/likely errors become notebook
-          // entries automatically â€” retype drill now, recurrence tracking
+          // entries automatically — retype drill now, recurrence tracking
           // forever. In fluency mode this happens once, after the session
           // (the debrief records only the highest-value mistakes).
           // Structural mistake graph: concept + type + mastery lifecycle.
@@ -326,7 +335,7 @@ export default function ChatArena({ apiKey, mockMode, ttsRate, level, onTtsRate,
       // Speaking corpus seed: store the AI side of this turn so a human rater
       // can pair their mark against it later (updateCorpusHumanMark, then a
       // second rater via updateCorpusSecondMark). Never fabricates the human
-      // half â€” the entry waits as AI-only until raters add theirs.
+      // half — the entry waits as AI-only until raters add theirs.
       try {
         recordCorpusEntry({
           mode: 'speaking',
@@ -432,23 +441,23 @@ export default function ChatArena({ apiKey, mockMode, ttsRate, level, onTtsRate,
               aria-pressed={conversationMode === m}
               title={m === 'coach'
                 ? 'Corrections on every turn, hints, redo'
-                : 'No interruptions â€” full debrief when you finish'}
+                : 'No interruptions — full debrief when you finish'}
               className={`px-3 py-1.5 rounded-lg border text-[11px] font-semibold transition-colors ${
                 conversationMode === m
                   ? 'border-ink bg-surface2 text-ink'
                   : 'border-line text-ink3 hover:text-ink2'
               }`}
             >
-              {m === 'coach' ? 'ðŸŽ¯ Coach' : 'ðŸŒŠ Fluency'}
+              {m === 'coach' ? '🎯 Coach' : '🌊 Fluency'}
             </button>
           ))}
           <span className="text-[10px] text-ink3 hidden sm:inline">
-            {isFluency ? 'Keep talking â€” corrections come at the end.' : 'Corrections each turn.'}
+            {isFluency ? 'Keep talking — corrections come at the end.' : 'Corrections each turn.'}
           </span>
         </div>
         {weaknessDue && !isFluency && (
           <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 flex items-center justify-between gap-2" role="status">
-            <span className="text-xs text-ink"><span className="font-bold">Retest due:</span> {(() => { const t = getGrammarTopic(weaknessDue.topicId); return t ? t.title : weaknessDue.topicId; })()} â€” last slip {Math.max(1, Math.round((Date.now() - new Date(weaknessDue.lastErrorAt).getTime())/86400000))}d ago. Practise it again?</span>
+            <span className="text-xs text-ink"><span className="font-bold">Retest due:</span> {(() => { const t = getGrammarTopic(weaknessDue.topicId); return t ? t.title : weaknessDue.topicId; })()} — last slip {Math.max(1, Math.round((Date.now() - new Date(weaknessDue.lastErrorAt).getTime())/86400000))}d ago. Practise it again?</span>
             <button onClick={() => changeScenario(scenario.id)} className="shrink-0 text-xs font-semibold text-amber-800 underline">Keep this scenario</button>
           </div>
         )}
@@ -461,7 +470,7 @@ export default function ChatArena({ apiKey, mockMode, ttsRate, level, onTtsRate,
               reversed ? 'border-ink bg-surface2 text-ink' : 'border-line text-ink3 hover:text-ink2'
             }`}
           >
-            ðŸ”„ {reversed ? 'Roles swapped â€” you serve' : 'Swap roles'}
+            🔄 {reversed ? 'Roles swapped — you serve' : 'Swap roles'}
           </button>
           <div className="flex items-center gap-2">
             {secondsLeft != null && (
@@ -496,7 +505,7 @@ export default function ChatArena({ apiKey, mockMode, ttsRate, level, onTtsRate,
         <AiBubble text={scenario.opener} translation={scenario.openerTranslation} ttsRate={ttsRate} />
         {redoIdx != null && history[redoIdx] && (
           <div className="rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-ink" role="status">
-            <span className="font-bold">Redo mode</span> â€” correction hidden. Recall the fix from memory, then re-speak or re-type the same turn. Weâ€™ll compare the two attempts.
+            <span className="font-bold">Redo mode</span> — correction hidden. Recall the fix from memory, then re-speak or re-type the same turn. We’ll compare the two attempts.
           </div>
         )}
         {history.map((turn, i) => (
@@ -524,7 +533,7 @@ export default function ChatArena({ apiKey, mockMode, ttsRate, level, onTtsRate,
           </div>
         ))}
         {phase === 'thinking' && (
-          <div className="flex items-end gap-2 bubble-in" aria-label="Your partner is typingâ€¦">
+          <div className="flex items-end gap-2 bubble-in" aria-label="Your partner is typing…">
             <Avatar />
             <div className="bg-surface2 rounded-2xl rounded-bl-md px-4 py-3.5 flex gap-1.5">
               <span className="typing-dot" /><span className="typing-dot" /><span className="typing-dot" />
@@ -543,7 +552,7 @@ export default function ChatArena({ apiKey, mockMode, ttsRate, level, onTtsRate,
       {(hint || hintLoading) && !isFluency && (
         <div className="mx-4 sm:max-w-2xl sm:mx-auto sm:w-full mb-2 fade-in rounded-xl bg-surface2 border border-line px-3 py-2">
           {hintLoading
-            ? <Spinner label={`Hint ${hintLevel}/3â€¦`} />
+            ? <Spinner label={`Hint ${hintLevel}/3…`} />
             : <p className="text-xs text-ink2"><span className="font-bold">Hint {hintLevel}/3:</span> {hint}</p>}
         </div>
       )}
@@ -553,7 +562,7 @@ export default function ChatArena({ apiKey, mockMode, ttsRate, level, onTtsRate,
         <div className="max-w-2xl mx-auto">
         {redoIdx != null && phase === 'idle' && !recorder.recording && (
           <div className="mb-2 flex items-center justify-between gap-2 rounded-xl bg-amber-50 border border-amber-200 px-3 py-2">
-            <span className="text-xs text-ink"><span className="font-bold">Retrying turn {redoIdx + 1}</span> â€” say it again without peeking.</span>
+            <span className="text-xs text-ink"><span className="font-bold">Retrying turn {redoIdx + 1}</span> — say it again without peeking.</span>
             <button onClick={() => setRedoIdx(null)} className="text-xs font-semibold text-ink2 hover:text-ink min-h-8 px-2">Cancel redo</button>
           </div>
         )}
@@ -583,10 +592,10 @@ export default function ChatArena({ apiKey, mockMode, ttsRate, level, onTtsRate,
             {spoken && (
               <p className="text-[11px] text-review bg-reviewsoft rounded-lg px-2.5 py-1.5" role="status">
                 {spoken.fillers > 0
-                  ? <>Coach: you hesitated on Â«{spoken.fillerWords.join('Â», Â«')}Â» â€” try to land the phrase in one breath.</>
+                  ? <>Coach: you hesitated on «{spoken.fillerWords.join('», «')}» — try to land the phrase in one breath.</>
                   : spoken.longestPauseMs > 1800
-                    ? <>Coach: a {(spoken.longestPauseMs / 1000).toFixed(1)}s pause mid-answer â€” bridge with Â«et puisâ€¦Â» while you think.</>
-                    : <>Coach: that came out fast ({spoken.wpm} wpm) â€” a slightly slower pace reads clearer.</>}
+                    ? <>Coach: a {(spoken.longestPauseMs / 1000).toFixed(1)}s pause mid-answer — bridge with «{PAUSE_FILLER[activeLanguage().id] || PAUSE_FILLER.fr}» while you think.</>
+                    : <>Coach: that came out fast ({spoken.wpm} wpm) — a slightly slower pace reads clearer.</>}
               </p>
             )}
             <textarea
@@ -626,7 +635,7 @@ export default function ChatArena({ apiKey, mockMode, ttsRate, level, onTtsRate,
                 value={draft}
                 onChange={(e) => setDraft(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && send(draft)}
-                placeholder={busy ? 'â€¦' : redoIdx != null ? `Redo turn ${redoIdx + 1} â€” type your improved ${langName()}â€¦` : `Or type in ${langName()}â€¦`}
+                placeholder={busy ? '…' : redoIdx != null ? `Redo turn ${redoIdx + 1} — type your improved ${langName()}…` : `Or type in ${langName()}…`}
                 disabled={busy}
                 className="flex-1 bg-transparent py-3 text-sm text-ink placeholder:text-ink3 focus:outline-none"
                 aria-label={redoIdx != null ? 'Retry reply' : 'Typed reply'}

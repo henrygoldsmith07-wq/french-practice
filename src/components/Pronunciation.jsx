@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect } from 'react';
+import { useMemo, useState, useEffect, useRef } from 'react';
 import useRecorder from '../hooks/useRecorder';
 import Waveform from './Waveform';
 import { randomPoolSentence, toWords, diffWordsEq, displayHits } from '../lib/sentences';
@@ -9,7 +9,7 @@ import { recordSkillScore, recordPronunciationGap, getMistakeGraph, saveMistakeG
 import { newEncounterId } from '../lib/evidenceIdentity';
 import { speak, stopSpeaking, adaptiveTtsRate } from '../lib/tts';
 import { SpeakButton, Spinner } from './ui';
-import { accentToleranceScore, calibratedConfidence, PHONEMES, getPhonemeProfile, nextMinimalPair, recordPhonemeAttempt, weakestPhonemes } from '../lib/phonemeProfile';
+import { accentToleranceScore, calibratedConfidence, PHONEMES, phonemesFor, getPhonemeProfile, nextMinimalPair, recordPhonemeAttempt, weakestPhonemes } from '../lib/phonemeProfile';
 import { noiseGate } from '../lib/adaptivePractice';
 import { evaluateFluency, PAUSE_MIN_MS } from '../lib/speakingEvaluation';
 import { decodeToMono16k } from '../lib/acoustics';
@@ -29,6 +29,16 @@ export default function Pronunciation({ mode, apiKey, mockMode, level, onXp, onA
   const [phase, setPhase] = useState('idle'); // idle | scoring
   const [result, setResult] = useState(null); // { heard, accuracy, gained, hits, feedback }
   const [error, setError] = useState(null);
+  // Evidence identity: ONE encounter per presented sentence. "Try again" on
+  // the same sentence is the same encounter — feedback was already shown, so
+  // a retry can never read as an independent retrieval. Only "Next sentence"
+  // (or a language switch changing the pool) mints a fresh encounter.
+  const encounterRef = useRef(newEncounterId());
+  const activeLangId = activeLanguage().id;
+  const activeLangName = activeLanguage().name;
+  useEffect(() => {
+    encounterRef.current = newEncounterId();
+  }, [sentence.text, activeLangId]);
 
   // Navigating away mid-playback must not keep reading aloud over the next screen.
   useEffect(() => () => stopSpeaking(), []);
@@ -76,10 +86,12 @@ export default function Pronunciation({ mode, apiKey, mockMode, level, onXp, onA
         let phonology = null;
         try {
           const audio = await decodeToMono16k(blob);
-          phonology = analyzePhonology({ target: sentence.text, accuracy, audio });
+          phonology = analyzePhonology({ target: sentence.text, accuracy, audio, lang: activeLangId });
           // Feed the phoneme profile: weakest phonological components count
-          // as misses so the existing minimal-pair drills target them.
-          if (phonology.weakest && PHONEMES.some((p) => p.id === phonology.weakest.id)) {
+          // as misses so the existing minimal-pair drills target them. Only
+          // ids that exist in the ACTIVE language's catalogue are recorded —
+          // a German attempt must never grow a French phoneme's stats.
+          if (phonology.weakest && phonemesFor(activeLangId).some((p) => p.id === phonology.weakest.id)) {
             recordPhonemeAttempt(phonology.weakest.id, { correct: phonology.weakest.score >= 60, confidence: 0.5 });
           }
           // Mistake graph: weak phonological components become structural
@@ -123,8 +135,8 @@ export default function Pronunciation({ mode, apiKey, mockMode, level, onXp, onA
           score: accuracy,
           source: shadow ? 'shadowing' : 'read-aloud',
           context: { missedWords: target.filter((_, i) => !hits[i]).slice(0, 8), rawAccuracy: Math.round(rawAcc * 100), fluency: fluency.score, pauses: fluency.pausing.pauseCount },
-          // One spoken attempt at one sentence = one encounter.
-          encounterId: newEncounterId(),
+          // One presented sentence = one encounter, retries included.
+          encounterId: encounterRef.current,
           activityId: sentence.id || sentence.text,
         });
         setPhonemeTick(t=>t+1);
@@ -170,7 +182,7 @@ export default function Pronunciation({ mode, apiKey, mockMode, level, onXp, onA
 
       {/* the target sentence */}
       <div className="bg-surface border border-line rounded-2xl p-5 text-center space-y-3">
-        <p className="text-[17px] text-ink leading-relaxed" lang="fr">
+        <p className="text-[17px] text-ink leading-relaxed" lang={activeLangId}>
           {result
             ? words.map((w, i) => (
                 <span key={i} className={result.hits[i] ? 'text-ink' : 'text-ink3 underline decoration-2 underline-offset-2'}>
@@ -260,7 +272,7 @@ export default function Pronunciation({ mode, apiKey, mockMode, level, onXp, onA
           )}
           <div>
             <h4 className="text-[11px] font-bold uppercase tracking-wider text-ink2 mb-1">The recognizer heard</h4>
-            <p className="text-sm text-ink2" lang="fr">{result.heard || '—'}</p>
+            <p className="text-sm text-ink2" lang={activeLangId}>{result.heard || '—'}</p>
             <p className="text-[11px] text-ink3 mt-1">Underlined words above weren't recognized — they're your likely trouble spots.</p>
           </div>
 
@@ -310,7 +322,7 @@ export default function Pronunciation({ mode, apiKey, mockMode, level, onXp, onA
           )}
           {result.fluency && result.fluency.pausing.longestPauseMs > PAUSE_MIN_MS * 5 && (
             <p className="text-[11px] text-review bg-reviewsoft rounded-lg px-2.5 py-1.5" role="status">
-              Coach: you stalled {(result.fluency.pausing.longestPauseMs / 1000).toFixed(1)}s mid-answer — link phrases with «et puis…» or «alors…» to keep the flow.
+              Coach: you stalled {(result.fluency.pausing.longestPauseMs / 1000).toFixed(1)}s mid-answer — keep phrases linked with a filler or connector from {activeLangName} to hold the flow.
             </p>
           )}
           {result.feedback && (
@@ -346,24 +358,28 @@ export default function Pronunciation({ mode, apiKey, mockMode, level, onXp, onA
 }
 function MinimalPairStrip(){
   // Start from the learner's actual weakest contrast, not a hard-coded one —
-  // the label and the audio must agree on the very first render.
-  const weak = weakestPhonemes(1)[0];
-  const phoneme = weak?.id || 'u-ou';
-  const [pair, setPair] = useState(() => nextMinimalPair(phoneme));
+  // the label and the audio must agree on the very first render. The whole
+  // strip is language-aware: the catalogue, the pair and the lang attribute
+  // all follow the active content language.
+  const langId = activeLanguage().id;
+  const cat = phonemesFor(langId);
+  const weak = weakestPhonemes(1, langId)[0];
+  const phoneme = weak?.id || cat[0]?.id || 'u-ou';
+  const [pair, setPair] = useState(() => nextMinimalPair(phoneme, langId));
   return (
     <div className="bg-surface border border-line rounded-2xl p-4 flex items-center gap-3">
       <div className="flex-1">
         <p className="text-[11px] font-bold uppercase tracking-wider text-ink3">Minimal pair · {phoneme}</p>
-        <p className="text-sm text-ink" lang="fr">{pair[0]} — {pair[1]}</p>
+        <p className="text-sm text-ink" lang={activeLanguage().id}>{pair[0]} — {pair[1]}</p>
       </div>
       <SpeakButton text={pair[0]} label={pair[0]} />
       <SpeakButton text={pair[1]} label={pair[1]} />
-      <button onClick={()=> setPair(nextMinimalPair(phoneme))} className="btn btn-secondary min-h-9 px-3 rounded-lg text-xs">New</button>
+      <button onClick={()=> setPair(nextMinimalPair(phoneme, langId))} className="btn btn-secondary min-h-9 px-3 rounded-lg text-xs">New</button>
     </div>
   );
 }
 function PhonemeWeakStrip(){
-  const weak = weakestPhonemes(3);
+  const weak = weakestPhonemes(3, activeLanguage().id);
   if(!weak.length) return null;
   return (
     <div className="bg-surface2 border border-line rounded-xl px-3.5 py-2.5 space-y-1.5">

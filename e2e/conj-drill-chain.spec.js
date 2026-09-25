@@ -92,5 +92,5 @@ test('a trainer gap owns the drill segment and renders the focused trainer', asy
 
   // And the segment hands back to the session — completed, not skipped.
   await page.getByRole('button', { name: /Done drilling/i }).click();
-  await expect(page.getByText(/C'est tout|Aujourd'hui/i).first()).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByText('Session complete.')).toBeVisible({ timeout: 10_000 });
 });

@@ -162,7 +162,7 @@ test.describe('six-skill production cycle (desktop chromium: fake mic + mock AI)
       }
       await completeCheck(page, pre);
       // Completion screen reached without crashing.
-      await expect(page.getByText(/C'est tout/i)).toBeVisible({ timeout: 15_000 });
+      await expect(page.getByText('Session complete.')).toBeVisible({ timeout: 15_000 });
       const chk = await readCheckRecord(page);
       expect(chk.results, 'results persisted').not.toBeNull();
       expect(chk.results.perItem.length).toBe(pre.items.length);

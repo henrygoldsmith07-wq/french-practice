@@ -42,13 +42,6 @@ const DOCUMENTED_BOUNDARIES = {
   // Storage is injectable so the conversation memory is testable in Node
   // without a browser; localStorage is only the default adapter.
   'lib/conversation.js': 'injectable storage adapter (localStorage is the default)',
-  // The learning-path state is not in the canonical KEYS map yet; it keeps its
-  // historical raw key until path.js joins storageCore.
-  'lib/path.js': 'path state key not yet in the KEYS map',
-  // Pronunciation profile: the key exists in KEYS but is intentionally NOT a
-  // learner-routed key, so raw access is physically identical to read()/write()
-  // — access must move to storageCore when the key joins the routing set.
-  'lib/phonemeProfile.js': 'key is outside the learner-routing set (global profile)',
   // Quota-watch state and the relay token are infra keys that never entered the
   // KEYS map; raw access matches their (non-routed) storage semantics.
   'lib/quota.js': 'quota-watch state key not in the KEYS map',
@@ -91,9 +84,9 @@ test('no product component touches localStorage directly', () => {
 
 test('the migrated preference and seen-list keys are learner-routed', async () => {
   const core = await import('../src/lib/storageCore.js');
-  // These three used to be raw component-level keys. If they ever fall out of
+  // These used to be raw component-level keys. If they ever fall out of
   // the routing set, households silently share them again — pin both directions.
-  for (const name of ['conversationMode', 'cultureSeen', 'realworldSeen']) {
+  for (const name of ['conversationMode', 'cultureSeen', 'realworldSeen', 'path', 'phonemeProfile']) {
     assert.ok(core.KEYS[name], `KEYS.${name} missing`);
     assert.equal(core.isLearnerKey(core.KEYS[name]), true, `KEYS.${name} must be learner-routed`);
   }

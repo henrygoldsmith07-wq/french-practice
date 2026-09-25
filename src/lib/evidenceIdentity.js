@@ -43,6 +43,18 @@ export function newEncounterId() {
   return `${currentSessionId()}:enc${counter}`;
 }
 
+/**
+ * `newEncounterId` for refs: create the id AND return it in one call.
+ * Producers bind one encounter per presentation by initialising a ref with
+ * this, then re-minting with `newEncounterId()` only when the presentation
+ * itself changes. `peek` makes the pure rule testable without a UI: the
+ * SAME ref keeps returning the same id across every "retry" of that
+ * presentation, and a new id only appears after the presentation changes.
+ */
+export function peekEncounterId() {
+  return newEncounterId();
+}
+
 /** The evidence-identity fields an evidence event may carry. */
 export function evidenceIdentity({ sessionId, encounterId, activityId } = {}) {
   const pick = (v) => {

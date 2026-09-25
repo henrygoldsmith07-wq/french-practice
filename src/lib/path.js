@@ -1,7 +1,12 @@
 // Learning Path engine: goals, roadmaps, placement test, adaptive CEFR
 // tracking, lesson progression and checkpoints. Pure client-side state.
+// Persistence goes through storageCore so path progress is learner-routed:
+// with a household active, members keep independent goals/CEFR/progress
+// (one-shot claim migrates the pre-household single-user state).
 
-const KEY = 'fp.path';
+import { read, write, remove, KEYS } from './storageCore.js';
+
+const KEY = KEYS.path;
 
 export const CEFR_LEVELS = ['A1', 'A2', 'B1', 'B2', 'C1', 'C2'];
 
@@ -48,7 +53,7 @@ export function placementResult(correctCount) {
 
 export function getPath() {
   try {
-    return JSON.parse(localStorage.getItem(KEY));
+    return read(KEY, null);
   } catch {
     return null;
   }
@@ -56,7 +61,7 @@ export function getPath() {
 
 export function savePath(path) {
   try {
-    localStorage.setItem(KEY, JSON.stringify(path));
+    write(KEY, path);
   } catch { /* storage unavailable */ }
 }
 
@@ -103,7 +108,7 @@ export function retakePlacement(goal, cefr, existing = getPath()) {
   return path;
 }
 
-export const clearPath = () => localStorage.removeItem(KEY);
+export const clearPath = () => remove(KEY);
 
 const lessonKey = (unit, idx) => `${unit.id}.${idx}`;
 

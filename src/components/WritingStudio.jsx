@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useRef, useEffect } from 'react';
 import { WRITING_PROMPTS, ESSAY_PROMPTS, randomFrom } from '../lib/writing';
 import { writingFeedback, friendlyError } from '../lib/groq';
 import { recordSkillScore, recordLearnerError } from '../lib/storage';
@@ -24,6 +24,16 @@ export default function WritingStudio({ depth, apiKey, mockMode, level, onXp, on
   const [reviewing, setReviewing] = useState(false);
   const [review, setReview] = useState(null);
   const [error, setError] = useState(null);
+  // Evidence identity: ONE encounter per prompt. "Revise it" resubmits after
+  // feedback was already shown — that is assisted, not independent retrieval,
+  // so the revision cites the SAME encounter as the original attempt. Only a
+  // genuinely new prompt ("New topic/prompt" or "Change") mints a fresh one.
+  const encounterRef = useRef(newEncounterId());
+  const [revised, setRevised] = useState(false); // shown feedback → resubmitted
+  useEffect(() => {
+    encounterRef.current = newEncounterId();
+    setRevised(false);
+  }, [prompt]);
 
   const wordCount = useMemo(() => text.split(/\s+/).filter(Boolean).length, [text]);
 
@@ -35,7 +45,16 @@ export default function WritingStudio({ depth, apiKey, mockMode, level, onXp, on
       const overall = r.scores.overall || 50;
       onXp(Math.max(2, Math.round(overall / 10)));
       recordSkillScore('writing', overall);
-      onActivity?.({ type: 'writing', score: overall, mode: essay ? 'essay' : 'free-writing', label: essay ? 'Essay studio' : 'Free writing', encounterId: newEncounterId(), activityId: essay ? 'essay-studio' : 'free-writing' });
+      onActivity?.({
+        type: 'writing', score: overall,
+        mode: essay ? 'essay' : 'free-writing',
+        label: essay ? 'Essay studio' : 'Free writing',
+        // Same prompt (including post-feedback revisions) = same encounter;
+        // revisions are flagged assisted so the model treats them honestly.
+        encounterId: encounterRef.current,
+        activityId: essay ? 'essay-studio' : 'free-writing',
+        assisted: revised || undefined,
+      });
       // Corpus seed: store the AI side now so a human rater can pair their
       // mark against it later (updateCorpusHumanMark). Never fabricates the
       // human half — the entry simply waits as AI-only until a rater adds one.
@@ -76,9 +95,7 @@ export default function WritingStudio({ depth, apiKey, mockMode, level, onXp, on
       setError(friendlyError(e));
     }
     setReviewing(false);
-  };
-
-  const restart = (newPrompt) => {
+  };  const restart = (newPrompt) => {
     if (newPrompt) setPrompt(randomFrom(prompts, prompt));
     setText('');
     setReview(null);
@@ -172,7 +189,7 @@ export default function WritingStudio({ depth, apiKey, mockMode, level, onXp, on
           </div>
 
           <div className="flex gap-2">
-            <button onClick={() => setReview(null)} className="btn btn-secondary flex-1 min-h-11 rounded-xl text-sm">
+            <button onClick={() => { setReview(null); setRevised(true); }} className="btn btn-secondary flex-1 min-h-11 rounded-xl text-sm">
               Revise it
             </button>
             <button onClick={() => restart(true)} className="btn btn-primary flex-1 min-h-11 rounded-xl text-sm">

@@ -27,21 +27,17 @@ const TodaySession = lazy(() => import('./components/TodaySession'));
 // graph for nothing.
 import { getPath } from './lib/path'; // applyActivity is dynamically imported in onActivity (keeps roadmaps.js off first load)
 import { getScenarios } from './lib/data';
-import { contentLang } from './lib/content/active';
 import usePwaInstall from './hooks/usePwaInstall';
 import useOverlayNav from './hooks/useOverlayNav';
 import useStudioBoot from './hooks/useStudioBoot';
 import useSessionLifecycle from './hooks/useSessionLifecycle';
 import useAppearance from './hooks/useAppearance';
 import useRewards from './hooks/useRewards';
-import {
-  getApiKey, getSettings, setSettings as persistSettings, getStreak,
+import useOnboarding from './hooks/useOnboarding';import { getApiKey, getSettings, setSettings as persistSettings, getStreak,
   getConversationMode,
   bumpChallengeMetric,
   getPrefs, setPrefs, getSessions,
-  setApiKey as persistApiKey, setAvatar as persistAvatar, ownAvatar, setHabitList,
-  setOnboarded, setLastActivity, getLastActivity, recordSpeakingGap, recordLearningActivity,
-  shouldOnboard,
+  setLastActivity, getLastActivity, recordSpeakingGap, recordLearningActivity,
 } from './lib/storage';
 // Heavy content libraries (vocab packs, grammar topics, listening tracks,
 // groq) are NOT statically imported here — they would drag ~600 kB of content
@@ -147,14 +143,6 @@ export default function App() {
   // study clock, telemetry sink) lives in one hook; App stays composition.
   const { telemetry, clearTelemetry } = useStudioBoot({ dueCount, smartReminders: settings.smartReminders });
 
-  // First-run onboarding: a brand-new learner (no key, no XP, no sessions,
-  // not onboarded before) is greeted by the picker. Returning learners and
-  // every seeded/skipped state land straight in the studio. Runs once after
-  // mount so storage has settled.
-  useEffect(() => {
-    if (shouldOnboard()) openOverlay('onboarding');
-  }, []); // mount-only gate: a brand-new learner gets the picker, once
-
   // Escape / Android Back close the one open overlay (useOverlayNav pushes
   // and consumes a history entry around it).
   useOverlayNav([[Boolean(overlay), closeOverlay]]);
@@ -175,48 +163,12 @@ export default function App() {
     setPrefsState(getPrefs());
   };
 
-  const finishOnboarding = (d) => {
-    let timezone = null;
-    try { timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || null; } catch { timezone = null; }
-    updateSettings({
-      ...settings,
-      name: d.name.trim(),
-      language: d.language,
-      timezone,
-      level: d.level,
-      dailyGoal: d.dailyGoal,
-      weeklyGoal: d.weeklyGoal,
-      smartReminders: d.reminders,
-      mockMode: relayEnabled ? false : (d.mock || (!d.apiKey.trim() && settings.mockMode)),
-    });
-    updatePrefs({ learningStyle: d.learningStyle, lessonLength: d.lessonLength, favouriteTopics: d.favouriteTopics });
-    persistAvatar(d.avatarId);
-    ownAvatar(d.avatarId);
-    setAvatarId(d.avatarId);
-    if (d.habits.length) setHabitList(d.habits);
-    if (d.apiKey.trim()) {
-      persistApiKey(d.apiKey.trim());
-      setApiKey(d.apiKey.trim());
-    }
-    setOnboarded();
-    closeOverlay();
-  };
-
-  const skipOnboarding = () => {
-    // The picker step syncs the chosen language LIVE (Onboarding →
-    // syncLanguage → content/active) but historically a skip never wrote it
-    // to settings: settings.language stayed at its previous value while the
-    // content layer ran Spanish/German — so Settings claimed French, the
-    // language radio could never trigger a switch (its guard saw no change),
-    // and the next reload silently reverted the learner to French. Adopt the
-    // LIVE content language so picking a language and skipping still sticks.
-    const liveLanguage = contentLang();
-    const next = { ...settings, language: liveLanguage };
-    if (!apiKey && !settings.mockMode) next.mockMode = true;
-    updateSettings(next);
-    setOnboarded();
-    closeOverlay();
-  };
+  // First-run onboarding (gate, finish, skip) lives in its own hook; App
+  // wires it to the settings/prefs updaters defined just above.
+  const { finishOnboarding, skipOnboarding } = useOnboarding({
+    settings, apiKey, updateSettings, updatePrefs, setApiKey, setAvatarId,
+    openOverlay, closeOverlay,
+  });
 
   const effectiveLevel = adaptiveLevel(settings.level, getSessions(), prefs.adaptiveDifficulty).level;
 
@@ -717,9 +669,9 @@ function Celebration({ data, onDone }) {
         <div className="w-16 h-16 mx-auto grid place-items-center rounded-2xl bg-surface2 border border-line">
           {level ? <span className="text-2xl font-black text-ink tabular-nums">{data.level}</span> : <Mascot mood="cheer" size={40} className="text-ink" />}
         </div>
-        <p className="mt-4 text-lg font-bold text-ink" lang="fr">{level ? `Niveau ${data.level} !` : 'Objectif atteint !'}</p>
+        <p className="mt-4 text-lg font-bold text-ink">{level ? `Level ${data.level}!` : 'Goal reached!'}</p>
         <p className="mt-1 text-sm text-ink2">{level ? (data.newTitle ? `You’re now ${data.title}. Keep the momentum.` : 'Another level down — keep the momentum.') : 'Daily goal reached — anything more today is pure bonus.'}</p>
-        <button onClick={onDone} className="btn btn-primary w-full min-h-11 rounded-xl text-sm mt-5">{level ? 'Merci !' : 'Allez !'}</button>
+        <button onClick={onDone} className="btn btn-primary w-full min-h-11 rounded-xl text-sm mt-5">{level ? 'Keep going' : 'Nice work'}</button>
       </div>
     </div>
   );

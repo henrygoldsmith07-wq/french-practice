@@ -82,7 +82,7 @@ export default function Waveform({ analyserRef, peakDb, elapsed }) {
         <div
           className="flex-1 h-1.5 rounded-full bg-surface2 overflow-hidden"
           role="meter"
-          aria-label="Niveau du micro"
+          aria-label="Microphone level"
           aria-valuemin={-60}
           aria-valuemax={0}
           aria-valuenow={Math.round(Math.max(-60, peakDb))}
