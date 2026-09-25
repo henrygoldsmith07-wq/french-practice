@@ -218,6 +218,13 @@ export function probeCapabilities({
   const accent = concept ? accentDrillFor(concept) : null;
   return {
     concept: concept || null,
+    // Preserve the payload values alongside the boolean gates. drillChain()
+    // needs the actual count/track to build a runnable fallback; capability
+    // booleans alone are not enough.
+    pendingRetypes: Math.max(0, Number(pendingRetypes) || 0),
+    srsDue: Math.max(0, Number(srsDue) || 0),
+    listeningTrack: listeningTrack || null,
+    recentCorrections: Math.max(0, Number(recentCorrections) || 0),
     'ai-drill': Boolean(hasAi) && Boolean(concept),
     'conj-drill': Boolean(trainer) && languageCaps.conj !== false,
     'dictation-drill': Boolean(dictation),

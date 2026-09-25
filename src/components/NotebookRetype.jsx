@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';import { getErrorNotebook, markCorrectedByLearner,
+import { useEffect, useMemo, useRef, useState } from 'react';import {
+  getErrorNotebook, markCorrectedByLearner, selectDueRetypes,
 } from '../lib/errorNotebook';
 import { getLearnerErrors, recordLearnerSuccess } from '../lib/storage';
 import { currentSessionId, newEncounterId } from '../lib/evidenceIdentity';
@@ -18,16 +19,22 @@ export function NotebookRetype({ onXp, onCleared }) {
   const [draft, setDraft] = useState('');
   const [wrong, setWrong] = useState(false);
   const [rehearsed, setRehearsed] = useState(false);
+  const clearedRef = useRef(false);
   const pending = useMemo(() => {
     void tick; // refresh signal: re-scan the notebook after corrections
-    return getErrorNotebook().filter((e) => {
-      if (e.correctedByLearner) return false;
-      // A rehearsed entry comes back for its DELAYED proof the next day —
-      // typing it right after seeing the answer was exposure, not learning.
-      return !e.rehearsedAt || Date.now() - e.rehearsedAt >= 86400000;
-    });
+    // A rehearsed entry comes back for its DELAYED proof the next day —
+    // typing it right after seeing the answer was exposure, not learning.
+    return selectDueRetypes(getErrorNotebook());
   }, [tick]);
-  useEffect(() => { if (!pending.length) onCleared?.(); }, [pending.length, onCleared]);
+  useEffect(() => {
+    if (pending.length) {
+      clearedRef.current = false;
+      return;
+    }
+    if (clearedRef.current) return;
+    clearedRef.current = true;
+    onCleared?.();
+  }, [pending.length, onCleared]);
   if (!pending.length) return null;
   const entry = pending[0];
 

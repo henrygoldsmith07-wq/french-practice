@@ -13,7 +13,7 @@ import { Check, RefreshCw, Flame, ChevronRight, BookOpen, X } from './icons';
 
 const LEVELS = ['A1', 'A2', 'B1', 'B2'];
 
-export default function ConjugationTrainer({ onXp, focus = null, onDone = null }) {
+export default function ConjugationTrainer({ onXp, focus = null, onDone = null, onUnavailable = null }) {
   const focusKey = focus ? `${focus.verb || ''}:${focus.tense || ''}` : '';
   // focus identity churns every render upstream; focusKey is the stable shape.
   // The memo re-runs when the shape changes and reads the latest focus via ref.
@@ -25,11 +25,12 @@ export default function ConjugationTrainer({ onXp, focus = null, onDone = null }
     return focusRef.current ? focusedPool(focusRef.current) : poolForLevel(level);
   }, [level, focusKey]);
   const [prompt, setPrompt] = useState(() => (focus ? makePrompt(focusedPool(focus), { personIndex: focus.personIndex ?? null }) : makePrompt(poolForLevel('B1'))));
-  // Focused mode is a session segment: when the gap cannot be prompted
-  // (verb/tense not in the pool), the segment ends instead of dead-ending.
+  // Focused mode may be one producer inside Today's fallback chain. An
+  // unpromptable target is producer unavailability, not learner completion:
+  // let the parent walk to its next fallback when it supplied one.
   useEffect(() => {
-    if (focus && !pool) onDone?.();
-  }, [focus, pool, onDone]);
+    if (focus && !pool) (onUnavailable || onDone)?.();
+  }, [focus, pool, onDone, onUnavailable]);
   const [input, setInput] = useState('');
   const [result, setResult] = useState(null); // { status, answer, xp }
   // Evidence identity: each PROMPT is one encounter. The ref is replaced when

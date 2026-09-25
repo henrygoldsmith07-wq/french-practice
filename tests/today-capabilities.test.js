@@ -65,6 +65,9 @@ test('probe capabilities gate on environment, not wishes', () => {
   assert.equal(caps['ai-drill'], false, 'no AI → no AI drill');
   assert.equal(caps['authored-drill'], true, 'library is always available');
   assert.equal(caps['speak'], true);
+  assert.equal(caps.srsDue, 0, 'raw SRS count is carried with the gate');
+  assert.equal(caps.listeningTrack, null, 'raw listening payload is carried with the gate');
+  assert.equal(caps.recentCorrections, 0, 'raw review count is carried with the gate');
   const caps2 = probeCapabilities({ hasAi: true, concept: 'passe-compose', hasScenario: false });
   assert.equal(caps2['ai-drill'], true);
   assert.equal(caps2['speak'], false);
@@ -83,6 +86,9 @@ test('drill chain follows the spec order and every link knows its fallbacks', ()
   assert.deepEqual(chain[0].fallbacks,
     ['authored-drill', 'retype', 'srs-retrieval', 'listen', 'review']);
   assert.equal(chain[0].concept, 'passe-compose');
+  assert.equal(chain.find((p) => p.kind === 'srs-retrieval').cardCap, 6, 'retrieval fallback keeps the real due count');
+  assert.equal(chain.find((p) => p.kind === 'listen').track.id, 't1', 'listening fallback keeps its real track');
+  assert.equal(chain.find((p) => p.kind === 'review').count, 3, 'review fallback keeps its real correction count');
   assert.deepEqual(chain[chain.length - 1].fallbacks, []);
 });
 
@@ -110,7 +116,7 @@ test('a fully capable plan keeps every segment and sums to the budget', () => {
     listeningTrack: { id: 't1', title: 'Track' },
   });
   const plan = resolvePlanCapabilities(fullPlan(), caps);
-  assert.deepEqual(plan.segments.map((s) => s.id), ['speak', 'retrieve', 'drill', 'review']);
+  assert.deepEqual(plan.segments.map((s) => s.id), ['speak', 'retrieve', 'drill', 'review', 'listen']);
   assert.equal(plan.totalMinutes, 20);
   const drill = plan.segments.find((s) => s.id === 'drill');
   assert.equal(drill.payload.kind, 'ai-drill');
@@ -118,15 +124,14 @@ test('a fully capable plan keeps every segment and sums to the budget', () => {
   assert.equal(drill.payload.chain[1].kind, 'authored-drill');
 });
 
-test('listen survives when it can run (speak absent, minutes remain)', () => {
-  // No scenario → the curriculum hands speak's minutes to listen.
+test('listen survives capability resolution when it can run', () => {
   const plan0 = buildDailyCurriculum({
     minutes: 30, srsDue: 10,
     topMistake: { id: 'mg-1', concept: 'passe-compose', type: 'tense', mastery: 30, recurrence: 2 },
     recentCorrections: 3,
     listeningTrack: { id: 't1', title: 'Track' },
   });
-  assert.ok(plan0.segments.some((s) => s.id === 'listen'), 'fixture sanity: listen present without speak');
+  assert.ok(plan0.segments.some((s) => s.id === 'listen'), 'fixture sanity: listen is a first-class segment');
   const caps = probeCapabilities({
     hasAi: true, concept: 'passe-compose', hasScenario: false,
     srsDue: 10, recentCorrections: 3, listeningTrack: { id: 't1', title: 'Track' },
@@ -174,7 +179,6 @@ test('nothing available → SRS retrieval, then listen fallback; empty state sta
 });
 
 test('listen segment without a track is dropped and minutes re-flow', () => {
-  // No scenario → the curriculum hands speak's minutes to listen.
   const withListen = buildDailyCurriculum({
     minutes: 30, srsDue: 10,
     topMistake: { id: 'mg-1', concept: 'passe-compose', type: 'tense', mastery: 30, recurrence: 3 },

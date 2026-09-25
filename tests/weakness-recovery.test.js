@@ -95,6 +95,32 @@ test('recurrence resets recovery: old passes cannot re-resolve', async () => {
   assert.equal(storage.getWeaknessMemory()[0].status, 'recovering', 'stale passes cannot paper over a fresh slip');
 });
 
+test('scheduled retest strength is forwarded to the unified learner-error model', async () => {
+  const storage = await freshStorage();
+  storage.recordWeaknessError('articles', { scenarioId: 'cafe' });
+  // Weakness-memory and the unified learner-error model are intentionally
+  // separate stores; seed the unified gap so this test isolates the retest
+  // evidence hand-off rather than assuming the weakness store created it.
+  storage.recordLearnerError({
+    category: 'grammar',
+    key: 'articles',
+    label: 'Articles',
+    mode: 'conversation',
+    score: 0,
+    source: 'test-gap',
+  });
+  storage.recordWeaknessRetestResult('articles', true, {
+    scenarioId: 'market',
+    sessionId: 's-delayed',
+    encounterId: 's-delayed:enc1',
+    delayed: true,
+  });
+  const entry = storage.getLearnerErrorModel().entries.find((e) => e.id === 'grammar:articles');
+  assert.ok(entry);
+  assert.equal(entry.lastEvidence, 'delayed', 'scheduled retest remains delayed in the unified model');
+  assert.equal(entry.status, 'resolved', 'one genuine delayed clean recall is strong evidence');
+});
+
 test('a failed retest is a recurrence and cancels the scheduled retest', async () => {
   const storage = await freshStorage();
   storage.recordWeaknessError('du-de-la', { scenarioId: 'cafe' });

@@ -80,6 +80,20 @@ test('day 5 new-context success, then spontaneous conversation: mastery rises to
   assert.ok(!dueRetests(g, T0 + 7 * DAY).some((m) => m.id === id), 'retired nodes leave the due queue');
 });
 
+test('context novelty is measured against all prior delayed contexts', () => {
+  let g = recordMistake(fresh(), {
+    type: 'grammar', concept: 'articles', source: 'conversation',
+    attempt: 'x', corrected: 'y', confidence: 0.8, at: new Date(T0).toISOString(),
+  });
+  const id = g[0].id;
+  g = recordRetest(g, { id, at: new Date(T0 + 1 * DAY).toISOString(), correct: true, context: 'drill' });
+  g = recordRetest(g, { id, at: new Date(T0 + 3 * DAY).toISOString(), correct: true, context: 'reading' });
+  g = recordRetest(g, { id, at: new Date(T0 + 5 * DAY).toISOString(), correct: true, context: 'drill' });
+  const third = g[0].retests[2];
+  assert.equal(third.evidenceClass, 'DELAYED', 'returning to a previously used context is not new');
+  assert.equal(third.contextNovel, false, 'audit metadata agrees with evidence classification');
+});
+
 test('a recurring mistake after retirement reactivates at half mastery', () => {
   let g = recordMistake(fresh(), {
     type: 'tense', concept: 'passe-compose', source: 'conversation',
@@ -185,9 +199,44 @@ test('shorter and longer sessions keep the shape', () => {
     listeningTrack: { id: 't1', title: 'Track' },
   });
   assert.equal(long.totalMinutes, 30);
-  for (const id of ['speak', 'retrieve', 'drill', 'review']) {
+  for (const id of ['speak', 'retrieve', 'drill', 'review', 'listen']) {
     assert.ok(long.segments.some((s) => s.id === id), `${id} present in long session`);
   }
+  assert.ok(long.segments.every((s) => s.minutes >= 3), 'long-session segments stay meaningful');
+});
+
+test('a normal 20-minute plan actually includes listening when a track exists', () => {
+  const plan = buildDailyCurriculum({
+    minutes: 20,
+    srsDue: 12,
+    topMistake: { id: 'm', concept: 'passe-compose', type: 'grammar', mastery: 30, recurrence: 2 },
+    recentCorrections: 2,
+    suggestedScenarioId: 'cafe',
+    listeningTrack: { id: 't1', title: 'Track' },
+  });
+  assert.equal(plan.totalMinutes, 20);
+  const byId = Object.fromEntries(plan.segments.map((s) => [s.id, s]));
+  for (const id of ['speak', 'retrieve', 'drill', 'review', 'listen']) assert.ok(byId[id], `${id} scheduled`);
+  assert.deepEqual(
+    Object.fromEntries(plan.segments.map((s) => [s.id, s.minutes])),
+    { speak: 6, retrieve: 4, drill: 4, review: 3, listen: 3 },
+  );
+});
+
+test('short sessions drop micro-segments instead of scheduling 1-minute context switches', () => {
+  const plan = buildDailyCurriculum({
+    minutes: 10,
+    srsDue: 12,
+    topMistake: { id: 'm', concept: 'passe-compose', type: 'grammar', mastery: 30, recurrence: 2 },
+    recentCorrections: 2,
+    suggestedScenarioId: 'cafe',
+    listeningTrack: { id: 't1', title: 'Track' },
+  });
+  assert.equal(plan.totalMinutes, 10);
+  assert.deepEqual(plan.segments.map((s) => s.id), ['speak', 'retrieve', 'drill']);
+  assert.ok(plan.segments.every((s) => s.minutes >= 3));
+  assert.ok(plan.skipped.includes('listen'));
+  assert.ok(plan.skipped.includes('review'));
 });
 
 test('exam pressure routes speak through the exam-style note', () => {

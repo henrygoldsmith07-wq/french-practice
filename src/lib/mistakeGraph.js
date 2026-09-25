@@ -227,7 +227,7 @@ export function recordRetest(graph, { id, at, correct, context = null, immediate
   const delayDays = Math.round((delayMs / 86400000) * 100) / 100;
   const delayHours = Math.round((delayMs / 3600000) * 10) / 10;
   const priorDelayedFamilies = priorDelayed.map((r) => r.contextFamily).filter(Boolean);
-  const contextNovel = Boolean(fam) && (!lastDelayed || lastDelayed.contextFamily !== fam);
+  const contextNovel = Boolean(fam) && !priorDelayedFamilies.includes(fam);
   const evidenceClass = classifyRetest({
     correct: Boolean(correct),
     immediate: Boolean(immediate),

@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { ChevronRight, Volume, Mic } from './icons';
 import useRecorder from '../hooks/useRecorder';
 import { transcribe, evaluateTurn, friendlyError } from '../lib/groq';
+import { summarizeCheckEvidence } from '../lib/evidenceStudy';
 
 // Held-out transfer check (Evidence Study, measurement-only).
 //
@@ -120,11 +121,20 @@ function TypedRunner({ item, objective, hint, onAnswer }) {
 }
 
 function ListeningRunner({ item, objective, setObjective, onPick, ttsRate = 1 }) {
-  // Audio-first: options stay locked until at least one play succeeded; if
-  // speechSynthesis is missing or every play fails, the item is unavailable.
+  // Audio-first: options unlock only after the browser confirms playback
+  // actually STARTED. speechSynthesis.speak() merely queues an utterance and
+  // can succeed synchronously even when the voice pipeline later fails.
   const [plays, setPlays] = useState(0);
   const [played, setPlayed] = useState(false);
+  const [starting, setStarting] = useState(false);
+  const startTimerRef = useRef(null);
+
+  useEffect(() => () => {
+    if (startTimerRef.current) clearTimeout(startTimerRef.current);
+  }, []);
+
   const play = () => {
+    if (starting || objective) return;
     if (!('speechSynthesis' in window)) {
       setObjective({ status: 'unavailable', reason: 'tts-unavailable' });
       return;
@@ -133,11 +143,36 @@ function ListeningRunner({ item, objective, setObjective, onPick, ttsRate = 1 })
       const u = new SpeechSynthesisUtterance(item.content?.audio || '');
       u.lang = 'fr-FR';
       u.rate = ttsRate || 1;
+      let settled = false;
+      const settle = (fn) => {
+        if (settled) return;
+        settled = true;
+        if (startTimerRef.current) clearTimeout(startTimerRef.current);
+        startTimerRef.current = null;
+        setStarting(false);
+        fn();
+      };
+      u.onstart = () => settle(() => {
+        setPlays((p) => p + 1);
+        setPlayed(true);
+      });
+      u.onerror = () => settle(() => {
+        // A failed REPLAY does not erase a successful first playback. Once the
+        // learner has genuinely heard the item, the evidence remains scorable.
+        if (!played) setObjective({ status: 'unavailable', reason: 'tts-failed' });
+      });
+      setStarting(true);
+      startTimerRef.current = setTimeout(() => {
+        settle(() => {
+          if (!played) setObjective({ status: 'unavailable', reason: 'tts-timeout' });
+        });
+      }, 5000);
       window.speechSynthesis.speak(u);
-      setPlays((p) => p + 1);
-      setPlayed(true);
     } catch {
-      setObjective({ status: 'unavailable', reason: 'tts-failed' });
+      if (startTimerRef.current) clearTimeout(startTimerRef.current);
+      startTimerRef.current = null;
+      setStarting(false);
+      if (!played) setObjective({ status: 'unavailable', reason: 'tts-failed' });
     }
   };
   return (
@@ -146,11 +181,11 @@ function ListeningRunner({ item, objective, setObjective, onPick, ttsRate = 1 })
       <div className="grid place-items-center py-2">
         <button
           onClick={play}
-          disabled={Boolean(objective)}
+          disabled={Boolean(objective) || starting}
           aria-label={`Play listening item${plays ? ` (${plays} replays)` : ''}`}
           className="btn btn-primary min-h-14 px-6 rounded-2xl text-sm inline-flex items-center gap-2"
         >
-          <Volume size={18} /> {plays ? 'Replay' : 'Play'}
+          <Volume size={18} /> {starting ? 'Starting…' : plays ? 'Replay' : 'Play'}
         </button>
       </div>
       {!played && !objective && (
@@ -191,22 +226,37 @@ function ReadingRunner({ item, objective, onPick }) {
   );
 }
 
+export function claimMeasurement(ref) {
+  if (ref.current) return false;
+  ref.current = true;
+  return true;
+}
+
 function SpeakingRunner({ item, objective, setObjective, confidence, setConfidence, apiKey, mockMode, level }) {
   // record → transcribe → validate ASR → AI evaluate → numeric objective
   // score. Any infrastructure failure ends the item as unscored/unavailable —
   // never as incorrect. The learner's confidence is captured separately.
   const [stage, setStage] = useState('idle'); // idle|ready|recording|processing|awaiting-confidence
   const [tappedMic, setTappedMic] = useState(false);
+  const settledRef = useRef(false);
+  const commitObjective = useCallback((next) => {
+    if (!claimMeasurement(settledRef)) return false;
+    setObjective(next);
+    return true;
+  }, [setObjective]);
   const recorder = useRecorder({
     onComplete: async (blob) => {
+      if (settledRef.current) return;
       setStage('processing');
       try {
         const transcript = await transcribe(apiKey, blob, { mock: mockMode });
+        if (settledRef.current) return;
         const words = String(transcript || '').split(/\s+/).filter(Boolean);
         if (!words.length) {
           // ASR validation: an empty recognition is not learner failure.
-          setObjective({ status: 'unavailable', asrConfidence: 'none', reason: 'empty-transcription' });
-          setStage('awaiting-confidence');
+          if (commitObjective({ status: 'unavailable', asrConfidence: 'none', reason: 'empty-transcription' })) {
+            setStage('awaiting-confidence');
+          }
           return;
         }
         const evaluation = await evaluateTurn(apiKey, {
@@ -216,21 +266,25 @@ function SpeakingRunner({ item, objective, setObjective, confidence, setConfiden
           level,
           mock: mockMode,
         });
+        if (settledRef.current) return;
         const raw = Number(evaluation?.scores?.overall);
-        if (Number.isFinite(raw)) {
-          // A numeric valid score makes the item scored — success alone does not.
-          setObjective({
-            status: 'scored',
-            aiScore: Math.max(0, Math.min(100, Math.round(raw))),
-            asrConfidence: words.length >= 3 ? 'usable' : 'low',
-          });
-        } else {
-          setObjective({ status: 'unscored', asrConfidence: words.length >= 3 ? 'usable' : 'low', reason: 'non-numeric-evaluation' });
-        }
+        const next = Number.isFinite(raw)
+          ? {
+              status: 'scored',
+              aiScore: Math.max(0, Math.min(100, Math.round(raw))),
+              asrConfidence: words.length >= 3 ? 'usable' : 'low',
+            }
+          : {
+              status: 'unscored',
+              asrConfidence: words.length >= 3 ? 'usable' : 'low',
+              reason: 'non-numeric-evaluation',
+            };
+        if (commitObjective(next)) setStage('awaiting-confidence');
       } catch (e) {
-        setObjective({ status: 'unscored', reason: friendlyError(e).slice(0, 120) });
+        if (commitObjective({ status: 'unscored', reason: friendlyError(e).slice(0, 120) })) {
+          setStage('awaiting-confidence');
+        }
       }
-      setStage('awaiting-confidence');
     },
   });
 
@@ -238,36 +292,35 @@ function SpeakingRunner({ item, objective, setObjective, confidence, setConfiden
   // recorder; surface it as an explicit unavailable measurement.
   // setObjective is stable state-setter identity; listed for lint clarity.
   useEffect(() => {
-    if (recorder.error && !objective) {
-      setObjective({ status: 'unavailable', reason: 'microphone-unavailable' });
+    if (recorder.error && !objective
+      && commitObjective({ status: 'unavailable', reason: 'microphone-unavailable' })) {
       setStage('awaiting-confidence');
     }
-  }, [recorder.error, objective, setObjective]);
+  }, [recorder.error, objective, commitObjective]);
   // An evaluation pipeline that never resolves (offline, hung API, silent
   // recorder) must NOT trap the check: after a bounded wait the attempt is
   // recorded unscored — infrastructure failure, never learner failure.
   useEffect(() => {
     if (stage !== 'processing' || objective) return undefined;
     const t = setTimeout(() => {
-      if (!objective) {
-        setObjective({ status: 'unscored', reason: 'evaluation-timeout' });
+      if (!objective && commitObjective({ status: 'unscored', reason: 'evaluation-timeout' })) {
         setStage('awaiting-confidence');
       }
     }, 15000);
     return () => clearTimeout(t);
-  }, [stage, objective, setObjective]);
+  }, [stage, objective, commitObjective]);
   // A microphone that opens but never produces media is equally an
   // infrastructure failure — surface it instead of trapping the learner.
   useEffect(() => {
     if (stage !== 'ready' || objective || recorder.recording || !tappedMic) return undefined;
     const t = setTimeout(() => {
-      if (!objective && !recorder.recording) {
-        setObjective({ status: 'unavailable', reason: 'microphone-silent' });
+      if (!objective && !recorder.recording
+        && commitObjective({ status: 'unavailable', reason: 'microphone-silent' })) {
         setStage('awaiting-confidence');
       }
     }, 10000);
     return () => clearTimeout(t);
-  }, [stage, objective, recorder.recording, tappedMic, setObjective]);
+  }, [stage, objective, recorder.recording, tappedMic, commitObjective]);
 
   return (
     <div className="space-y-4">
@@ -280,7 +333,14 @@ function SpeakingRunner({ item, objective, setObjective, confidence, setConfiden
       )}
       {stage === 'ready' && !objective && (
         <div className="grid place-items-center gap-2">
-          <button onClick={() => { setTappedMic(true); recorder.start().catch(() => { if (!objective) { setObjective({ status: 'unavailable', reason: 'microphone-unavailable' }); setStage('awaiting-confidence'); } }); }} aria-label="Record my speaking attempt" className="btn btn-primary w-16 h-16 rounded-full grid place-items-center">
+          <button onClick={() => {
+            setTappedMic(true);
+            recorder.start().catch(() => {
+              if (!objective && commitObjective({ status: 'unavailable', reason: 'microphone-unavailable' })) {
+                setStage('awaiting-confidence');
+              }
+            });
+          }} aria-label="Record my speaking attempt" className="btn btn-primary w-16 h-16 rounded-full grid place-items-center">
             <Mic size={22} />
           </button>
           <p className="text-[11px] text-ink3">Tap, speak, then tap again to stop.</p>
@@ -328,6 +388,13 @@ export default function HeldOutCheck({ check, onDone, apiKey, mockMode, level, t
   const [confidence, setConfidence] = useState(null);
   const startedRef = useRef(Date.now());
   const evidenceRef = useRef([]);
+  const finalisingRef = useRef(false);
+
+  // A rapid double-tap on "Record & next" must never append the same item
+  // twice or advance over the following assessment item.
+  useEffect(() => {
+    finalisingRef.current = false;
+  }, [idx]);
 
   const item = items[idx];
   const isSpeaking = item?.skill === 'speaking';
@@ -335,7 +402,8 @@ export default function HeldOutCheck({ check, onDone, apiKey, mockMode, level, t
 
   // Finalise the current item: objective result + separate confidence.
   const finalise = () => {
-    if (!item || !objective) return;
+    if (!item || !objective || finalisingRef.current) return;
+    finalisingRef.current = true;
     evidenceRef.current.push({
       sourceItemId: item.sourceItemId,
       skill: item.skill,
@@ -351,15 +419,9 @@ export default function HeldOutCheck({ check, onDone, apiKey, mockMode, level, t
     });
     if (idx + 1 >= items.length) {
       const perItem = evidenceRef.current;
-      const scored = perItem.filter((p) => p.status === 'scored' && p.correct != null);
-      const correct = scored.filter((p) => p.correct).length;
-      const speakingScored = perItem.filter((p) => p.skill === 'speaking' && p.status === 'scored' && typeof p.aiScore === 'number');
+      const summary = summarizeCheckEvidence(perItem);
       onDone?.({
-        correct,
-        total: perItem.length,
-        quizScore: scored.length ? Math.round((correct / scored.length) * 100) : null,
-        unscored: perItem.filter((p) => p.status !== 'scored').length,
-        speakingMean: speakingScored.length ? Math.round(speakingScored.reduce((a, p) => a + p.aiScore, 0) / speakingScored.length) : null,
+        ...summary,
         secondsSpent: Math.round((Date.now() - startedRef.current) / 1000),
         perItem,
       });

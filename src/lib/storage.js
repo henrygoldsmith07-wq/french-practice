@@ -883,7 +883,18 @@ export function recordWeaknessRetestResult(topicId, passed, { scenarioId = null,
   }
   writeWeakness(list);
   if (passed) {
-    recordLearnerSuccess({ category: 'grammar', key: id, label: id, mode: 'conversation', source: 'weakness-retest', score: 80, sessionId, encounterId, activityId: activityId || scenarioId });
+    recordLearnerSuccess({
+      category: 'grammar',
+      key: id,
+      label: id,
+      mode: 'conversation',
+      source: 'weakness-retest',
+      score: 80,
+      delayed: Boolean(delayed),
+      sessionId,
+      encounterId,
+      activityId: activityId || scenarioId,
+    });
   } else {
     recordLearnerError({ category: 'grammar', key: id, label: id, mode: 'conversation', source: 'weakness-retest', score: 0 });
   }
@@ -1992,8 +2003,10 @@ export const getSelectionTrial = () => {
 
 export function recordSelectionTrial(record) {
   const list = getSelectionTrial();
+  const at = new Date().toISOString();
   list.push({
-    at: new Date().toISOString(),
+    id: String(record?.id || `selection:${at}:${Math.random().toString(36).slice(2, 10)}`),
+    at,
     engineVersion: record.engineVersion || null,
     candidates: record.candidates || [],
     selectedId: record.selectedId || null,

@@ -305,6 +305,34 @@ export const checkScore = (check) => {
   return Math.round((r.correct / r.total) * 100);
 };
 
+/**
+ * Collapse per-item held-out evidence without treating infrastructure failure
+ * as learner failure. Only objectively scored correctness items enter the
+ * correct/total denominator; speaking remains numeric-score shaped.
+ */
+export function summarizeCheckEvidence(perItem = []) {
+  const rows = Array.isArray(perItem) ? perItem : [];
+  const correctnessScored = rows.filter(
+    (p) => p?.status === 'scored' && typeof p.correct === 'boolean',
+  );
+  const correct = correctnessScored.filter((p) => p.correct).length;
+  const speakingScored = rows.filter(
+    (p) => p?.skill === 'speaking' && p?.status === 'scored' && typeof p.aiScore === 'number',
+  );
+  return {
+    correct,
+    total: correctnessScored.length,
+    quizScore: correctnessScored.length
+      ? Math.round((correct / correctnessScored.length) * 100)
+      : null,
+    unscored: rows.filter((p) => p?.status === 'unscored').length,
+    unavailable: rows.filter((p) => p?.status === 'unavailable').length,
+    speakingMean: speakingScored.length
+      ? Math.round(speakingScored.reduce((sum, p) => sum + p.aiScore, 0) / speakingScored.length)
+      : null,
+  };
+}
+
 // ── per-item evidence schema (modality-specific, validated not coerced) ───
 
 export const EVIDENCE_STATUSES = ['scored', 'unscored', 'unavailable'];
@@ -394,7 +422,10 @@ export function checkSkillSummary(check) {
  */
 export function makeOutcomeRecord({ trial, graphNode = null, now = Date.now() } = {}) {
   return {
-    id: `out-${trial?.at || new Date(now).toISOString()}-${trial?.selectedId || 'none'}`,
+    id: trial?.id
+      ? `out-${trial.id}`
+      : `out-${trial?.at || new Date(now).toISOString()}-${trial?.selectedId || 'none'}`,
+    trialId: trial?.id || null,
     participantRef: true,          // joined to the participant via the trial's variant
     day: null,                     // filled by the caller (study day)
     at: trial?.at || new Date(now).toISOString(),

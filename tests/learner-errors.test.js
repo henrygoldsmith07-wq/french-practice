@@ -107,6 +107,8 @@ test('evidence strength: spaced recalls are delayed, same-day drills are not', (
   // Inferred from dates for unlabeled modes too.
   assert.equal(evidenceStrength({ mode: 'grammar', at: '2026-08-02T10:00:00.000Z' }, entry), 'delayed');
   assert.equal(evidenceStrength({ mode: 'grammar', at: '2026-08-01T18:00:00.000Z' }, entry), 'same-session');
+  assert.equal(evidenceStrength({ mode: 'grammar', at: '2027-08-01T10:00:00.000Z' }, entry), 'delayed',
+    'same month/day in a different year is still delayed evidence');
 });
 
 test('recurrence reactivates a resolved weakness and tallies itself', () => {

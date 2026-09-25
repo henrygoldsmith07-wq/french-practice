@@ -26,7 +26,7 @@ import {
   getSrs, getNotebook, getDueWeaknesses, rateCard,
   getMistakeGraph, saveMistakeGraph, getStudyChecks, getLearnerErrors,
 } from '../lib/storage';
-import { getErrorNotebook } from '../lib/errorNotebook';
+import { getErrorNotebook, selectCorrectedErrors, selectDueRetypes } from '../lib/errorNotebook';
 // The vocab library is a separate lazy chunk (per-language registries) — it
 // must be awaited, never statically imported from the entry graph. The hook
 // centralises the null-means-loading discipline and reloads on language switch.
@@ -41,7 +41,7 @@ import { getScenarios } from '../lib/data';
 // dialogues, news, scenes, authentic audio) must not ride the entry graph.
 // The session resolves tracks dynamically; loader, cache and React binding
 // live in lib/listeningAsync.js (failures are never cached there).
-import { useListeningTracks } from '../lib/listeningAsync';
+import { resolveListeningTrack, useListeningTracks } from '../lib/listeningAsync';
 
 // The arena, the held-out check and the track player are heavy (audio, LLM,
 // recording, content) and only rendered mid-session — load them with the
@@ -64,8 +64,11 @@ import { ChevronRight, X } from './icons';
 import { personAt } from '../lib/conjugationMeta';
 import { recordLearnerSuccess } from '../lib/storage';
 import { currentSessionId, newEncounterId } from '../lib/evidenceIdentity';
+import { localDayIndex } from '../lib/localDay';
 import { segmentExplain, recoveryStatus } from '../lib/segmentExplain';
 import RecoveryBadge from './RecoveryBadge';
+
+const EMPTY_DEP_LIST = Object.freeze([]);
 
 // Today's French — one Start button, one composed session. Segments come
 // from the daily curriculum; the learner never chooses a mode. Every phase
@@ -91,27 +94,43 @@ export default function TodaySession({ open, onClose, minutes = 20, apiKey, mock
   // import failures deterministically.
   const deps = useTodayDeps(depsImpl);
   const { entries, retry } = deps;
-  const scenariosReg = deps.scenarios;
-  const grammarReady = deps.grammar;       // true = ready (or not needed)
-  const listeningTracks = deps.listening;  // null = loading
-  const studyModule = deps.study;          // null = loading
+  const entriesFailed = deps.failed.includes('entries');
+  const scenarioFailed = deps.failed.includes('scenarios');
+  const grammarFailed = deps.failed.includes('grammar');
+  const listeningFailed = deps.failed.includes('listening');
   const studyFailed = deps.failed.includes('study');
+
+  // Vocabulary is the one hard content dependency: it anchors the live SRS
+  // queue and learner review state. The other content libraries are additive
+  // capabilities, so a failed chunk degrades to "not available" rather than
+  // taking down the whole composed session.
+  const scenariosReg = deps.scenarios ?? (scenarioFailed ? EMPTY_DEP_LIST : null);
+  const grammarReady = deps.grammar || grammarFailed;
+  const listeningTracks = deps.listening ?? (listeningFailed ? EMPTY_DEP_LIST : null);
+  const studyModule = deps.study;
   const studyReady = Boolean(studyModule);
+  const degradedLearning = scenarioFailed || grammarFailed || listeningFailed;
+  const learningDepsSettled = (entries !== null || entriesFailed)
+    && scenariosReg !== null
+    && Boolean(grammarReady)
+    && listeningTracks !== null;
+  const studySettled = degradedLearning || studyReady || studyFailed;
 
   // Capability rows for the ACTIVE language (registry: lib/capabilities.js):
   // French-authored drill producers and the listening library never enter a
   // German or Spanish plan.
   const conjCap = hasCapabilityNow('conjugation');
-  const authoredCap = hasCapabilityNow('grammar');
+  const authoredCap = hasCapabilityNow('grammar') && !grammarFailed;
   const accentCap = hasCapabilityNow('writing-authored');
 
   const plan = useMemo(() => {
-    if (!open || !entries || !scenariosReg || !grammarReady || !listeningTracks) return null;
-    // Study measurement: wait while it resolves (never silently skipped), but
-    // when it has FAILED, continue without measurement — study tooling must
-    // never block ordinary learning.
-    if (!studyReady && !studyFailed) return null;
-    const studyApi = studyReady ? studyModule : null;
+    if (!open || entries === null || scenariosReg === null || !grammarReady || listeningTracks === null) return null;
+    // Study measurement waits for its module only in a normal session. When
+    // any learning-content capability degraded, continue practice immediately
+    // but disable measurement: altered modality exposure must never enter the
+    // research comparison as if the planned treatment was delivered.
+    if (!degradedLearning && !studyReady && !studyFailed) return null;
+    const studyApi = studyReady && !degradedLearning ? studyModule : null;
     const graph = getMistakeGraph();
     // Conjugation-trainer misses are grammar gaps the mistake graph may never
     // have seen (the trainer writes to the learnerErrors model). A gap that
@@ -211,8 +230,8 @@ export default function TodaySession({ open, onClose, minutes = 20, apiKey, mock
     const library = [...entries, ...notebookAsEntries(getNotebook())];
     const srsDue = dueEntries(library, srs, Date.now(), { newCardCap: NEW_CARD_CAP }).length;
     const notebook = getErrorNotebook();
-    const pendingRetypes = notebook.filter((e) => !e.correctedByLearner).length;
-    const dayIndex = Math.floor(Date.now() / 86400000);
+    const pendingRetypes = selectDueRetypes(notebook).length;
+    const dayIndex = localDayIndex();
     const tracks = Array.isArray(listeningTracks) ? listeningTracks : [];
     const listeningTrack = tracks.length ? tracks[dayIndex % tracks.length] : null;
     const weakness = (() => { try { return getDueWeaknesses()[0] || null; } catch { return null; } })();
@@ -231,7 +250,7 @@ export default function TodaySession({ open, onClose, minutes = 20, apiKey, mock
       pendingRetypes,
       srsDue,
       listeningTrack: listeningTrack ? { id: listeningTrack.id, title: listeningTrack.title, audioSrc: listeningTrack.audioSrc || null } : null,
-      recentCorrections: notebook.filter((e) => e.correctedByLearner && Date.now() - Date.parse(e.at || e.lastSeenAt || 0) <= 48 * 3600000).length,
+      recentCorrections: selectCorrectedErrors(notebook, { since: Date.now() - 48 * 3600000 }).length,
       // Capability gating for French-authored drill producers: conj/accent/
       // authored links exist only where the registry offers them (fr).
       languageCaps: { conj: conjCap, authored: authoredCap, accent: accentCap },
@@ -241,7 +260,7 @@ export default function TodaySession({ open, onClose, minutes = 20, apiKey, mock
       srsDue,
       topMistake: top,
       pendingRetypes,
-      recentCorrections: caps.recentCorrections ? 1 : 0,
+      recentCorrections: caps.recentCorrections,
       weaknessScenarioId: weakness?.scenarioId || null,
       suggestedScenarioId: suggested?.id || null,
       listeningTrack: listeningTrack ? { id: listeningTrack.id, title: listeningTrack.title, audioSrc: listeningTrack.audioSrc || null } : null,
@@ -253,6 +272,9 @@ export default function TodaySession({ open, onClose, minutes = 20, apiKey, mock
     // cannot run. Offline, the AI drill becomes the authored drill (or
     // retype/SRS/listen) BEFORE the session starts.
     const planResolved = resolvePlanCapabilities(planBuilt, caps);
+    // If degradation removed every runnable practice segment, fail closed into
+    // the retry screen instead of presenting a fake zero-step completion.
+    if (!planResolved.segments.length) return null;
     // Learner-facing explanation layer (see segmentExplain.js): every
     // targeted segment carries WHAT is practised, WHY it was selected, the
     // evidence behind that, and what success requires — all frozen with the
@@ -335,40 +357,40 @@ export default function TodaySession({ open, onClose, minutes = 20, apiKey, mock
       }
       } catch { /* a broken check plan is no reason to lose the session */ }
     }
-    // P1 selection-trial record: frozen before any practice happens, with
-    // the resolved activity so analysis knows what was actually delivered.
-    // This is the product's own scheduler diagnostic (fp.selectionTrial.v1),
-    // not fp.study.* research data — it is recorded with or without study
-    // enrolment, so scheduler quality is observable for every learner.
-    try {
-      const drillSeg = planResolved.segments.find((s) => s.id === 'drill');
-      const trial = recordSelectionTrial({
-        engineVersion: EVIDENCE_ENGINE_VERSION,
-        candidates,
-        selectedId: top?.id || null,
-        selectedConcept: top?.concept || (balanced ? rotationTopic : null),
-        activity: drillSeg?.payload?.kind || (planResolved.segments[0]?.id || null),
-        masteryBefore: top?.mastery ?? null,
-        recurrenceBefore: top?.recurrence ?? null,
-        why: drillSeg?.why || '',
-        segments: planResolved.segments.map((s) => ({ id: s.id, minutes: s.minutes })),
-        variant,
-        calibrationReady: Boolean(calibration.ready),
-      });
-      // Longitudinal outcome skeleton for this trial: a genuine fp.study.*
-      // research write, so it happens only for an enrolled participant
-      // (startOutcomeRecord additionally self-guards on consent/protocol).
-      if (study) {
-        const consistency = studyApi.verifyTreatmentConsistency({ deliveredVariant: variant, study });
-        studyApi.startOutcomeRecord({ trial, graph, arm: variant, day: sDay, consistency });
-      }
-    } catch { /* trial logging must never break the session */ }
-    return { ...planResolved, study, heldOut, studyDay: sDay };
+    // Freeze the scheduler diagnostics with the plan, but DO NOT persist them
+    // during render/useMemo. React may evaluate a memo more than once
+    // (StrictMode) and ordinary prop changes can legitimately re-evaluate it.
+    // The committed plan is logged exactly once in the effect below.
+    const drillSeg = planResolved.segments.find((s) => s.id === 'drill');
+    const trialDraft = {
+      engineVersion: EVIDENCE_ENGINE_VERSION,
+      candidates,
+      selectedId: top?.id || null,
+      selectedConcept: top?.concept || (balanced ? rotationTopic : null),
+      activity: drillSeg?.payload?.kind || (planResolved.segments[0]?.id || null),
+      masteryBefore: top?.mastery ?? null,
+      recurrenceBefore: top?.recurrence ?? null,
+      why: drillSeg?.why || '',
+      segments: planResolved.segments.map((s) => ({ id: s.id, minutes: s.minutes })),
+      variant,
+      calibrationReady: Boolean(calibration.ready),
+    };
+    return {
+      ...planResolved,
+      study,
+      heldOut,
+      studyDay: sDay,
+      trialDraft,
+      trialGraph: graph,
+      trialVariant: variant,
+      degradedLearning,
+    };
   // deps: every async dependency's arrival (or failure, or retry) changes the
   // deps object → these primitives change → the plan replans no matter what
   // order modules resolve in.
   }, [open, minutes, apiKey, mockMode, level, entries, scenariosReg, grammarReady,
-    listeningTracks, studyReady, studyFailed, studyModule, conjCap, authoredCap, accentCap]);
+    listeningTracks, studyReady, studyFailed, studyModule, degradedLearning,
+    conjCap, authoredCap, accentCap]);
 
   // Warm the heavy mid-session chunks (arena, held-out check) with the
   // session, not the app. Fire-and-forget: the lazy() imports render via
@@ -383,14 +405,48 @@ export default function TodaySession({ open, onClose, minutes = 20, apiKey, mock
   const [segIndex, setSegIndex] = useState(0);
   const [, setXp] = useState(0);
   const [history, setHistory] = useState([]);
+  const [trialId, setTrialId] = useState(null);
+  const trialLoggedRef = useRef(false);
   const award = (n) => { setXp((x) => x + n); onXp?.(n); };
+
+  // Persistent scheduler/evidence writes belong after commit, never in
+  // useMemo. The ref survives StrictMode's effect replay, so one opened Today
+  // session creates one trial even when React deliberately re-runs effects.
+  useEffect(() => {
+    if (!open) {
+      trialLoggedRef.current = false;
+      setTrialId(null);
+      return;
+    }
+    if (!plan || trialLoggedRef.current) return;
+    trialLoggedRef.current = true;
+    try {
+      const trial = recordSelectionTrial(plan.trialDraft || {});
+      setTrialId(trial?.id || null);
+      if (trial && plan.study && studyReady && studyModule) {
+        const consistency = studyModule.verifyTreatmentConsistency({
+          deliveredVariant: plan.trialVariant,
+          study: plan.study,
+        });
+        studyModule.startOutcomeRecord({
+          trial,
+          graph: plan.trialGraph || [],
+          arm: plan.trialVariant,
+          day: plan.studyDay,
+          consistency,
+        });
+      }
+    } catch {
+      // Trial logging is diagnostic; it must never block practice.
+    }
+  }, [open, plan, studyReady, studyModule]);
 
   if (!open) return null;
   const close = () => { onClose(); setSegIndex(0); setHistory([]); setXp(0); };
   // Loading: genuine learning dependencies (vocab, scenarios, grammar,
   // listening) still resolving. Never more than the actual chunk downloads —
   // and never a timer: deps resolve as soon as their chunks land.
-  if (!plan && !deps.failed.length) {
+  if (!plan && !entriesFailed && (!learningDepsSettled || !studySettled)) {
     return (
       <div className="fixed inset-0 z-[60] bg-bg grid place-items-center" role="dialog" aria-modal="true" aria-label="Loading today's session">
         <div className="text-center space-y-3 px-6">
@@ -418,6 +474,7 @@ export default function TodaySession({ open, onClose, minutes = 20, apiKey, mock
     <Suspense fallback={null}>
     <TodayBody
       plan={plan}
+      trialId={trialId}
       segIndex={segIndex}
       setSegIndex={setSegIndex}
       close={close}
@@ -439,7 +496,13 @@ export default function TodaySession({ open, onClose, minutes = 20, apiKey, mock
 // completion, recorded onto the frozen selection trial) and renders the
 // current segment. All hooks run unconditionally — the early return for the
 // finished state lives in the child below, never here.
-function TodayBody({ plan, segIndex, setSegIndex, close, apiKey, mockMode, level, ttsRate, onTurn, onActivity, award, history, setHistory }) {
+export function claimForwardTransition(ref, index) {
+  if (index <= ref.current) return false;
+  ref.current = index;
+  return true;
+}
+
+function TodayBody({ plan, trialId, segIndex, setSegIndex, close, apiKey, mockMode, level, ttsRate, onTurn, onActivity, award, history, setHistory }) {
   // Track content lives in the lazy listening chunk; today's payload only
   // carries ids, so resolve the real track when the listen segment renders.
   const liveTracks = useListeningTracks();
@@ -448,52 +511,83 @@ function TodayBody({ plan, segIndex, setSegIndex, close, apiKey, mockMode, level
   const deliveredRef = useRef([]);
   const recordedRef = useRef(false);
   const missingRef = useRef(null);
+  const transitionRef = useRef(-1);
   const totalSteps = plan.segments.length + (plan.heldOut ? 1 : 0);
-  const advance = () => {
+
+  // Every segment transition is single-consumer. A completion callback can
+  // race a skip, fire twice, or arrive late after its child unmounted. Because
+  // segment indexes only move forward, rejecting any index already claimed (or
+  // older than the latest claim) makes all of those paths idempotent.
+  const moveNext = useCallback((skipped) => {
+    if (!claimForwardTransition(transitionRef, segIndex)) return;
     const seg = plan.segments[segIndex];
     if (seg) {
       deliveredRef.current.push({
         id: seg.id,
         minutes: seg.minutes,
         seconds: Math.round((Date.now() - segStartRef.current) / 1000),
-        skipped: false,
-      });
-    }
-    segStartRef.current = Date.now();
-    setSegIndex((i) => i + 1);
-  };
-  const skip = useCallback(() => {
-    const seg = plan.segments[segIndex];
-    if (seg) {
-      deliveredRef.current.push({
-        id: seg.id,
-        minutes: seg.minutes,
-        seconds: Math.round((Date.now() - segStartRef.current) / 1000),
-        skipped: true,
+        skipped,
       });
     }
     segStartRef.current = Date.now();
     setSegIndex((i) => i + 1);
   }, [plan, segIndex, setSegIndex]);
-  // Persist the delivery record onto the newest selection trial once the
-  // session ends (the trial was frozen at start; outcomes join later).
-  useEffect(() => {
-    if (segIndex < totalSteps || recordedRef.current) return;
-    recordedRef.current = true;
+
+  const advance = useCallback(() => moveNext(false), [moveNext]);
+  const skip = useCallback(() => moveNext(true), [moveNext]);
+  const flushDelivery = useCallback((finishedAllSteps) => {
+    if (recordedRef.current || !trialId) return null;
     try {
       const trials = getSelectionTrial();
-      const last = trials[trials.length - 1];
-      if (last) {
-        last.delivered = deliveredRef.current;
-        last.timeSpent = Math.round((Date.now() - startRef.current) / 1000);
-        last.completed = deliveredRef.current.length === plan.segments.length
-          && !deliveredRef.current.some((d) => d.skipped && d.seconds < 5);
-        saveSelectionTrial(trials);
-        // Study: fold delivery into the outcome record for this trial.
-        callStudy('updateOutcomeDelivery', { trialAt: last.at, timeSpent: last.timeSpent, completed: last.completed, delivered: last.delivered });
-      }
-    } catch { /* delivery logging must never break the close */ }
-  }, [segIndex, plan, totalSteps]);
+      const trial = trials.find((row) => row.id === trialId);
+      if (!trial) return null;
+      recordedRef.current = true;
+      trial.delivered = [...deliveredRef.current];
+      trial.timeSpent = Math.round((Date.now() - startRef.current) / 1000);
+      // Completion means the WHOLE composed session ended, including the
+      // held-out step when one exists. Finishing all ordinary segments is not
+      // enough if the learner abandoned measurement afterward.
+      trial.completed = Boolean(finishedAllSteps)
+        && deliveredRef.current.length === plan.segments.length
+        && !deliveredRef.current.some((d) => d.skipped && d.seconds < 5);
+      saveSelectionTrial(trials);
+      callStudy('updateOutcomeDelivery', {
+        trialId: trial.id,
+        trialAt: trial.at,
+        timeSpent: trial.timeSpent,
+        completed: trial.completed,
+        delivered: trial.delivered,
+      });
+      return trial;
+    } catch {
+      return null;
+    }
+  }, [trialId, plan.segments.length]);
+
+  // Persist a fully completed run as soon as its final step advances.
+  useEffect(() => {
+    if (segIndex < totalSteps) return;
+    flushDelivery(true);
+  }, [segIndex, totalSteps, flushDelivery]);
+
+  // Escape / Android Back close the parent overlay directly, so TodayBody can
+  // disappear without its own close button running. A delayed unmount flush
+  // captures that partial session. The mounted flag is intentional: React
+  // StrictMode performs a fake cleanup+setup cycle; by the next task the
+  // component is mounted again, so that development-only cleanup writes
+  // nothing. A real unmount stays false and records the abandonment.
+  const mountedRef = useRef(false);
+  const flushRef = useRef(flushDelivery);
+  flushRef.current = flushDelivery;
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      setTimeout(() => {
+        if (!mountedRef.current) flushRef.current(false);
+      }, 0);
+    };
+  }, []);
 
   const done = segIndex >= totalSteps;
   // The held-out check is an implicit extra step after the last normal segment.
@@ -546,10 +640,19 @@ function TodayBody({ plan, segIndex, setSegIndex, close, apiKey, mockMode, level
         ? { ...seg.payload }
         : (seg.payload?.chain || []).find((p) => p.kind === 'conj-drill') || null;
     } else if (seg.id === 'review') {
-      body = <DelayedReview count={seg.payload.count} onXp={award} />;
+      body = <DelayedReview count={seg.payload.count} onXp={award} onDone={advance} />;
     } else if (seg.id === 'listen' && seg.payload.track) {
-      const track = (liveTracks || []).find((t) => t.id === seg.payload.track.id);
-      if (track) body = <TrackPlayer track={track} baseRate={ttsRate} level={level} onXp={award} onActivity={onActivity} onDone={advance} />;
+      const resolved = resolveListeningTrack(liveTracks, seg.payload.track.id);
+      if (resolved.status === 'loading') {
+        // A null library means the lazy listening chunk is still in flight,
+        // not that the planned track disappeared. Render a real body so the
+        // generic missing-body auto-skip cannot discard valid listening.
+        body = <div className="h-full grid place-items-center"><p className="text-sm text-ink2">Loading listening…</p></div>;
+      } else if (resolved.status === 'ready') {
+        body = <TrackPlayer track={resolved.track} baseRate={ttsRate} level={level} onXp={award} onActivity={onActivity} onDone={advance} />;
+      }
+      // Once the library has resolved, a genuinely missing id leaves body
+      // null and the generic fallback below advances to the next segment.
     }
   }
 
@@ -561,6 +664,10 @@ function TodayBody({ plan, segIndex, setSegIndex, close, apiKey, mockMode, level
     body = (
       <HeldOutCheck
         check={plan.heldOut}
+        apiKey={apiKey}
+        mockMode={mockMode}
+        level={level}
+        ttsRate={ttsRate}
         onDone={(finished) => {
           // Full per-item evidence is persisted first, then the check's
           // per-skill summary (speaking from numeric scores, correctness
@@ -627,6 +734,9 @@ function TodayBody({ plan, segIndex, setSegIndex, close, apiKey, mockMode, level
         {!plan.study && (
           <p className="max-w-lg mx-auto text-[11px] text-ink3">Practising without research measurement today — your session is unaffected.</p>
         )}
+        {plan.degradedLearning && (
+          <p className="max-w-lg mx-auto text-[11px] text-ink3">Some optional practice material did not load, so Today adapted to the activities available.</p>
+        )}
       </header>
       {seg?.explain && (
         <WhyPanel explain={seg.explain} recovery={seg.recovery} />
@@ -669,12 +779,22 @@ function WhyPanel({ explain, recovery }) {
 // full ordered chain from the capability resolver; if the AI drill returns
 // nothing (offline, quota, error), the runner walks to the next link instead
 // of showing "unavailable" — the session always stays complete.
-function DrillChainRunner({ payload, level, apiKey, mockMode, ttsRate, onXp, onDone }) {
+export function DrillChainRunner({ payload, level, apiKey, mockMode, ttsRate, onXp, onDone }) {
   const [current, setCurrent] = useState(payload);
   const kind = current?.kind || payload?.kind;
 
   if (kind === 'conj-drill') {
-    return <TrainerDrill focus={{ ...current, personIndex: current.personIndex ?? payload.personIndex ?? null }} onXp={onXp} onDone={onDone} />;
+    return (
+      <TrainerDrill
+        focus={{ ...current, personIndex: current.personIndex ?? payload.personIndex ?? null }}
+        onXp={onXp}
+        onDone={onDone}
+        onUnavailable={() => {
+          const next = nextFallback(payload.chain, 'conj-drill');
+          if (next) setCurrent(next); else onDone();
+        }}
+      />
+    );
   }
   if (kind === 'dictation-drill') {
     // sessionMode: the segment ends when the repair lands — a clean pass
@@ -712,7 +832,7 @@ function DrillChainRunner({ payload, level, apiKey, mockMode, ttsRate, onXp, onD
     return <ListenFallback track={current.track} onDone={onDone} />;
   }
   if (kind === 'review') {
-    return <DelayedReview count={current.count} onXp={onXp} />;
+    return <DelayedReview count={current.count} onXp={onXp} onDone={onDone} />;
   }
   // Default: the AI targeted drill (first link of the chain).
   return (
@@ -761,6 +881,7 @@ function SessionDrillShell({ title, canFinish, onDone, children }) {
 function AiDrillRunner({ concept, level, apiKey, mockMode, onXp, onDone, onEmpty }) {
   const [state, setState] = useState({ busy: true, exercises: null });
   const correctRef = useRef(0);
+  const finishRef = useRef(false);
   // Evidence identity: the whole drill is ONE presentation of this concept
   // (one encounter). Every success it records cites the same encounter, so a
   // single lucky run can never mint two independent passes; the NEXT drill
@@ -789,6 +910,8 @@ function AiDrillRunner({ concept, level, apiKey, mockMode, onXp, onDone, onEmpty
     return undefined;
   }, [state.busy, state.exercises, onEmpty]);
   const finish = () => {
+    if (finishRef.current) return;
+    finishRef.current = true;
     try {
       const graph = getMistakeGraph();
       const node = graph.find((m) => m.concept === concept && m.status === 'active');
@@ -833,13 +956,13 @@ function AiDrillRunner({ concept, level, apiKey, mockMode, onXp, onDone, onEmpty
 // Conjugation-trainer drill link: repairs the trainer gap in-session with
 // the trainer itself, focused on the exact weak form (no level picker, no
 // browsing) so a missed form gets one more chance within today's plan.
-function TrainerDrill({ focus, onXp, onDone }) {
+function TrainerDrill({ focus, onXp, onDone, onUnavailable }) {
   return (
     <div className="h-full overflow-y-auto nice-scroll px-4 py-6">
       <div className="max-w-md mx-auto">
         <p className="text-[11px] uppercase tracking-wider text-ink3 mb-2">Verb drill — your weak form</p>
         <Suspense fallback={<div className="h-40 grid place-items-center"><p className="text-sm text-ink2">Loading the trainer…</p></div>}>
-          <ConjugationTrainer focus={focus} onXp={onXp} onDone={onDone} />
+          <ConjugationTrainer focus={focus} onXp={onXp} onDone={onDone} onUnavailable={onUnavailable} />
         </Suspense>
       </div>
     </div>
@@ -863,12 +986,20 @@ function AuthoredDrill({ exercises, topicTitle, onXp, onDone }) {
 // Listen fallback inside the drill chain.
 function ListenFallback({ track, onDone }) {
   const tracks = useListeningTracks();
-  const real = (tracks || []).find((t) => t.id === track?.id);
+  const resolved = resolveListeningTrack(tracks, track?.id);
+  const firedRef = useRef(false);
+
   useEffect(() => {
-    if (!real) onDone();
-  }, [real, onDone]);
-  if (!real) return null;
-  return <TrackPlayer track={real} baseRate={1} level="B1" onXp={() => {}} onActivity={() => {}} onDone={onDone} />;
+    if (resolved.status !== 'missing' || firedRef.current) return;
+    firedRef.current = true;
+    onDone();
+  }, [resolved.status, onDone]);
+
+  if (resolved.status === 'loading') {
+    return <div className="h-full grid place-items-center"><p className="text-sm text-ink2">Loading listening…</p></div>;
+  }
+  if (resolved.status !== 'ready') return null;
+  return <TrackPlayer track={resolved.track} baseRate={1} level="B1" onXp={() => {}} onActivity={() => {}} onDone={onDone} />;
 }
 
 // Compact SRS recall: due cards, capped, rated through the real scheduler.
@@ -891,17 +1022,43 @@ export function RecallRunner({ cardCap, onDone, onXp, onActivity }) {
   const firedRef = useRef(false);
   // Evidence identity + double-tap guard: ONE encounter per DISPLAYED card.
   // The id is minted per deck index (per presentation), not inside the rating
-  // callback, and the first rating wins: ratedRef closes synchronously so a
+  // callback, and the first rating wins: ratingRef closes synchronously so a
   // fast double-tap (or a tap racing the 250 ms advance) is a no-op.
-  const ratedRef = useRef(false);
+  const ratingRef = useRef(false);
   const encounterRef = useRef(null);
   useEffect(() => {
-    ratedRef.current = false;
+    ratingRef.current = false;
     encounterRef.current = newEncounterId();
   }, [idx]);
   const loaded = deck !== null;
-  useEffect(() => { if (loaded && deck.length === 0 && !firedRef.current) { firedRef.current = true; setTimeout(onDone, 0); } }, [loaded, deck, onDone]);
-  useEffect(() => { firedRef.current = false; }, [cardCap]);
+
+  // Empty decks skip immediately; completed non-empty decks briefly show the
+  // completion state and then hand control back to Today. Mark completion only
+  // when the timer actually fires so a parent re-render cannot cancel the timer
+  // after permanently flipping the guard.
+  useEffect(() => {
+    if (!loaded || firedRef.current) return undefined;
+    const delay = deck.length === 0 ? 0 : idx >= deck.length ? 300 : null;
+    if (delay === null) return undefined;
+    const timer = setTimeout(() => {
+      if (firedRef.current) return;
+      firedRef.current = true;
+      onDone();
+    }, delay);
+    return () => clearTimeout(timer);
+  }, [loaded, deck, idx, onDone]);
+
+  // A changed cap or language library means a fresh recall segment.
+  useEffect(() => {
+    firedRef.current = false;
+    ratingRef.current = false;
+    setIdx(0);
+  }, [cardCap, entries]);
+
+  useEffect(() => {
+    ratingRef.current = false;
+  }, [idx]);
+
   if (!loaded || deck.length === 0) return null;
   if (idx >= deck.length) {
     return (
@@ -912,8 +1069,8 @@ export function RecallRunner({ cardCap, onDone, onXp, onActivity }) {
   }
   const entry = deck[idx];
   const rate = (rating) => {
-    if (ratedRef.current) return; // duplicate tap: one presentation, one rating
-    ratedRef.current = true;
+    if (ratingRef.current) return; // duplicate tap: one presentation, one rating
+    ratingRef.current = true;
     rateCard(entry.id, rating, { mode: 'receptive', skill: 'vocabulary', itemLabel: entry.fr, label: entry.fr, source: 'today-recall', encounterId: encounterRef.current });
     onActivity?.({ type: 'cards', rating, itemId: entry.id, itemLabel: entry.fr, mode: 'receptive' });
     onXp(rating === 'again' ? 1 : 2);
@@ -940,7 +1097,7 @@ export function RecallRunner({ cardCap, onDone, onXp, onActivity }) {
     <div className="h-full overflow-y-auto nice-scroll px-4 py-6">
       <div className="max-w-md mx-auto space-y-4">
         <p className="text-center text-[11px] text-ink3 tabular-nums">{idx + 1}/{deck.length}</p>
-        <VocabCard entry={entry} cardDue saved={false} disabled={ratedRef.current} onRate={rate} onToggleSave={() => {}} apiKey="" mockMode />
+        <VocabCard entry={entry} cardDue saved={false} disabled={ratingRef.current} onRate={rate} onToggleSave={() => {}} apiKey="" mockMode />
         <p className="text-[11px] text-ink3 text-center">Rate honestly — the scheduler decides when this returns.</p>
       </div>
     </div>
@@ -949,17 +1106,42 @@ export function RecallRunner({ cardCap, onDone, onXp, onActivity }) {
 
 // Delayed review: recent corrections replayed as retrieval prompts. A
 // self-marked "said it right" feeds the mistake graph's mastery lifecycle.
-export function DelayedReview({ count, onXp }) {
+export function DelayedReview({ count, onXp, onDone }) {
   const items = useMemo(
-    () => getErrorNotebook().filter((e) => e.correctedByLearner).slice(0, Math.max(1, count)),
+    () => selectCorrectedErrors(getErrorNotebook(), { limit: Math.max(1, count) }),
     [count],
   );
   const [idx, setIdx] = useState(0);
   const [revealed, setRevealed] = useState(false);
-  // Double-tap guard: one self-mark per presented prompt.
-  const markedRef = useRef(false);
-  useEffect(() => { markedRef.current = false; }, [idx]);
-  if (!items.length || idx >= items.length) {
+  const firedRef = useRef(false);
+  const markRef = useRef(false);
+  const complete = !items.length || idx >= items.length;
+
+  // Review is a session segment, not a terminal screen: empty review queues
+  // skip immediately and completed queues hand control back after a brief
+  // acknowledgement. The guard prevents StrictMode/re-render duplicates.
+  useEffect(() => {
+    if (!complete || firedRef.current) return undefined;
+    const timer = setTimeout(() => {
+      if (firedRef.current) return;
+      firedRef.current = true;
+      onDone?.();
+    }, items.length ? 300 : 0);
+    return () => clearTimeout(timer);
+  }, [complete, items.length, onDone]);
+
+  useEffect(() => {
+    firedRef.current = false;
+    markRef.current = false;
+    setIdx(0);
+    setRevealed(false);
+  }, [count]);
+
+  useEffect(() => {
+    markRef.current = false;
+  }, [idx]);
+
+  if (complete) {
     return (
       <div className="h-full grid place-items-center px-4">
         <p className="text-sm text-ink2">Review complete.</p>
@@ -968,8 +1150,8 @@ export function DelayedReview({ count, onXp }) {
   }
   const entry = items[idx];
   const mark = (remembered) => {
-    if (markedRef.current) return;
-    markedRef.current = true;
+    if (markRef.current) return;
+    markRef.current = true;
     try {
       const graph = getMistakeGraph();
       const match = graph.find((m) => m.original === entry.original || m.concept === entry.ruleId);
