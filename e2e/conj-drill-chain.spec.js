@@ -91,6 +91,14 @@ test('a trainer gap owns the drill segment and renders the focused trainer', asy
   await expect(page.getByText(/Parfait\./)).toBeVisible();
 
   // And the segment hands back to the session — completed, not skipped.
+  // Remaining segments (listening is a real curriculum segment now) are
+  // driven to the completion screen: the drill was COMPLETED, the rest skip.
   await page.getByRole('button', { name: /Done drilling/i }).click();
-  await expect(page.getByText('Session complete.')).toBeVisible({ timeout: 10_000 });
+  const complete = page.getByText('Session complete.');
+  for (let i = 0; i < 10 && !(await complete.isVisible().catch(() => false)); i++) {
+    const skipRest = page.getByRole('button', { name: 'Skip', exact: true });
+    if (await skipRest.isVisible().catch(() => false)) { await skipRest.click(); continue; }
+    await page.waitForTimeout(500);
+  }
+  await expect(complete).toBeVisible({ timeout: 10_000 });
 });

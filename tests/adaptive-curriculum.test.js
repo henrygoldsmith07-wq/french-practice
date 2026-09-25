@@ -4,7 +4,7 @@ import {
   recordMistake, recordRetest, dueRetests, weakestMistakes,
   mistakeId, isAsrUncertain, typeForCategory,
 } from '../src/lib/mistakeGraph.js';
-import { buildDailyCurriculum } from '../src/lib/dailyCurriculum.js';
+import { buildDailyCurriculum, SEGMENT_WEIGHTS } from '../src/lib/dailyCurriculum.js';
 
 const DAY = 86400000;
 const T0 = Date.parse('2026-09-01T09:00:00Z');
@@ -254,4 +254,63 @@ test('retype-only repair state still produces a drill segment', () => {
   const drill = plan.segments.find((s) => s.id === 'drill');
   assert.ok(drill);
   assert.equal(drill.payload.kind, 'retype');
+});
+
+// ── skill-need modulation (#7): the session matches the learner's weak skills ─
+
+const FULL_20 = {
+  minutes: 20, srsDue: 10,
+  suggestedScenarioId: 'cafe', topMistake: { id: 'm1', concept: 'passe-compose', type: 'tense', mastery: 20, recurrence: 2 },
+  recentCorrections: 3, listeningTrack: { id: 't1', title: 'Track' },
+};
+const minutesOf = (plan) => Object.fromEntries(plan.segments.map((s) => [s.id, s.minutes]));
+
+test('no skillNeeds signal keeps the exact reference split', () => {
+  const { totalMinutes, segments } = buildDailyCurriculum(FULL_20);
+  const mins = minutesOf({ segments, totalMinutes });
+  assert.equal(mins.speak, 6);
+  assert.equal(mins.retrieve, 4);
+  assert.equal(mins.drill, 4);
+  assert.equal(mins.listen, 3);
+  assert.equal(totalMinutes, 20);
+});
+
+test('a listening-weak learner gets listening as their largest segment', () => {
+  const plan = buildDailyCurriculum({ ...FULL_20, skillNeeds: { listen: 1, speak: 0, retrieve: 0 } });
+  const mins = minutesOf(plan);
+  assert.ok(mins.listen >= 5, `listening grows well above its 3-minute floor (got ${mins.listen})`);
+  assert.ok(mins.listen > mins.retrieve && mins.listen > mins.drill, 'listening leads the unmodulated pair');
+  assert.equal(plan.totalMinutes, 20, 'budget never changes');
+});
+
+test('modulation is bounded: 1.5x the largest reference weight, never a takeover', () => {
+  const plan = buildDailyCurriculum({ ...FULL_20, skillNeeds: { listen: 1, speak: 0, retrieve: 0 } });
+  const mins = minutesOf(plan);
+  const maxCap = Math.round(SEGMENT_WEIGHTS.listen * 2.5 * 20);
+  assert.ok(mins.listen <= maxCap, `listen stays under its weighted cap (got ${mins.listen}, cap ${maxCap})`);
+  assert.ok(mins.speak >= 4 && mins.retrieve >= 3 && mins.drill >= 3, 'other modalities keep meaningful time');
+});
+
+test('uniform maximum need keeps every modality present at meaningful length', () => {
+  const uniform = minutesOf(buildDailyCurriculum({ ...FULL_20, skillNeeds: { listen: 1, speak: 1, retrieve: 1 } }));
+  assert.equal(Object.keys(uniform).length, 5, 'all five modalities remain scheduled');
+  for (const id of ['speak', 'retrieve', 'drill', 'review', 'listen']) {
+    assert.ok(uniform[id] >= 3, id + ' keeps at least the minimum segment length');
+  }
+  assert.ok(uniform.speak <= 8, 'no single modality takes over the session');
+});
+
+test('the balanced study arm ignores skillNeeds entirely', () => {
+  const balanced = buildDailyCurriculum({
+    ...FULL_20, balanced: true, balancedDrillTopic: 'articles',
+    skillNeeds: { listen: 1, speak: 1, retrieve: 1 },
+  });
+  const balancedNeutral = buildDailyCurriculum({
+    ...FULL_20, balanced: true, balancedDrillTopic: 'articles',
+  });
+  assert.deepEqual(
+    balanced.segments.map((s) => [s.id, s.minutes]),
+    balancedNeutral.segments.map((s) => [s.id, s.minutes]),
+    'study-arm validity: identical allocation with and without skillNeeds',
+  );
 });

@@ -102,6 +102,7 @@ function allocateMinutes(sources, total) {
  *   examSoon?: boolean,
  *   listeningTrack?: {id,title,audioSrc?}|null,
  *   dayIndex?: number,
+ *   skillNeeds?: { listen?: number, speak?: number, retrieve?: number },
  * }} input
  */
 export function buildDailyCurriculum(input = {}) {
@@ -110,8 +111,33 @@ export function buildDailyCurriculum(input = {}) {
     recentCorrections = 0, weaknessScenarioId = null, suggestedScenarioId = null,
     examSoon = false, listeningTrack = null,
     balanced = false, balancedDrillTopic = null,
+    skillNeeds = null,
   } = input;
   const total = Math.max(5, Math.min(45, Math.round(minutes)));
+
+  // Skill-need modulation: per-modality need (0..1, from per-skill recovery
+  // pressure — open weaknesses weighted by urgency and error count) scales a
+  // modality's weight from its reference value up to 2.5× at maximum need.
+  // The 3-minute floor would swallow any smaller shift; at max need a
+  // listening-weak learner gets listening as the LARGEST segment (the product
+  // spec's listening-priority session). Bounded, deterministic, and zero-signal
+  // means exactly the reference split. The drill/review pair is deliberately
+  // unmodulated — they are the loop's repair arm and follow the mistake
+  // graph, not taste.
+  const needs = skillNeeds && typeof skillNeeds === 'object' ? skillNeeds : {};
+  const modulate = (id) => {
+    const need = Number(needs[id]);
+    if (!Number.isFinite(need) || need <= 0) return SEGMENT_WEIGHTS[id];
+    const capped = Math.min(1, Math.max(0, need));
+    return SEGMENT_WEIGHTS[id] * (1 + 1.5 * capped);
+  };
+  const effectiveWeights = balanced ? SEGMENT_WEIGHTS : {
+    retrieve: modulate('retrieve'),
+    speak: modulate('speak'),
+    listen: modulate('listen'),
+    drill: SEGMENT_WEIGHTS.drill,
+    review: SEGMENT_WEIGHTS.review,
+  };
 
   // BALANCED variant: identical time/modality budget, but learner-specific
   // targeting is stripped — speak uses the rotation scenario, drill uses a
@@ -131,11 +157,11 @@ export function buildDailyCurriculum(input = {}) {
   const addSource = (id, weight, enabled) => {
     if (enabled) sources.push({ id, weight });
   };
-  addSource('retrieve', SEGMENT_WEIGHTS.retrieve, srsDue > 0);
-  addSource('speak', SEGMENT_WEIGHTS.speak, Boolean(scenarioId));
-  addSource('drill', SEGMENT_WEIGHTS.drill, Boolean(effTopMistake || effPendingRetypes > 0 || balancedDrillTopic));
-  addSource('review', SEGMENT_WEIGHTS.review, effRecentCorrections > 0);
-  addSource('listen', SEGMENT_WEIGHTS.listen, Boolean(listeningTrack));
+  addSource('retrieve', effectiveWeights.retrieve, srsDue > 0);
+  addSource('speak', effectiveWeights.speak, Boolean(scenarioId));
+  addSource('drill', effectiveWeights.drill, Boolean(effTopMistake || effPendingRetypes > 0 || balancedDrillTopic));
+  addSource('review', effectiveWeights.review, effRecentCorrections > 0);
+  addSource('listen', effectiveWeights.listen, Boolean(listeningTrack));
 
   const allocatedSources = allocateMinutes(sources, total);
   const minutesFor = (id) => allocatedSources.find((s) => s.id === id)?.floor ?? 0;

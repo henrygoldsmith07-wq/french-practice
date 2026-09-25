@@ -82,11 +82,24 @@ async function answerItem(page, item) {
     }
     case 'listening': {
       await page.getByRole('button', { name: /Play listening item/i }).click();
-      await page.waitForTimeout(400);
-      // If the platform has no usable TTS voice the runner marks the item
-      // unavailable immediately — then there is nothing to select.
-      if (!(await page.getByRole('button', { name: /Record & next|Finish check/i }).isVisible().catch(() => false))) {
-        await page.getByRole('group', { name: /Choose the meaning you heard/i }).locator('button').first().click();
+      // Answers unlock only after confirmed audio playback. Headless Chromium
+      // has no TTS engine, so the runner's playback gate times out and the
+      // item resolves as UNAVAILABLE (never wrong) — after which Continue
+      // appears. Poll for either outcome instead of racing the locked option.
+      const option = page.getByRole('group', { name: /Choose the meaning you heard/i }).locator('button').first();
+      const continueBtn = page.getByRole('button', { name: /Record & next|Finish check/i });
+      let answered = false;
+      for (let i = 0; i < 30 && !answered; i++) {
+        if (await option.isEnabled().catch(() => false)) {
+          await option.click();
+          answered = true;
+          break;
+        }
+        if (await continueBtn.isVisible().catch(() => false)) {
+          answered = true; // item resolved unavailable — nothing to select
+          break;
+        }
+        await page.waitForTimeout(500);
       }
       break;
     }

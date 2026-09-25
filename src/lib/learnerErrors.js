@@ -77,6 +77,25 @@ export function canonicaliseModel(model) {
   return changed ? { ...model, entries: [...entries, ...folded.values()] } : model;
 }
 
+// Assistance tier of a success. How much support produced this correct
+// answer? The recovery loop weights independence by it: a copied or heavily
+// scaffolded answer can extend "improving" but must never advance the
+// independent-encounter tally that resolves a weakness — mastery must be
+// earned by the learner's own production.
+//   'none'       — unassisted recall/production (full credit)
+//   'scaffolded' — partial support: targeted hint, word bank, sentence starter
+//   'assisted'   — the answer was shown/copied or the check was skipped
+export function assistanceTier(success) {
+  if (success.assisted === true) return 'assisted';
+  if (success.hinted === true) return 'scaffolded';
+  const mode = String(success.mode || '');
+  // Modes that are structurally scaffolded: the answer was on screen, or the
+  // producer cannot know how much of the answer the learner generated.
+  if (/^(retype|retype-drill|copy)$/i.test(mode)) return 'assisted';
+  if (/^(hint|scaffold|multiple-choice|quiz-choice|word-bank)$/i.test(mode)) return 'scaffolded';
+  return 'none';
+}
+
 // Evidence strength of a success, from its timing relative to the mistake.
 // 'same-session' — corrected within the same practice session (prompted,
 // just seen the answer): weaker evidence. 'delayed' — recalled in a LATER
@@ -159,6 +178,10 @@ function normaliseEvidence(evidence, fallbackAt) {
     score: clampScore(evidence.score),
     source: String(evidence.source || '').slice(0, 60) || null,
     detail: String(evidence.detail || '').slice(0, 180) || null,
+    // Assistance provenance: true only when support produced the success
+    // (copied answer, hint, scaffolded mode). Dropped when absent/false so
+    // legacy evidence stays byte-identical.
+    assisted: evidence.assisted === true ? true : undefined,
     // Evidence identity (lib/evidenceIdentity.js): provenance that lets the
     // model tell distinct encounters apart. Optional — legacy evidence has
     // none, and absence is treated as "independence unknown", never "independent".
@@ -249,6 +272,7 @@ function withEvidence(entry, error, at) {
     sessionId: error.sessionId,
     encounterId: error.encounterId,
     activityId: error.activityId,
+    assisted: error.assisted === true ? true : undefined,
   }, at);
   const evidence = nextEvidence
     ? [...entry.evidence.filter((item) => (
@@ -310,10 +334,16 @@ export function recordLearnerSuccess(model, success = {}, { at = new Date().toIS
   const previous = base.entries.find((entry) => entry.id === id);
   if (!previous) return base;
   const { evidence, modes } = withEvidence(previous, success, at);
-  const mode = String(success.mode || '').slice(0, 40);
-  const strength = evidenceStrength({ ...success, at }, previous);
+  const mode = String(success.mode || '').slice(0, 40);  const strength = evidenceStrength({ ...success, at }, previous);
+  // How much support produced this correct answer? Scaffolded/assisted
+  // successes still count as successes (the learner did better than the
+  // mistake) and still schedule recovery — but they must never advance the
+  // independence tally that resolves a weakness. Mastery is earned by the
+  // learner's own production, delayed or in distinct encounters.
+  const assistance = assistanceTier(success);
   // Independence accounting. A DELAYED clean pass is itself the retention
-  // evidence the loop asks for and resolves on its own. Same-session passes  // resolve only from DISTINCT encounters: the encounter key dedupes
+  // evidence the loop asks for and resolves on its own. Same-session passes
+  // resolve only from DISTINCT encounters: the encounter key dedupes
   // re-answers of the same drill, and identity-less evidence never advances
   // the tally — it can extend "improving" but must never imply mastery.
   const identity = evidenceIdentity(success);
@@ -322,7 +352,12 @@ export function recordLearnerSuccess(model, success = {}, { at = new Date().toIS
   const sameEncounterAgain = Boolean(encounterKey && keys.includes(encounterKey));
   let independentPasses = previous.independentPasses || 0;
   let nextKeys = keys;
-  if (strength === 'delayed') {
+  if (assistance !== 'none') {
+    // Support-produced: honest progress, never independent evidence. The
+    // encounter key is still recorded (recording it dedupes a re-answer of
+    // the same presentation if a later unassisted attempt lands there).
+    if (encounterKey && !sameEncounterAgain) nextKeys = [...keys, encounterKey].slice(-MAX_ENCOUNTER_KEYS);
+  } else if (strength === 'delayed') {
     // Legacy delayed evidence (mode/date separation, no ids) is still
     // structurally independent — a scheduled retest is a separate encounter
     // by construction. A delayed pass whose encounter was already counted
@@ -333,8 +368,11 @@ export function recordLearnerSuccess(model, success = {}, { at = new Date().toIS
     nextKeys = [...keys, encounterKey].slice(-MAX_ENCOUNTER_KEYS);
   }
   // One correct answer never implies mastery: same-session passes need two
-  // distinct encounters; a delayed clean pass resolves on its own.
-  const cleanPasses = strength === 'delayed' ? DELAYED_PASSES_TO_RESOLVE : previous.cleanPasses + 1;
+  // distinct encounters; a delayed clean pass resolves on its own. Assisted
+  // passes resolve nothing on their own.
+  const cleanPasses = assistance !== 'none'
+    ? previous.cleanPasses
+    : strength === 'delayed' ? DELAYED_PASSES_TO_RESOLVE : previous.cleanPasses + 1;
   const status = independentPasses >= INDEPENDENT_PASSES_TO_RESOLVE ? 'resolved' : 'recovering';
   return {
     version: 1,
@@ -405,6 +443,34 @@ export function recoveryHistory(model, { limit = 6 } = {}) {
   return events
     .sort((a, b) => (a.at < b.at ? 1 : -1))
     .slice(0, limit);
+}
+
+// Per-modality practice need (0..1) from the error model, for the session
+// allocator: where are the OPEN weaknesses, and how urgent are they?
+// Weight per entry = urgency (active=1, recovering=0.5) × pressure
+// (bounded error count). Need per modality = sqrt of its share of open
+// pressure — a listening-dominated profile shifts listening hard, while a
+// single weak entry cannot zero out the rest. Returns null when there is
+// nothing open: the allocator then uses the exact reference split.
+export function skillNeedsFromModel(model) {
+  const entries = createLearnerErrorModel(model).entries.filter((entry) => entry.status !== 'resolved');
+  if (!entries.length) return null;
+  const weightOf = (entry) => (entry.status === 'active' ? 1 : 0.5) * Math.min(4, entry.errorCount);
+  const byCategory = {};
+  for (const entry of entries) {
+    byCategory[entry.category] = (byCategory[entry.category] || 0) + weightOf(entry);
+  }
+  const total = Object.values(byCategory).reduce((sum, w) => sum + w, 0) || 1;
+  const need = (categories) => {
+    const sum = categories.reduce((acc, c) => acc + (byCategory[c] || 0), 0);
+    if (sum <= 0) return 0;
+    return Math.round(Math.min(1, Math.sqrt(sum / total)) * 100) / 100;
+  };
+  return {
+    listen: need(['listening']),
+    speak: need(['speaking', 'pronunciation']),
+    retrieve: need(['vocabulary']),
+  };
 }
 
 export function learnerErrorSummary(model) {

@@ -18,6 +18,7 @@ import {
   createLearnerErrorModel,
   recordLearnerError as applyLearnerError,
   recordLearnerSuccess as applyLearnerSuccess,
+  skillNeedsFromModel,
   prioritiseLearnerErrors,
   learnerErrorSummary,
   canonicaliseModel,
@@ -126,6 +127,10 @@ export const getLearnerErrors = (options = {}) =>
   prioritiseLearnerErrors(getLearnerErrorModel(), options);
 
 export const getLearnerErrorSummary = () => learnerErrorSummary(getLearnerErrorModel());
+
+// Per-modality practice need for the session allocator — the storage-backed
+// bridge over the pure skillNeedsFromModel rules.
+export const getSkillNeeds = () => skillNeedsFromModel(getLearnerErrorModel());
 
 export function recordLearnerError(error, options = {}) {
   const model = applyLearnerError(getLearnerErrorModel(), error, options);

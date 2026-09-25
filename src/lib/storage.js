@@ -3,10 +3,10 @@
 // the migration priming via getLearnerErrorModel).
 import {
   getLearnerErrorModel as _storeGetLearnerErrorModel,
-  getLearnerErrors, getLearnerErrorSummary,
+  getLearnerErrors, getLearnerErrorSummary, getSkillNeeds,
   recordLearnerError, recordLearnerSuccess,
 } from './stores/learnerErrorStore.js';
-export { getLearnerErrors, getLearnerErrorSummary, recordLearnerError, recordLearnerSuccess };
+export { getLearnerErrors, getLearnerErrorSummary, getSkillNeeds, recordLearnerError, recordLearnerSuccess };
 
 import { rateFsrs as fsrsRate, migrateFromSm2 } from './fsrs.js';
 import { applyLanguageEvidence, normaliseLanguageProgress } from './languageModel.js';
@@ -476,7 +476,7 @@ export function recordLedgerError({ mode, key, label, score = 0, source = 'pract
   return entry;
 }
 
-export function recordLedgerSuccess({ mode, key, label, score = 100, source = 'practice', context = null, sessionId = null, encounterId = null, activityId = null } = {}) {
+export function recordLedgerSuccess({ mode, key, label, score = 100, source = 'practice', context = null, sessionId = null, encounterId = null, activityId = null, assisted = false } = {}) {
   const normalisedMode = normalisePracticeMode(mode);
   const cleanKey = compactText(key, 120);
   if (!cleanKey) return null;
@@ -487,14 +487,23 @@ export function recordLedgerSuccess({ mode, key, label, score = 100, source = 'p
   entry.label = compactText(label || entry.label || cleanKey);
   entry.lastAt = now;
   entry.lastSuccessAt = now;
-  entry.successCount = (entry.successCount || 0) + 1;
+  const prevSuccesses = entry.successCount || 0;
+  entry.successCount = prevSuccesses + 1;
+  // Assistance-weighted resolution: a correct answer produced WITH support
+  // (copied revision, hinted answer) is real progress but never independent
+  // evidence. unassistedSuccesses is what can resolve a weakness. Legacy
+  // rows backfill their historical successes as unassisted (never rewrite
+  // history against the learner); new assisted successes simply don't add.
+  const prevUnassisted = entry.unassistedSuccesses == null ? prevSuccesses : entry.unassistedSuccesses;
+  entry.unassistedSuccesses = prevUnassisted + (assisted ? 0 : 1);
+  entry.lastAssisted = assisted ? true : undefined;
   entry.attempts = (entry.attempts || 0) + 1;
   entry.lastScore = clampScore(score);
   entry.lastSource = compactText(source || 'practice', 80);
   entry.context = compactContext(context);
   const delayDays = ERROR_RECYCLE_DAYS[Math.min(ERROR_RECYCLE_DAYS.length - 1, Number(entry.successCount) || 0)];
   entry.nextReviewAt = new Date(Date.now() + delayDays * 86400000).toISOString();
-  entry.status = entry.successCount >= 2 && entry.successCount >= entry.errorCount ? 'resolved' : 'recovering';
+  entry.status = entry.unassistedSuccesses >= 2 && entry.unassistedSuccesses >= entry.errorCount ? 'resolved' : 'recovering';
   if (encounterId) entry.lastEncounterId = compactText(encounterId, 80);
   if (sessionId) entry.lastSessionId = compactText(sessionId, 80);
   if (activityId) entry.lastActivityId = compactText(activityId, 80);
@@ -502,10 +511,10 @@ export function recordLedgerSuccess({ mode, key, label, score = 100, source = 'p
   return entry;
 }
 
-function recordGapOutcome({ mode, key, label, score = 0, source, context, event = true, sessionId = null, encounterId = null, activityId = null }) {
+function recordGapOutcome({ mode, key, label, score = 0, source, context, event = true, sessionId = null, encounterId = null, activityId = null, assisted = false }) {
   const provenance = { sessionId, encounterId, activityId };
   const result = clampScore(score) >= 80
-    ? recordLedgerSuccess({ mode, key, label, score, source, context, ...provenance })
+    ? recordLedgerSuccess({ mode, key, label, score, source, context, ...provenance, assisted })
     : recordLedgerError({ mode, key, label, score, source, context, ...provenance });
   if (event) {
     recordReviewEvent({
@@ -543,8 +552,8 @@ export function recordSpeakingGap(itemId, { label = itemId, score = 0, source = 
   return recordGapOutcome({ mode: 'speaking', key: itemId, label, score, source, context, sessionId, encounterId, activityId });
 }
 
-export function recordWritingGap(itemId, { label = itemId, score = 0, source = 'writing', context = null, sessionId = null, encounterId = null, activityId = null } = {}) {
-  return recordGapOutcome({ mode: 'writing', key: itemId, label, score, source, context, sessionId, encounterId, activityId });
+export function recordWritingGap(itemId, { label = itemId, score = 0, source = 'writing', context = null, sessionId = null, encounterId = null, activityId = null, assisted = false } = {}) {
+  return recordGapOutcome({ mode: 'writing', key: itemId, label, score, source, context, sessionId, encounterId, activityId, assisted });
 }
 
 export function getEvidenceLedgerModel() {
@@ -1128,6 +1137,10 @@ export function recordLearningActivity(event = {}) {
     sessionId: event.sessionId || currentSessionId(),
     encounterId: event.encounterId || null,
     activityId: event.activityId || null,
+    // Assistance provenance: a post-feedback revision (or any producer-
+    // flagged supported answer) must never count as independent production
+    // when it repairs a writing weakness.
+    assisted: event.assisted === true ? true : undefined,
   };
   // Every scored skill feeds the SAME recovery loop — reading and writing
   // included — so a weakness surfaced in one mode is repaired by whichever
