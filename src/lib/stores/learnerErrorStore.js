@@ -23,6 +23,7 @@ import {
   learnerErrorSummary,
   canonicaliseModel,
 } from '../learnerErrors.js';
+import { recordLearningEvidence } from './learningEvidenceStore.js';
 
 // Legacy sources the one-time migration folds into the unified model. These
 // read/write helpers live here (not storage.js) so the store is the single
@@ -135,11 +136,67 @@ export const getSkillNeeds = () => skillNeedsFromModel(getLearnerErrorModel());
 export function recordLearnerError(error, options = {}) {
   const model = applyLearnerError(getLearnerErrorModel(), error, options);
   write(KEYS.learnerErrors, model);
+  try {
+    recordLearningEvidence({
+      phase: 'baseline',
+      skill: error.category,
+      targetKey: error.key || error.topicId || error.itemId,
+      label: error.label,
+      modality: error.mode || error.category,
+      score: error.score,
+      correct: false,
+      assistance: error.assisted ? 'assisted' : error.hinted ? 'scaffolded' : 'none',
+      independent: Boolean(error.encounterId) && !error.assisted && !error.hinted,
+      source: error.source || 'learner-error',
+      sourceReliability: Number(error.confidence) >= 0.8 ? 'high' : Number(error.confidence) >= 0.5 ? 'medium' : 'unknown',
+      markerConfidence: Number.isFinite(Number(error.confidence)) ? Number(error.confidence) : null,
+      sessionId: error.sessionId,
+      encounterId: error.encounterId,
+      activityId: error.activityId,
+      at: options.at,
+      detail: error.detail,
+    }, options);
+  } catch { /* evidence instrumentation must never break local practice */ }
   return model.entries[0] || null;
 }
 
 export function recordLearnerSuccess(success, options = {}) {
   const model = applyLearnerSuccess(getLearnerErrorModel(), success, options);
   write(KEYS.learnerErrors, model);
+  try {
+    const mode = String(success.mode || '');
+    const phase = /^(held-out|transfer)/i.test(mode)
+      ? 'transfer'
+      : /^(weakness-retest|srs)$/i.test(mode) || success.delayed === true
+        ? 'delayed'
+        : 'intervention';
+    recordLearningEvidence({
+      phase,
+      skill: success.category,
+      targetKey: success.key || success.topicId || success.itemId,
+      label: success.label,
+      modality: success.mode || success.category,
+      sourceModality: success.sourceModality,
+      score: success.score,
+      correct: true,
+      // "transfer" means a new-context use, but only an explicitly held-out
+      // task can claim held-out evidence. Keeping these separate prevents a
+      // normal transfer drill from accidentally satisfying the strongest
+      // confirmation state.
+      heldOut: success.heldOut === true || /^held-out/i.test(mode),
+      promptNovelty: success.promptNovelty,
+      difficulty: success.difficulty,
+      assistance: success.assisted ? 'assisted' : success.hinted ? 'scaffolded' : 'none',
+      independent: Boolean(success.encounterId) && !success.assisted && !success.hinted,
+      source: success.source || 'learner-success',
+      sourceReliability: Number(success.confidence) >= 0.8 ? 'high' : Number(success.confidence) >= 0.5 ? 'medium' : 'unknown',
+      markerConfidence: Number.isFinite(Number(success.confidence)) ? Number(success.confidence) : null,
+      sessionId: success.sessionId,
+      encounterId: success.encounterId,
+      activityId: success.activityId,
+      at: options.at,
+      detail: success.detail,
+    }, options);
+  } catch { /* evidence instrumentation must never break local practice */ }
   return model.entries[0] || null;
 }

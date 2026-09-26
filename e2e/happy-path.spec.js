@@ -100,4 +100,31 @@ test.describe('Le Studio happy path', () => {
     expect(log[0]).toMatchObject({ skill: 'speaking' });
     expect(typeof log[0].score).toBe('number');
   });
+
+  test('search dialog traps keyboard focus and restores the trigger on close', async ({ page }) => {
+    await page.goto('/');
+    await page.evaluate(() => {
+      localStorage.clear();
+      localStorage.setItem('fp.onboarded', '1');
+      localStorage.setItem('fp.settings', JSON.stringify({ mockMode: true, level: 'A1', ttsRate: 1 }));
+    });
+    await page.reload();
+
+    const trigger = page.getByRole('button', { name: 'Search the studio' });
+    await expect(trigger).toBeVisible({ timeout: 5000 });
+    await trigger.focus();
+    await trigger.click();
+
+    const dialog = page.getByRole('dialog', { name: 'Search' });
+    const search = page.getByRole('textbox', { name: 'Search the whole studio' });
+    await expect(dialog).toBeVisible();
+    await expect(search).toBeFocused();
+
+    await page.keyboard.press('Shift+Tab');
+    expect(await dialog.evaluate((node) => node.contains(document.activeElement))).toBe(true);
+
+    await page.getByRole('button', { name: 'Close search' }).click();
+    await expect(dialog).toBeHidden();
+    await expect(trigger).toBeFocused();
+  });
 });

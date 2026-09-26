@@ -8,7 +8,7 @@
  * validate : strict provenance check (license/consent/source/audioSrc).
  * resolve  : fetch an archive.org item's file list and emit ready-to-validate
  *            asset entries (mp3/m4b) — the ONLY network step, opt-in.
- * status   : seed catalog coverage across the S1–S7 progression ladder.
+ * status   : seed catalog coverage across the S1–S8 progression ladder.
  */
 
 import fs from 'node:fs';
@@ -55,7 +55,7 @@ function printStatus() {
   console.log(`seed catalog: ${assets.length} valid asset(s), ${rejected.length} rejected`);
   const perStage = {};
   for (let s = 1; s <= MAX_STAGE; s++) perStage[s] = assets.filter((a) => (a.stage ?? stageFor(a)) === s).length;
-  console.log('stage ladder (S1 slow TTS → S7 noise/interruptions):');
+  console.log(`stage ladder (S1 ${STAGES[1].label} → S${MAX_STAGE} ${STAGES[MAX_STAGE].label}):`);
   for (let s = 1; s <= MAX_STAGE; s++) {
     console.log(`  S${s} ${STAGES[s].label.padEnd(45)} ${'█'.repeat(Math.min(perStage[s], 20)) || '·'} ${perStage[s]}`);
   }

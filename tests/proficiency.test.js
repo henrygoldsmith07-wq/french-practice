@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {
   DIMENSIONS, bandFor, globalScore, grammarScore, listeningScore, nextFocus,
   proficiency, pronunciationScore, readingScore, recencyWeight, speakingScore,
-  vocabularyScore, weightedMean, writingScore,
+  taskEvidenceWeight, vocabularyScore, weightedMean, writingScore,
 } from '../src/lib/proficiency.js';
 
 const DAY = 86400000;
@@ -35,6 +35,30 @@ describe('recency', () => {
   it('returns null rather than zero for no records', () => {
     assert.equal(weightedMean([], now), null);
     assert.equal(weightedMean(null, now), null);
+  });
+});
+
+describe('evidence quality weighting', () => {
+  it('discounts assisted training evidence relative to independent held-out evidence', () => {
+    const assisted = taskEvidenceWeight({ assistance: 'assisted', trainingItem: true, difficulty: 2 });
+    const transfer = taskEvidenceWeight({ independent: true, heldOut: true, delayed: true, difficulty: 4, markerConfidence: 0.95, sourceReliability: 'high' });
+    assert.ok(transfer > assisted);
+  });
+
+  it('lets harder independent evidence carry more weight than an otherwise identical easy task', () => {
+    const easy = taskEvidenceWeight({ independent: true, difficulty: 1 });
+    const hard = taskEvidenceWeight({ independent: true, difficulty: 5 });
+    assert.ok(hard > easy);
+  });
+
+  it('does not let a heavily assisted high score dominate stronger low-scoring evidence', () => {
+    const result = listeningScore({ metrics: [
+      { skill: 'listening', score: 100, at: daysAgo(1), assistance: 'assisted', trainingItem: true, difficulty: 1 },
+      { skill: 'listening', score: 50, at: daysAgo(1), independent: true, heldOut: true, delayed: true, difficulty: 5 },
+    ] }, now);
+    assert.ok(result.score < 75, `quality weighting was too weak: ${result.score}`);
+    assert.equal(result.heldOutSamples, 1);
+    assert.equal(result.assistedSamples, 1);
   });
 });
 
@@ -135,7 +159,8 @@ describe('composite', () => {
 
 describe('bands and global scale', () => {
   it('describes the score within the level, not across the ladder', () => {
-    assert.match(bandFor(95, 'A2'), /A2 complete/);
+    assert.match(bandFor(95, 'A2'), /Strong evidence within A2/);
+    assert.doesNotMatch(bandFor(95, 'A2'), /complete|certif/i);
     assert.match(bandFor(10, 'B2'), /Starting B2/);
     assert.equal(bandFor(null, 'A1'), null);
   });

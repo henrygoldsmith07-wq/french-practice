@@ -145,7 +145,7 @@ export default function ConditionsGym({ ttsRate = 1, onBack }) {
           </button>
           <div className="flex-1 min-w-0 text-center">
             <h2 className="text-sm font-semibold text-ink">Conditions gym</h2>
-            <p className="text-[11px] text-ink3">S6–S7 skills on synthetic conditions</p>
+            <p className="text-[11px] text-ink3">S6–S7 skills on synthetic conditions · S8 requires real conversational evidence</p>
           </div>
           <span className="w-10" aria-hidden="true" />
         </div>
@@ -228,7 +228,7 @@ export default function ConditionsGym({ ttsRate = 1, onBack }) {
               </button>
             </div>
             <p className="text-[11px] text-ink3 text-center">
-              Self-marks feed the S1–S7 ladder (5 attempts at ≥80% unlock the next stage). SpeakButton for one more listen:
+              Self-marks feed the S1–S8 ladder (5 attempts at ≥80% unlock the next stage). Synthetic practice cannot by itself prove S8 realistic conversation. SpeakButton for one more listen:
               {' '}<SpeakButton text={lines.map((l) => l.fr).join(' ')} label="Plain replay" />
             </p>
           </div>

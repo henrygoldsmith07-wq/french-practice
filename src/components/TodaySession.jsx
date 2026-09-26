@@ -25,6 +25,7 @@ import { recordSelectionTrial, getSelectionTrial, saveSelectionTrial } from '../
 import {
   getSrs, getNotebook, getDueWeaknesses, rateCard,
   getMistakeGraph, saveMistakeGraph, getStudyChecks, getLearnerErrors, getSkillNeeds, getPlacementSkillNeeds,
+  getLearningEvidenceOverview,
 } from '../lib/storage';
 import { getErrorNotebook, selectCorrectedErrors, selectDueRetypes } from '../lib/errorNotebook';
 // The vocab library is a separate lazy chunk (per-language registries) — it
@@ -67,6 +68,7 @@ import { currentSessionId, newEncounterId } from '../lib/evidenceIdentity';
 import { localDayIndex } from '../lib/localDay';
 import { segmentExplain, recoveryStatus } from '../lib/segmentExplain';
 import RecoveryBadge from './RecoveryBadge';
+import useDialogFocus from '../hooks/useDialogFocus.js';
 
 const EMPTY_DEP_LIST = Object.freeze([]);
 
@@ -154,6 +156,9 @@ export default function TodaySession({ open, onClose, minutes = 20, apiKey, mock
       try { variant = studyApi.effectiveVariant({ study }); } catch { variant = 'adaptive'; }
     }
     const balanced = variant === 'balanced';
+    const followUpDue = !balanced && hasCapabilityNow('learning-path') ? (() => {
+      try { return getLearningEvidenceOverview().due[0] || null; } catch { return null; }
+    })() : null;
     // Study validity: the trainer gap is learner-specific targeting. It is
     // built UNCONDITIONALLY here and gated by the drill-slot registry
     // (buildDrillSlot skips learner-specific producers in the balanced arm) —
@@ -249,7 +254,7 @@ export default function TodaySession({ open, onClose, minutes = 20, apiKey, mock
       concept: balanced ? rotationTopic : (top?.concept || null),
       pendingRetypes,
       srsDue,
-      listeningTrack: listeningTrack ? { id: listeningTrack.id, title: listeningTrack.title, audioSrc: listeningTrack.audioSrc || null } : null,
+      listeningTrack: listeningTrack ? { id: listeningTrack.id, title: listeningTrack.title, audioSrc: listeningTrack.audioSrc || null, sourceType: listeningTrack.sourceType || 'tts' } : null,
       recentCorrections: selectCorrectedErrors(notebook, { since: Date.now() - 48 * 3600000 }).length,
       // Capability gating for French-authored drill producers: conj/accent/
       // authored links exist only where the registry offers them (fr).
@@ -263,7 +268,7 @@ export default function TodaySession({ open, onClose, minutes = 20, apiKey, mock
       recentCorrections: caps.recentCorrections,
       weaknessScenarioId: weakness?.scenarioId || null,
       suggestedScenarioId: suggested?.id || null,
-      listeningTrack: listeningTrack ? { id: listeningTrack.id, title: listeningTrack.title, audioSrc: listeningTrack.audioSrc || null } : null,
+      listeningTrack: listeningTrack ? { id: listeningTrack.id, title: listeningTrack.title, audioSrc: listeningTrack.audioSrc || null, sourceType: listeningTrack.sourceType || 'tts' } : null,
       dayIndex,
       balanced,
       balancedDrillTopic: balanced ? rotationTopic : null,
@@ -272,6 +277,7 @@ export default function TodaySession({ open, onClose, minutes = 20, apiKey, mock
       // seed for a brand-new learner's first sessions. Neither present →
       // the exact reference split.
       skillNeeds: getSkillNeeds() || getPlacementSkillNeeds(),
+      evidenceDue: followUpDue,
     });
     // Resolve what can actually run: no segment is ever scheduled that
     // cannot run. Offline, the AI drill becomes the authored drill (or
@@ -517,6 +523,8 @@ function TodayBody({ plan, trialId, segIndex, setSegIndex, close, apiKey, mockMo
   const recordedRef = useRef(false);
   const missingRef = useRef(null);
   const transitionRef = useRef(-1);
+  const dialogRef = useRef(null);
+  useDialogFocus(dialogRef);
   const totalSteps = plan.segments.length + (plan.heldOut ? 1 : 0);
 
   // Every segment transition is single-consumer. A completion callback can
@@ -701,7 +709,7 @@ function TodayBody({ plan, trialId, segIndex, setSegIndex, close, apiKey, mockMo
     // language, never a hard-coded French attribute.
     const activeId = activeLanguage().id;
     return (
-      <div className="fixed inset-0 z-[65] overflow-y-auto bg-bg" role="dialog" aria-modal="true" aria-label={`Today's ${langName()} complete`}>
+      <div ref={dialogRef} tabIndex={-1} className="fixed inset-0 z-[65] overflow-y-auto bg-bg focus:outline-none" role="dialog" aria-modal="true" aria-label={`Today's ${langName()} complete`}>
         <div className="mx-auto min-h-full max-w-lg px-4 py-10 text-center space-y-5">
           <p className="text-3xl font-black text-ink">Session complete.</p>
           {takeaway ? (
@@ -721,7 +729,7 @@ function TodayBody({ plan, trialId, segIndex, setSegIndex, close, apiKey, mockMo
   }
 
   return (
-    <div className="fixed inset-0 z-[60] bg-bg flex flex-col" role="dialog" aria-modal="true" aria-label={`Today's ${langName()}`}>
+    <div ref={dialogRef} tabIndex={-1} className="fixed inset-0 z-[60] bg-bg flex flex-col focus:outline-none" role="dialog" aria-modal="true" aria-label={`Today's ${langName()}`}>
       <header className="shrink-0 border-b border-line bg-surface px-4 py-2.5">
         <div className="max-w-lg mx-auto flex items-center gap-3">
           <span className="text-sm font-bold text-ink whitespace-nowrap">{langName() === 'French' ? 'Aujourd\'hui' : 'Today'}</span>

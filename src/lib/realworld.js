@@ -19,7 +19,7 @@ export const SITUATIONS = [
       { fr: "Pouvez-vous me montrer sur la carte ?", en: 'Can you show me on the map?' },
       { fr: "C'est loin d'ici à pied ?", en: 'Is it far from here on foot?' },
       { fr: "Il y a un arrêt de bus près d'ici ?", en: 'Is there a bus stop near here?' },
-      { fr: "Je descend à la prochaine station.", en: 'I’m getting off at the next stop.' },
+      { fr: "Je descends à la prochaine station.", en: 'I’m getting off at the next stop.' },
       { fr: "Le quai numéro trois, c'est par où ?", en: 'Which way is platform three?' },
       { fr: "Est-ce que ce train s'arrête à Dijon ?", en: 'Does this train stop at Dijon?' },
     ],

@@ -427,7 +427,7 @@ export function recordBenchmarkSample(sample) {
 }
 
 // ── Authentic audio pack: the GETTER lives in the light half (listening.js
-// reads it); only the 7-stage progression writer stays heavy-side here.
+// reads it); only the 8-stage progression writer stays heavy-side here.
 
 export const getListeningProgression = () => {
   const v = read(KEYS.listeningProgression, null);

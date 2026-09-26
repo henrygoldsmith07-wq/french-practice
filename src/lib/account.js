@@ -43,7 +43,7 @@ async function deriveKey(passphrase, salt) {
 
 // Build a sync code from the current progress. Pass a non-empty passphrase to
 // encrypt it. Records the backup time as a side effect.
-export async function makeSyncCode(passphrase = '') {
+export async function makeSyncCode(passphrase = '', { mark = true } = {}) {
   const snapshot = exportProgress();
   let envelope;
   if (passphrase && subtle()) {
@@ -55,7 +55,7 @@ export async function makeSyncCode(passphrase = '') {
   } else {
     envelope = { v: 1, enc: false, snapshot };
   }
-  markBackup();
+  if (mark) markBackup();
   return PREFIX + bufToB64(enc.encode(JSON.stringify(envelope)));
 }
 

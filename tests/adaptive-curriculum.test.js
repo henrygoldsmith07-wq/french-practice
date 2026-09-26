@@ -314,3 +314,31 @@ test('the balanced study arm ignores skillNeeds entirely', () => {
     'study-arm validity: identical allocation with and without skillNeeds',
   );
 });
+
+test('a due delayed listening check increases listening time without claiming the generic track is the proof', () => {
+  const neutral = buildDailyCurriculum(FULL_20);
+  const due = buildDailyCurriculum({
+    ...FULL_20,
+    evidenceDue: { type: 'delayed', target: { skill: 'listening', label: 'Fast number recognition' } },
+  });
+  const neutralMinutes = minutesOf(neutral);
+  const dueMinutes = minutesOf(due);
+  assert.ok(dueMinutes.listen > neutralMinutes.listen, `listen should grow (${neutralMinutes.listen} → ${dueMinutes.listen})`);
+  assert.match(due.segments.find((segment) => segment.id === 'listen').why, /due for another check after a delay/i);
+  assert.deepEqual(due.followUpDue.target, { skill: 'listening', label: 'Fast number recognition' });
+});
+
+test('balanced study arm ignores follow-up evidence as well as ordinary skill needs', () => {
+  const base = buildDailyCurriculum({ ...FULL_20, balanced: true, balancedDrillTopic: 'articles' });
+  const withDue = buildDailyCurriculum({
+    ...FULL_20,
+    balanced: true,
+    balancedDrillTopic: 'articles',
+    evidenceDue: { type: 'delayed', target: { skill: 'listening', label: 'x' } },
+  });
+  assert.deepEqual(
+    withDue.segments.map((segment) => [segment.id, segment.minutes, segment.why]),
+    base.segments.map((segment) => [segment.id, segment.minutes, segment.why]),
+  );
+  assert.equal(withDue.followUpDue, null);
+});

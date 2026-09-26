@@ -11,6 +11,7 @@ import { SpeakButton } from './ui';
 import Mascot from './Mascot';
 import { Search, X, MessageCircle, Book, BookOpen, Volume, Check, Bookmark } from './icons';
 import { TAG_PILL } from '../components/classNames.js';
+import useDialogFocus from '../hooks/useDialogFocus.js';
 
 // Global search: one box over the whole studio — words, scenarios, grammar
 // topics, readings, listening tracks and personal Field Notes — with deep links into each.
@@ -22,6 +23,8 @@ export default function GlobalSearch({ open, onClose, onGo }) {
   const [q, setQ] = useState('');
   const [savedIds, setSavedIds] = useState([]);
   const inputRef = useRef(null);
+  const dialogRef = useRef(null);
+  useDialogFocus(dialogRef, { active: open, initialRef: inputRef });
   // "Jump straight to" picks are drawn once per open — Math.random() in the
   // render body re-rolled them on every keystroke and broke render purity.
   const [jump] = useState(() => ({
@@ -35,7 +38,6 @@ export default function GlobalSearch({ open, onClose, onGo }) {
     if (open) {
       setQ('');
       setSavedIds([]);
-      setTimeout(() => inputRef.current?.focus(), 60);
     }
   }, [open]);
 
@@ -90,7 +92,7 @@ export default function GlobalSearch({ open, onClose, onGo }) {
   );
 
   return (
-    <div className="fixed inset-0 z-[70] bg-bg flex flex-col" role="dialog" aria-modal="true" aria-label="Search">
+    <div ref={dialogRef} tabIndex={-1} className="fixed inset-0 z-[70] bg-bg flex flex-col focus:outline-none" role="dialog" aria-modal="true" aria-label="Search">
       <div className="shrink-0 border-b border-line bg-surface px-4 py-3">
         <div className="max-w-md mx-auto flex items-center gap-2">
           <Search size={16} className="text-ink3 shrink-0" />

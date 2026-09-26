@@ -4,10 +4,11 @@
 // All audio is synthesized locally; no external media, no link rot.
 
 import { NEW_LISTENING_TRACKS } from './content/listening-library.js';
+import { mergeCatalogs } from './authenticAudio.js';
 
 export const LISTENING_KINDS = [
   { id: 'story', title: 'Stories', description: 'Serialised fiction — a plot that carries across sessions' },
-  { id: 'authentique', title: 'Authentic audio', description: 'Real recorded voices — public-domain readings' },
+  { id: 'authentique', title: 'Authentic audio', description: 'Verified licensed or public-domain recordings only' },
   { id: 'podcast', title: 'Mini-podcasts', description: 'Short monologues on everyday topics' },
   { id: 'dialogue', title: 'Dialogues', description: 'Two voices, real back-and-forth' },
   { id: 'news', title: 'News bulletins', description: 'Radio-style headlines, read at pace' },
@@ -44,12 +45,12 @@ const BASE_TRACKS = [
       { fr: "Le télétravail a complètement changé notre façon de travailler.", en: 'Remote work has completely changed how we work.' },
       { fr: "D'un côté, on gagne du temps : plus de transports, plus de réunions inutiles.", en: 'On one hand, we save time: no more commuting, no more pointless meetings.' },
       { fr: "De l'autre, beaucoup de gens se sentent isolés derrière leur écran.", en: 'On the other, many people feel isolated behind their screens.' },
-      { fr: "Selon une étude récente, la solution idéale serait deux jours à la maison, trois au bureau.", en: 'According to a recent study, the ideal would be two days at home, three at the office.' },
+      { fr: "À mon avis, un bon équilibre serait deux jours à la maison et trois au bureau.", en: 'In my view, a good balance would be two days at home and three in the office.' },
       { fr: "Bref, comme souvent, la vérité se trouve quelque part au milieu.", en: 'In short, as so often, the truth lies somewhere in the middle.' },
     ],
     questions: [
       { q: 'What downside of remote work is mentioned?', options: ['Feeling isolated', 'Lower pay', 'Longer hours'], answer: 0 },
-      { q: 'What mix does the study recommend?', options: ['2 days home, 3 office', '5 days home', '1 day home, 4 office'], answer: 0 },
+      { q: 'What balance does the speaker suggest?', options: ['2 days home, 3 office', '5 days home', '1 day home, 4 office'], answer: 0 },
     ],
   },
   {
@@ -168,16 +169,16 @@ const BASE_TRACKS = [
       { q: 'When should they take the tablet?', options: ['After meals', 'Before meals', 'Only at night'], answer: 0 },
     ],
   },
-  // Authentic audio: tracks that play a real recorded MP3 from /audio/ when
-  // present (see public/audio/README.md for the public-domain sources); if
-  // the file is missing the player falls back to TTS so nothing breaks.
+  // Public-domain TEXT used for TTS practice. These were once labelled as
+  // authentic recordings even though the optional MP3 files did not ship.
+  // Keep the useful literary material, but do not claim native-audio evidence.
   {
     id: 'auth-corbeau',
-    kind: 'authentique',
+    kind: 'story',
     cefr: 'B2',
-    title: 'Le Corbeau et le Renard — lu à voix haute',
-    description: 'La Fontaine (1668), read by a native speaker. Public domain.',
-    audioSrc: '/audio/corbeau.mp3',
+    title: 'Le Corbeau et le Renard — texte classique',
+    description: 'La Fontaine (1668), public-domain text spoken locally with TTS.',
+    sourceType: 'tts',
     lines: [
       { fr: "Maître Corbeau, sur un arbre perché, tenait en son bec un fromage.", en: 'Master Crow, perched on a tree, held a cheese in his beak.' },
       { fr: "Maître Renard, par l'odeur alléché, lui tint à peu près ce langage :", en: 'Master Fox, drawn by the smell, addressed him more or less like this:' },
@@ -193,11 +194,11 @@ const BASE_TRACKS = [
   },
   {
     id: 'auth-cigale',
-    kind: 'authentique',
+    kind: 'story',
     cefr: 'B2',
-    title: 'La Cigale et la Fourmi — lue à voix haute',
-    description: 'La Fontaine (1668), read by a native speaker. Public domain.',
-    audioSrc: '/audio/cigale.mp3',
+    title: 'La Cigale et la Fourmi — texte classique',
+    description: 'La Fontaine (1668), public-domain text spoken locally with TTS.',
+    sourceType: 'tts',
     lines: [
       { fr: "La Cigale, ayant chanté tout l'été, se trouva fort dépourvue quand la bise fut venue :", en: 'The Cicada, having sung all summer, found herself most destitute when the north wind came:' },
       { fr: "pas un seul petit morceau de mouche ou de vermisseau.", en: 'not a single little morsel of fly or worm.' },
@@ -236,8 +237,21 @@ export function authenticTrackFromAsset(a) {
     description: a.notes || `Real recording — ${a.license}`,
     audioSrc: a.audioSrc,
     audioId: a.id,
+    sourceType: 'recording',
     attribution: a.attribution || `${a.title} — ${a.license}${a.speakers?.length ? ` (readers: ${a.speakers.join(', ')})` : ''}`,
     stage: a.stage,
+    speakers: Array.isArray(a.speakers) ? a.speakers : [],
+    region: a.region || null,
+    regions: Array.isArray(a.regions) ? a.regions : [],
+    register: a.register || null,
+    speechRate: Number.isFinite(Number(a.speechRate)) ? Number(a.speechRate) : null,
+    recordingQuality: a.recordingQuality || null,
+    duration: Number.isFinite(Number(a.duration)) ? Number(a.duration) : null,
+    topic: a.topic || null,
+    sourceUrl: a.sourceUrl,
+    license: a.license,
+    consentBasis: a.consentBasis,
+    realisticConversation: a.realisticConversation === true,
     lines: a.lines || [],
     questions: a.questions || [],
   };
@@ -248,7 +262,11 @@ export function allListeningTracks() {
   const pack = (() => {
     try { return getAuthenticAudioPack(); } catch { return []; }
   })();
-  return [...LISTENING_TRACKS, ...(Array.isArray(pack) ? pack.map(authenticTrackFromAsset) : [])];
+  // Storage is user/import controlled. Re-validate at the consumption boundary
+  // so stale or manually edited local state cannot acquire an "authentic"
+  // badge without provenance.
+  const { assets } = mergeCatalogs(Array.isArray(pack) ? pack : []);
+  return [...LISTENING_TRACKS, ...assets.map(authenticTrackFromAsset)];
 }
 
 /** Tracks banded at or below a level, easiest first — for the path engine. */

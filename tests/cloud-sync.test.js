@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { URL } from 'node:url';
 
 function memoryStorage() {
   const values = new Map();
@@ -74,10 +75,141 @@ test('force overwrite is explicit in the write request', async () => {
 
 test('network failure leaves local-first practice usable and reports a safe error', async () => {
   const { push } = await loadClient();
+  globalThis.localStorage.setItem('fp.xp', JSON.stringify(123));
+  const before = globalThis.localStorage.getItem('fp.lastBackup');
   globalThis.fetch = async () => { throw new Error('offline'); };
   const result = await push('', null);
   assert.equal(result.status, 'error');
   assert.match(result.message, /local progress is unchanged/i);
+  assert.equal(globalThis.localStorage.getItem('fp.xp'), JSON.stringify(123));
+  assert.equal(globalThis.localStorage.getItem('fp.lastBackup'), before, 'failed cloud push must not claim a successful backup');
+});
+
+test('successful push marks backup only after a valid server acknowledgement', async () => {
+  const { push } = await loadClient();
+  assert.equal(globalThis.localStorage.getItem('fp.lastBackup'), null);
+  globalThis.fetch = async () => ({
+    status: 200,
+    ok: true,
+    json: async () => ({ updated_at: '2026-09-26T08:00:00.000Z' }),
+  });
+  const result = await push('', null);
+  assert.equal(result.status, 'ok');
+  assert.ok(globalThis.localStorage.getItem('fp.lastBackup'));
+});
+
+test('malformed successful response is rejected and does not mark a backup', async () => {
+  const { push } = await loadClient();
+  globalThis.fetch = async () => ({
+    status: 200,
+    ok: true,
+    json: async () => { throw new Error('bad json'); },
+  });
+  const result = await push('', null);
+  assert.equal(result.status, 'error');
+  assert.match(result.message, /invalid response/i);
+  assert.equal(globalThis.localStorage.getItem('fp.lastBackup'), null);
+});
+
+test('remote deletion between reads surfaces as a conflict with no remote timestamp', async () => {
+  const { push } = await loadClient();
+  globalThis.fetch = async () => ({ status: 409, ok: false, json: async () => ({ error: 'Sync conflict', updated_at: null }) });
+  const result = await push('', '2026-09-26T07:00:00.000Z');
+  assert.deepEqual(result, { status: 'conflict', remoteUpdatedAt: null });
+});
+
+test('offline pull and malformed remote state leave local learner data untouched', async () => {
+  const { pull } = await loadClient();
+  globalThis.localStorage.setItem('fp.xp', JSON.stringify(77));
+  globalThis.fetch = async () => { throw new Error('offline'); };
+  let result = await pull('');
+  assert.equal(result.status, 'error');
+  assert.equal(globalThis.localStorage.getItem('fp.xp'), JSON.stringify(77));
+
+  globalThis.fetch = async () => ({ status: 200, ok: true, json: async () => ({ state: { payload: {} } }) });
+  result = await pull('');
+  assert.equal(result.status, 'error');
+  assert.match(result.message, /malformed/i);
+  assert.equal(globalThis.localStorage.getItem('fp.xp'), JSON.stringify(77));
+});
+
+test('corrupt remote LS1 and wrong encrypted passphrase never replace local state', async () => {
+  const { pull } = await loadClient();
+  globalThis.localStorage.setItem('fp.xp', JSON.stringify(55));
+  globalThis.fetch = async () => ({
+    status: 200, ok: true,
+    json: async () => ({ state: { payload: { code: 'LS1:not-valid-base64' }, updated_at: '2026-09-26T08:00:00.000Z' } }),
+  });
+  let result = await pull('');
+  assert.equal(result.status, 'error');
+  assert.equal(globalThis.localStorage.getItem('fp.xp'), JSON.stringify(55));
+
+  const account = await import(`../src/lib/account.js?sync-pass-${++importId}`);
+  const encrypted = await account.makeSyncCode('correct horse battery staple');
+  // Snapshot generation may update backup metadata, but learner progress stays
+  // the same; from this point the failed pull must mutate nothing.
+  const xpBefore = globalThis.localStorage.getItem('fp.xp');
+  globalThis.fetch = async () => ({
+    status: 200, ok: true,
+    json: async () => ({ state: { payload: { code: encrypted }, updated_at: '2026-09-26T08:05:00.000Z' } }),
+  });
+  result = await pull('wrong passphrase');
+  assert.equal(result.status, 'error');
+  assert.match(result.message, /wrong passphrase|altered/i);
+  assert.equal(globalThis.localStorage.getItem('fp.xp'), xpBefore);
+});
+
+test('encrypted and unencrypted pushes advertise the real client-side protection state', async () => {
+  const { push } = await loadClient();
+  const bodies = [];
+  globalThis.fetch = async (_url, options = {}) => {
+    bodies.push(JSON.parse(options.body));
+    return { status: 200, ok: true, json: async () => ({ updated_at: new Date().toISOString() }) };
+  };
+  const plain = await push('', null);
+  const encrypted = await push('secret', null, true);
+  assert.equal(plain.encrypted, false);
+  assert.equal(encrypted.encrypted, true);
+  const account = await import(`../src/lib/account.js?sync-enc-${++importId}`);
+  assert.equal(account.isEncryptedCode(bodies[0].payload.code), false);
+  assert.equal(account.isEncryptedCode(bodies[1].payload.code), true);
+});
+
+test('server outages, expired sessions and offline delete degrade without touching local progress', async () => {
+  const { pull, deleteRemote } = await loadClient();
+  globalThis.localStorage.setItem('fp.xp', JSON.stringify(88));
+  globalThis.fetch = async () => ({ status: 503, ok: false, json: async () => ({ error: 'db down' }) });
+  assert.equal((await pull('')).status, 'unavailable');
+  assert.equal(globalThis.localStorage.getItem('fp.xp'), JSON.stringify(88));
+
+  globalThis.fetch = async () => ({ status: 401, ok: false, json: async () => ({ error: 'expired' }) });
+  assert.equal((await pull('')).status, 'signed-out');
+  assert.equal((await deleteRemote()).status, 'signed-out');
+  assert.equal(globalThis.localStorage.getItem('fp.xp'), JSON.stringify(88));
+
+  globalThis.fetch = async () => { throw new Error('offline'); };
+  const deleted = await deleteRemote();
+  assert.equal(deleted.status, 'error');
+  assert.match(deleted.message, /keeps its progress/i);
+  assert.equal(globalThis.localStorage.getItem('fp.xp'), JSON.stringify(88));
+});
+
+test('oversized cloud snapshot is rejected before network I/O and does not mark backup', async () => {
+  const { push } = await loadClient();
+  // Base64 expansion pushes a ~3.2 MB learner payload above the 4 MB request
+  // ceiling. The client should fail locally rather than waste bandwidth or
+  // depend on a deployment-specific 413 response.
+  globalThis.localStorage.setItem('fp.notebook', JSON.stringify([{ id: 'huge', note: 'x'.repeat(3_200_000) }]));
+  let fetches = 0;
+  globalThis.fetch = async () => {
+    fetches += 1;
+    return { status: 200, ok: true, json: async () => ({ updated_at: new Date().toISOString() }) };
+  };
+  const result = await push('', null);
+  assert.equal(result.status, 'error');
+  assert.match(result.message, /too large/i);
+  assert.equal(fetches, 0, 'oversized payload is rejected before fetch');
+  assert.equal(globalThis.localStorage.getItem('fp.lastBackup'), null);
 });
 
 test('server sync contract enforces compare-and-swap in the database statement', () => {

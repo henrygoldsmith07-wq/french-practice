@@ -20,6 +20,7 @@ const KEYS = {
   sessionHistory: 'fp.sessionHistory.v1', // canonical, uncapped completed-session history
   studyEvents: 'fp.studyEvents.v1', // durable cross-mode activity/event trail
   learnerErrors: 'fp.learnerErrors.v1', // persistent grammar/vocab/listening/pronunciation gaps
+  learningEvidence: 'fp.learningEvidence.v1', // baseline→intervention→transfer→delayed learner evidence
   migrations: 'fp.storageMigrations.v1', // one-time local schema migrations
   pulseHistory: 'fp.pulse-history.v2', // versioned, transcript-free history for Pulse
   pulseOptIn: 'fp.pulse-opt-in', // Le Studio's own Pulse opt-in, separate from the mirror it gates
@@ -133,7 +134,7 @@ function readRaw(key, fallback) {
 const LEARNER_KEY_VALUES = [
   KEYS.srs, KEYS.notebook, KEYS.grammar, KEYS.mistakeGraph, KEYS.selectionTrial,
   KEYS.sessionHistory, KEYS.sessionHistoryMeta, KEYS.studyEvents, KEYS.reviewEvents,
-  KEYS.reviewLog, KEYS.evidenceLedger, KEYS.learnerErrors, KEYS.metrics,
+  KEYS.reviewLog, KEYS.evidenceLedger, KEYS.learnerErrors, KEYS.learningEvidence, KEYS.metrics,
   KEYS.grammarErrors, KEYS.weaknessMemory, KEYS.languageModel, KEYS.fieldNotes,
   KEYS.studyState, KEYS.studyConsent, KEYS.studyChecks, KEYS.studyOutcomes,
   KEYS.lastPlacement, KEYS.errorNotebook, KEYS.starred,

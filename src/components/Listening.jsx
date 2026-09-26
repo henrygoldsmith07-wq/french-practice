@@ -21,7 +21,8 @@ import { CARD_ROW, ICON_BTN_ROUND, ICON_BTN_SQUARE, TAG_PILL } from '../componen
 // Listening hub: TTS-narrated tracks (mini-podcasts, dialogues, news,
 // scenes) with listen-first transcripts, per-line highlighting, variable
 // speed, and comprehension quizzes — plus the Dictée drill and the
-// conditions gym (synthetic S6–S7 training).
+// conditions gym (synthetic S6–S7 training). Native-recording claims are
+// provenance-driven: TTS remains useful practice but separate evidence.
 
 export default function Listening({ mode, onModeChange, ttsRate, level = 'B1', onXp, onActivity }) {
   const adaptive = (() => {
@@ -78,7 +79,7 @@ export default function Listening({ mode, onModeChange, ttsRate, level = 'B1', o
           </p>
           {adaptive && <p className="text-[11px] text-ink3 mt-1">Suggested: stage {adaptive.stage} · {adaptive.rate.toFixed(2)}× · {adaptive.label} · {adaptive.accentCount} accent{adaptive.accentCount === 1 ? '' : 's'}</p>}
           <p className="text-[11px] text-ink3 mt-1">
-            Authentic-audio ladder: stage {ladderStage} of 7 — {STAGES[ladderStage]?.label || 'slow TTS'}
+            Listening ladder: stage {ladderStage} of 8 — {STAGES[ladderStage]?.label || 'slow supported speech'}
           </p>
         </div>
 
@@ -143,13 +144,21 @@ export default function Listening({ mode, onModeChange, ttsRate, level = 'B1', o
             French-authored — capability-gated so a beta language sees the
             core listening tools (dictée, course, numbers) without a French
             track grid it cannot use. */}
-        {hasCapabilityNow('listening-library') && LISTENING_KINDS.map((kind) => (
+        {hasCapabilityNow('listening-library') && LISTENING_KINDS.map((kind) => {
+          const tracks = allListeningTracks().filter((track) => track.kind === kind.id);
+          return (
           <section key={kind.id}>
             <h3 className="text-[11px] font-bold uppercase tracking-wider text-ink2 mb-2">
               {kind.title} <span className="normal-case font-normal text-ink3">— {kind.description}</span>
             </h3>
             <div className="space-y-2">
-              {allListeningTracks().filter((t) => t.kind === kind.id).map((t) => (
+              {kind.id === 'authentique' && tracks.length === 0 && (
+                <div className="w-full bg-surface border border-line rounded-2xl px-4 py-3 text-left">
+                  <span className="block text-sm font-semibold text-ink">No verified native recordings installed</span>
+                  <span className="block text-xs text-ink3 mt-0.5">TTS practice remains available and is scored separately. Authentic audio appears only when its source and licence are verified.</span>
+                </div>
+              )}
+              {tracks.map((t) => (
                 <button
                   key={t.id}
                   onClick={() => onModeChange(t.id)}
@@ -167,7 +176,8 @@ export default function Listening({ mode, onModeChange, ttsRate, level = 'B1', o
               ))}
             </div>
           </section>
-        ))}
+          );
+        })}
       </div>
     </div>
   );
@@ -207,12 +217,13 @@ export function TrackPlayer({ track, baseRate, level = 'B1', onXp, onActivity, o
   const [showTranscript, setShowTranscript] = useState(false);
   const [showTranslations, setShowTranslations] = useState(false);
   const [quiz, setQuiz] = useState(null); // { index, correct, picked, done }
-  // Real recorded audio: tracks with audioSrc play the MP3 from /audio/;
-  // if the file is missing (it's a drop-in — see public/audio/README.md)
-  // we fall back to TTS so the track still works.
+  // Only provenance-validated pack tracks carry sourceType=recording. A bare
+  // audioSrc is never enough to claim native-recording evidence.
   const [audioFailed, setAudioFailed] = useState(false);
+  const [plays, setPlays] = useState(0);
   const audioRef = useRef(null);
-  const hasRealAudio = Boolean(track.audioSrc) && !audioFailed;
+  const verifiedRecording = track.sourceType === 'recording' && Boolean(track.audioSrc);
+  const hasRealAudio = verifiedRecording && !audioFailed;
 
   useEffect(() => () => { stopSpeaking(); audioRef.current?.pause(); }, []);
 
@@ -222,9 +233,10 @@ export function TrackPlayer({ track, baseRate, level = 'B1', onXp, onActivity, o
     if (hasRealAudio && audioRef.current) {
       audioRef.current.playbackRate = rate;
       audioRef.current.currentTime = 0;
-      audioRef.current.play().catch(() => setAudioFailed(true));
+      audioRef.current.play().then(() => setPlays((count) => count + 1)).catch(() => setAudioFailed(true));
       return;
     }
+    setPlays((count) => count + 1);
     speakLines(track.lines, {
       rate,
       accentId: playback.accentId,
@@ -273,7 +285,21 @@ export function TrackPlayer({ track, baseRate, level = 'B1', onXp, onActivity, o
       const gained = Math.max(1, quiz.correct * 5);
       onXp(gained);
       const score = Math.round((quiz.correct / quiz.questions.length) * 100);
-      recordSkillScore('listening', score);
+      const levelDifficulty = Math.min(5, Math.max(1, ['A1', 'A2', 'B1', 'B2', 'C1', 'C2'].indexOf(track.cefr) + 1));
+      recordSkillScore('listening', score, {
+        independent: !showTranscript,
+        assistance: showTranscript ? 'scaffolded' : 'none',
+        trainingItem: true,
+        difficulty: levelDifficulty,
+        markerConfidence: 1,
+        sourceReliability: verifiedRecording && !audioFailed ? 'high' : 'medium',
+        sourceType: verifiedRecording && !audioFailed ? 'recording' : 'tts',
+        authentic: verifiedRecording && !audioFailed,
+        transcriptRevealed: showTranscript,
+        replayCount: Math.max(0, plays - 1),
+        stage: verifiedRecording ? track.stage ?? null : rate <= 0.75 ? 1 : 2,
+        trackId: track.id,
+      });
       onActivity?.({ type: 'listening', trackId: track.id, score, label: track.title, mode: 'track' });
       setQuiz({ ...quiz, done: true, gained });
     }
@@ -282,7 +308,7 @@ export function TrackPlayer({ track, baseRate, level = 'B1', onXp, onActivity, o
   return (
     <div className="space-y-4">
       {/* hidden native audio element for real recordings */}
-      {track.audioSrc && (
+      {verifiedRecording && (
         <audio
           ref={audioRef}
           src={track.audioSrc}
@@ -293,15 +319,15 @@ export function TrackPlayer({ track, baseRate, level = 'B1', onXp, onActivity, o
       )}
       {/* player */}
       <div className="bg-surface border border-line rounded-2xl p-5 space-y-4">
-        {track.audioSrc && (
+        {verifiedRecording && (
           <p className="text-[11px] text-ink3 text-center -mb-1">
             {hasRealAudio
-              ? '🎙️ Real native recording'
-              : 'Recording not installed — playing with TTS (see public/audio/README.md).'}
+              ? `Verified recording${track.license ? ` · ${track.license}` : ''}`
+              : 'Recording unavailable — this attempt will use TTS and will not count as native-recording evidence.'}
           </p>
         )}
         <p className="text-[11px] text-ink3 text-center">
-          Stage {adaptive?.stage || 1} · {playback.accentLabel} · {new Set(track.lines.map((line) => line.speaker).filter(Boolean)).size || 1} speaker{(new Set(track.lines.map((line) => line.speaker).filter(Boolean)).size || 1) === 1 ? '' : 's'}
+          Stage {verifiedRecording ? (track.stage || 3) : (adaptive?.stage || 1)} · {verifiedRecording ? (track.region || track.register || 'verified source') : playback.accentLabel} · {verifiedRecording && track.speakers?.length ? `${track.speakers.length} documented speaker${track.speakers.length === 1 ? '' : 's'}` : 'TTS voice'}
         </p>
         <div className="flex items-center justify-center gap-3">
           {playing ? (

@@ -103,6 +103,7 @@ function allocateMinutes(sources, total) {
  *   listeningTrack?: {id,title,audioSrc?}|null,
  *   dayIndex?: number,
  *   skillNeeds?: { listen?: number, speak?: number, retrieve?: number },
+ *   evidenceDue?: {type:'transfer'|'delayed', target?:{skill?:string,label?:string}}|null,
  * }} input
  */
 export function buildDailyCurriculum(input = {}) {
@@ -111,7 +112,7 @@ export function buildDailyCurriculum(input = {}) {
     recentCorrections = 0, weaknessScenarioId = null, suggestedScenarioId = null,
     examSoon = false, listeningTrack = null,
     balanced = false, balancedDrillTopic = null,
-    skillNeeds = null,
+    skillNeeds = null, evidenceDue = null,
   } = input;
   const total = Math.max(5, Math.min(45, Math.round(minutes)));
 
@@ -125,8 +126,23 @@ export function buildDailyCurriculum(input = {}) {
   // unmodulated — they are the loop's repair arm and follow the mistake
   // graph, not taste.
   const needs = skillNeeds && typeof skillNeeds === 'object' ? skillNeeds : {};
+  // A due follow-up is stronger scheduling information than a generic skill
+  // imbalance: it tells us recent learning needs another independent encounter.
+  // It only changes modality time here; the generic segment is NOT recorded as
+  // the target's transfer/delayed proof unless that activity explicitly emits
+  // such evidence itself.
+  const dueSkill = balanced ? null : evidenceDue?.target?.skill;
+  const dueModality = dueSkill === 'listening'
+    ? 'listen'
+    : dueSkill === 'vocabulary'
+      ? 'retrieve'
+      : ['speaking', 'pronunciation', 'grammar', 'writing'].includes(dueSkill)
+        ? 'speak'
+        : null;
+  const dueNeed = evidenceDue?.type === 'delayed' ? 0.9 : evidenceDue?.type === 'transfer' ? 0.75 : 0;
   const modulate = (id) => {
-    const need = Number(needs[id]);
+    const baseNeed = Number(needs[id]);
+    const need = Math.max(Number.isFinite(baseNeed) ? baseNeed : 0, dueModality === id ? dueNeed : 0);
     if (!Number.isFinite(need) || need <= 0) return SEGMENT_WEIGHTS[id];
     const capped = Math.min(1, Math.max(0, need));
     return SEGMENT_WEIGHTS[id] * (1 + 1.5 * capped);
@@ -148,6 +164,13 @@ export function buildDailyCurriculum(input = {}) {
   const effPendingRetypes = balanced ? 0 : pendingRetypes;
 
   const scenarioId = effWeaknessScenarioId || suggestedScenarioId || null;
+  const followUpSuffix = (id) => {
+    if (balanced || dueModality !== id || !evidenceDue?.type) return '';
+    const skill = String(dueSkill || id);
+    return evidenceDue.type === 'delayed'
+      ? ` A recent ${skill} repair is due for another check after a delay, so this modality gets extra time today.`
+      : ` A recent ${skill} repair is ready for a fresh-context follow-up, so this modality gets extra time today.`;
+  };
 
   // Build only REAL runnable candidates. Previously Speak consumed budget even
   // when no scenario existed, and listening was not a weighted source at all;
@@ -173,11 +196,11 @@ export function buildDailyCurriculum(input = {}) {
     segments.push({
       id: 'speak', label: 'Speak', minutes: minutesFor('speak'),
       payload: { scenarioId },
-      why: effWeaknessScenarioId
+      why: (effWeaknessScenarioId
         ? 'Retests a structure you slipped on — in a fresh context.'
         : examSoon
           ? 'Exam-style speaking keeps production sharp.'
-          : 'Productive speech first: say things, get corrected.',
+          : 'Productive speech first: say things, get corrected.') + followUpSuffix('speak'),
     });
   }
 
@@ -186,7 +209,7 @@ export function buildDailyCurriculum(input = {}) {
     segments.push({
       id: 'retrieve', label: 'Retrieve', minutes: minutesFor('retrieve'),
       payload: { cardCap: Math.min(srsDue, minutesFor('retrieve') * 2) },
-      why: `${srsDue} card${srsDue === 1 ? '' : 's'} due — recall right at the forgetting point.`,
+      why: `${srsDue} card${srsDue === 1 ? '' : 's'} due — recall right at the forgetting point.${followUpSuffix('retrieve')}`,
     });
   }
 
@@ -231,9 +254,9 @@ export function buildDailyCurriculum(input = {}) {
     segments.push({
       id: 'listen', label: 'Listen', minutes: minutesFor('listen'),
       payload: { track: listeningTrack },
-      why: listeningTrack.audioSrc
-        ? 'Authentic native audio at your current stage.'
-        : 'Ear training at your current stage.',
+      why: (listeningTrack.sourceType === 'recording'
+        ? 'Verified native recording at your current stage.'
+        : 'Ear training at your current stage.') + followUpSuffix('listen'),
     });
   }
 
@@ -246,5 +269,6 @@ export function buildDailyCurriculum(input = {}) {
     totalMinutes: segments.reduce((a, s) => a + s.minutes, 0),
     segments,
     skipped,
+    followUpDue: balanced ? null : evidenceDue || null,
   };
 }

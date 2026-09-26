@@ -44,6 +44,14 @@ deliberately down-weighted until independent evidence confirms it. The model spa
 grammar, vocabulary, listening, pronunciation, speaking, writing and reading —
 a weakness found in one mode is repaired by whichever mode best targets it.
 
+Alongside that model, `src/lib/learningEvidence.js` records a learner-facing
+effectiveness loop that is deliberately separate from XP and from the opt-in
+research study: **baseline weakness → intervention → unseen transfer → delayed
+retest**. Repeated submissions of one encounter are deduplicated; assisted
+answers contribute less than independent ones; held-out, delayed, difficult and
+well-marked evidence carries more weight. Missing transfer or delayed evidence
+stays missing rather than being filled with an assumed failure or success.
+
 Separate, deliberately smaller systems: the **mistake graph** (structural
 conversation mistakes with a retest ladder), the **weakness memory**
 (repair → spaced retest → recurrence), the **phoneme profile** (pronunciation
@@ -57,9 +65,13 @@ XP, streaks and coins track *activity* and are never inputs to proficiency.
   shadowing, and a 45-second improv drill. Audio is MediaRecorder + on-device
   analysis; transcription and marking use the AI provider (or mock mode).
 - **Listening** — dictée, number drills, authored TTS tracks and provenance-gated
-  authentic recordings with comprehension work. TTS/offline material remains
-  available without a network; real recordings require a valid licensed/consent
-  source record and may need network access unless already cached.
+  authentic recordings with comprehension work. The progression runs from slow
+  supported speech through verified native, speaker/accent variation,
+  spontaneous/noisy speech and explicitly tagged realistic conversation. TTS
+  attempts remain useful but are not counted as native-recording evidence. The
+  repository currently ships no verified native recording files; genuine pack
+  assets require source + licence/consent metadata and may need the network
+  unless already cached.
 - **Reading** — graded texts, an interactive story, tap-to-translate into a
   personal notebook, comprehension quizzes that feed the error model.
 - **Writing** — copy drills, sentence completion, free writing and an essay
@@ -71,16 +83,16 @@ Vocabulary scheduling is **FSRS** (importing legacy SM-2 data), with a
 most-forgotten-first, interleaved due queue. Error recovery follows one
 documented loop:
 
-> mistake → classify → prioritise → targeted repair → clean success →
-> delayed retest → improving → resolved → recurrence detection
+> mistake → classify → prioritise → targeted repair → independent success →
+> fresh-context transfer → delayed retest → confirmation → recurrence detection
 
-Two evidence rules are enforced and tested: **one correct answer never implies
-mastery** (same-session passes need two independent clean passes to resolve),
-and **delayed recall is the strong signal** (a clean recall on a later day —
-an SRS review, a scheduled retest — resolves on its own). A mistake after a
-repair reactivates the weakness and counts as a recurrence. The visible
-states are **Active weakness → Improving → Resolved**, with a dated recovery
-history in Progress.
+Evidence rules are conservative and tested: **one immediate correct answer
+never implies mastery**, repeated submission of one encounter cannot inflate
+evidence, assisted success cannot independently demonstrate mastery, and
+delayed/fresh-context evidence is stronger than training repetition. A mistake
+after repair reactivates the weakness and counts as recurrence. The learner-
+facing longitudinal states are **Active weakness → Improving → Needs
+confirmation → Demonstrated**, with **Recurred** reopening the cycle.
 
 ## 6. Supported languages and maturity
 
@@ -128,16 +140,21 @@ examiner-benchmark validation track.
   server-side optimistic concurrency so a stale device cannot silently replace
   a newer snapshot. A passphrase encrypts the snapshot client-side with AES-GCM;
   without a passphrase the snapshot is portable but not end-to-end encrypted.
+  Snapshot creation does not mark a backup as successful until the server has
+  acknowledged the write; network failures, malformed responses, conflicts and
+  oversized snapshots leave local learner state intact.
 - **Pulse sharing is opt-in and transcript-free**; turning it off deletes the
   mirror immediately. The evidence study writes only anonymised, local data and
   never enrols without explicit consent.
 
 ## 9. Offline / PWA behaviour
 
-Installable PWA with a service worker (network-first, cache-fallback) caching
-the whole app. Content libraries are per-language lazy chunks. All practice
-content, SRS, drills and TTS audio work offline; only live AI conversation and
-marking (and uncached remote authentic audio) need the network. Progress moves
+Installable PWA with a service worker (network-first, cache-fallback) that
+runtime-caches app surfaces and content as they are loaded. Content libraries
+are per-language lazy modules/assets, including the French scenario JSON asset.
+Previously loaded practice content, SRS, drills and TTS audio work offline;
+first-use lazy assets, live AI conversation/marking and uncached remote authentic
+audio may need the network. Progress moves
 between devices via JSON export/import or an `LS1:` sync code (household
 namespacing preserved). Deployments may optionally store that same snapshot
 behind Google sign-in; cloud failure never disables local practice. The OS

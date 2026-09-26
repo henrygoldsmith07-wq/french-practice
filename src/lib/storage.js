@@ -7,6 +7,10 @@ import {
   recordLearnerError, recordLearnerSuccess,
 } from './stores/learnerErrorStore.js';
 export { getLearnerErrors, getLearnerErrorSummary, getSkillNeeds, recordLearnerError, recordLearnerSuccess };
+export {
+  getLearningEvidenceState, getLearningEvidenceOverview, getSkillEvidenceQuality,
+  recordLearningEvidence, saveLearningEvidenceState,
+} from './stores/learningEvidenceStore.js';
 
 import { rateFsrs as fsrsRate, migrateFromSm2 } from './fsrs.js';
 import { applyLanguageEvidence, normaliseLanguageProgress } from './languageModel.js';

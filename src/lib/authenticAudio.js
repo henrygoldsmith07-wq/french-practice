@@ -4,12 +4,14 @@
  * GOAL: learners understand people, not speech engines. This module models
  * licensed recordings (LibriVox/public-domain readings, CC-BY, or direct
  * consenting-speaker uploads) across regions, speeds and registers, and maps
- * every asset onto a 7-stage listening progression:
+ * every asset onto an 8-stage listening progression:
  *
  *   S1 slow TTS + transcript          S5 accent variation
  *   S2 normal TTS                     S6 spontaneous speech
- *   S3 clear native recording         S7 realistic noise / interruptions
- *   S4 natural native recording
+ *   S3 natural native recording       S7 interruptions / background noise
+ *   S4 different speakers             S8 realistic conversation
+ *   S5 accent variation
+ *   S6 spontaneous speech
  *
  * HONESTY RULES:
  *  - An asset without license + source + consent basis is REJECTED, not
@@ -21,16 +23,17 @@
 // ── Stage model ──────────────────────────────────────────────────────────────
 
 export const STAGES = {
-  1: { id: 1, label: 'Slow TTS + transcript', source: 'tts', rateMax: 0.75 },
-  2: { id: 2, label: 'Normal TTS', source: 'tts', rateMax: 1.0 },
-  3: { id: 3, label: 'Clear native recording', source: 'recording', register: ['clear-read'] },
-  4: { id: 4, label: 'Natural native recording', source: 'recording', register: ['natural-read', 'radio'] },
+  1: { id: 1, label: 'Slow supported speech', source: 'tts', rateMax: 0.75 },
+  2: { id: 2, label: 'Normal clear speech', source: 'tts', rateMax: 1.0 },
+  3: { id: 3, label: 'Natural native recording', source: 'recording' },
+  4: { id: 4, label: 'Different speakers', source: 'recording', speakersMin: 2 },
   5: { id: 5, label: 'Accent variation', source: 'recording', accentsMin: 2 },
   6: { id: 6, label: 'Spontaneous speech', source: 'recording', register: ['spontaneous', 'conversation', 'interview'] },
-  7: { id: 7, label: 'Realistic background noise / interruptions', source: 'recording', noise: ['ambient', 'busy'], overlap: true },
+  7: { id: 7, label: 'Interruptions / background noise', source: 'recording', noise: ['ambient', 'busy'], overlap: true },
+  8: { id: 8, label: 'Realistic conversational speech', source: 'recording', realisticConversation: true },
 };
 
-export const MAX_STAGE = 7;
+export const MAX_STAGE = 8;
 const STAGE_UNLOCK_MIN_ITEMS = 5;
 const STAGE_UNLOCK_ACCURACY = 0.8;
 
@@ -57,6 +60,9 @@ export function validateAsset(a) {
   if (a.region && !REGIONS.includes(a.region)) errors.push(`region must be one of ${REGIONS.join(', ')}`);
   if (a.register && !REGISTERS.includes(a.register)) errors.push(`register must be one of ${REGISTERS.join(', ')}`);
   if (a.noise && !NOISE_LEVELS.includes(a.noise)) errors.push(`noise must be one of ${NOISE_LEVELS.join(', ')}`);
+  if (a.realisticConversation != null && typeof a.realisticConversation !== 'boolean') errors.push('realisticConversation must be boolean');
+  if (a.duration != null && (!Number.isFinite(Number(a.duration)) || Number(a.duration) <= 0)) errors.push('duration must be a positive number of seconds');
+  if (a.speechRate != null && (!Number.isFinite(Number(a.speechRate)) || Number(a.speechRate) <= 0)) errors.push('speechRate must be a positive number');
   return { ok: errors.length === 0, errors };
 }
 
@@ -67,11 +73,12 @@ export function stageFor(asset) {
     const rate = asset.rate ?? 1.0;
     return rate <= STAGES[1].rateMax ? 1 : 2;
   }
+  if (asset.realisticConversation === true) return 8;
   if (asset.overlap || (asset.noise && asset.noise !== 'quiet')) return 7;
   if (asset.register === 'spontaneous' || asset.register === 'conversation' || asset.register === 'interview') return 6;
   if (asset.accentVariety || (Array.isArray(asset.regions) && new Set(asset.regions).size >= 2)) return 5;
-  if (asset.register === 'announcement' || asset.register === 'radio' || asset.register === 'natural-read') return 4;
-  return 3; // default for a clean native recording
+  if (Array.isArray(asset.speakers) && new Set(asset.speakers.filter(Boolean)).size >= 2) return 4;
+  return 3; // valid provenance-backed native recording, no stronger claim
 }
 
 // ── Progression ──────────────────────────────────────────────────────────────
@@ -147,7 +154,9 @@ export function mergeCatalogs(...catalogs) {
       }
       if (seen.has(a.id)) continue;
       seen.add(a.id);
-      assets.push({ stage: stageFor(a), ...a });
+      // Classification is derived from validated metadata; an imported/stale
+      // `stage` field must never override the app's current ladder rules.
+      assets.push({ ...a, stage: stageFor(a) });
     }
   return { assets, rejected };
 }

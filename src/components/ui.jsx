@@ -68,8 +68,9 @@ export function Modal({ open, onClose, children, wide = false, label }) {
     return () => {
       cancelAnimationFrame(raf);
       window.removeEventListener('keydown', onKey);
-      // Hand focus back to whatever opened the dialog.
-      if (document.activeElement && document.activeElement !== document.body) {
+      // Hand focus back to whatever opened the dialog, including the common
+      // case where unmounting the focused child has already moved focus to body.
+      if (restoreRef.current?.isConnected !== false) {
         try { restoreRef.current?.focus?.(); } catch { /* element gone */ }
       }
     };

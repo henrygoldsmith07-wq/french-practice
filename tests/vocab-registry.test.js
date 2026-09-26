@@ -6,6 +6,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
+import { URL } from 'node:url';
 import { setContentLanguage, contentLang } from '../src/lib/content/active.js';
 import {
   getVocabPacks, getVocabPacksAsync, allEntries, allEntriesAsync,
@@ -25,7 +26,7 @@ globalThis.fetch = async (input, init) => {
   const url = input instanceof URL ? input : new URL(input);
   if (url.protocol === 'file:') {
     const body = await readFile(url, 'utf8');
-    return { ok: true, text: async () => body };
+    return { ok: true, status: 200, text: async () => body, json: async () => JSON.parse(body) };
   }
   return nativeFetch(input, init);
 };

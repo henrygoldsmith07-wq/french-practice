@@ -13,6 +13,15 @@
 
 import { contentLang } from './content/active.js';
 
+const FR_SCENARIOS_URL = new URL('../assets/content/fr-scenarios.json', import.meta.url);
+
+async function loadJsonAsset(url) {
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`Content asset failed (${response.status})`);
+  const body = await response.json();
+  if (!Array.isArray(body)) throw new Error('Content asset is not an array');
+  return body;
+}
 
 // ---- per-language scenario registries -------------------------------------
 // Same contract as vocab.js's registries: one loader per registry language,
@@ -20,7 +29,9 @@ import { contentLang } from './content/active.js';
 // be retried), and a sync facade that warms after the first resolve so lazy
 // consumers can keep calling getScenarios() unchanged.
 const registryLoaders = {
-  fr: () => import('./content/fr-scenarios.js').then((m) => m.FR_SCENARIOS),
+  // French is the largest authored scenario corpus. Keep it as a data asset so
+  // ~40 KB of literal content does not count as executable JavaScript.
+  fr: () => loadJsonAsset(FR_SCENARIOS_URL),
   de: () => import('./content/de.js').then((m) => m.DE_SCENARIOS),
   es: () => import('./content/es.js').then((m) => m.ES_SCENARIOS),
 };
@@ -43,7 +54,7 @@ function getRegisteredScenarios(lang) {
   return registryCache.get(lang);
 }
 
-/** Resolve the active language's scenarios lazily (FR is synchronous). */
+/** Resolve the active language's scenarios lazily. */
 export function getScenariosAsync() {
   return getRegisteredScenarios(contentLang());
 }
@@ -65,8 +76,9 @@ export const DAILY_TOPICS = [
 
 // Scenarios for the active target language. Functions (not consts) so the
 // Arena, Home and search re-read them after the learner switches language.
-// French is synchronous; DE/ES serve [] from the sync facade until their
-// registry chunk resolves (App warms it at boot — see the useScenarios hook).
+// Every language serves [] from the sync facade until its registry resolves
+// (App warms it at boot — see the useScenarios hook). French uses a JSON data
+// asset; DE/ES use lazy JS registry modules.
 export const getScenarios = () => resolvedScenarios.get(contentLang()) || [];
 export const getScenario = (id) => getScenarios().find((s) => s.id === id) || getScenarios()[0];
 

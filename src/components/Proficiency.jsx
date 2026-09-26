@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { getSrs, getGrammarProgress, getSessions, getMetrics, getSettings } from '../lib/storage';
+import { getSrs, getGrammarProgress, getSessions, getMetrics, getSettings, getLearningEvidenceState } from '../lib/storage';
 import { LEVELS, coverageReport, profileFor, promotionGate } from '../lib/cefr';
 import { DIMENSIONS, nextFocus, proficiency } from '../lib/proficiency';
 import { assistanceFading, retentionCalibration } from '../lib/learningAdaptation';
@@ -15,6 +15,7 @@ import {
 } from '../lib/placementListening';
 import { stopSpeaking, ttsSupported } from '../lib/tts';
 import { saveLastPlacement } from '../lib/storage';
+import { hasCapabilityNow } from '../lib/languages';
 import { Target, Check, ChevronRight } from './icons';
 
 // The proficiency screen: one score, seven components, and an honest account of
@@ -34,6 +35,9 @@ export default function Proficiency({ onXp }) {
     topicScores: safe(getGrammarProgress, {}),
     sessions: safe(getSessions, []),
     metrics: safe(getMetrics, []),
+    // The new longitudinal store predates per-language provenance. Do not let
+    // French weakness evidence raise confidence in beta-language profiles.
+    learningEvidence: hasCapabilityNow('learning-path') ? safe(getLearningEvidenceState, {}) : {},
   }), [level]);
 
   const result = useMemo(() => proficiency(evidence), [evidence]);
@@ -69,12 +73,19 @@ export default function Proficiency({ onXp }) {
         <section className="bg-surface border border-line rounded-2xl p-4 text-center">
           <p className="text-5xl font-bold tabular-nums">{result.score === null ? '—' : result.score}</p>
           <p className="text-sm font-semibold mt-1">{result.band || 'No score yet'}</p>
-          <p className="text-[11px] text-ink3 mt-1">Working CEFR level {level} · score is within this level, not an XP conversion.</p>
+          <p className="text-[11px] text-ink3 mt-1">App-estimated ability within working CEFR level {level} · not an XP conversion or CEFR certification.</p>
           <p className="text-xs text-ink2 mt-2">
             {result.score === null
               ? result.note
-              : `Confidence ${Math.round(result.confidence * 100)}% — ${result.confidence < 0.5 ? 'thin evidence, treat as provisional' : 'enough evidence to be meaningful'}.`}
+              : `Estimate confidence ${Math.round(result.confidence * 100)}% · coverage ${Math.round(result.evidenceCoverage * 100)}% · evidence quality ${Math.round(result.evidenceConfidence * 100)}%.`}
           </p>
+          {result.score !== null && (
+            <p className="text-[11px] text-ink3 mt-1">
+              {result.benchmarkEvidence > 0
+                ? `${result.benchmarkEvidence} independent held-out evidence point${result.benchmarkEvidence === 1 ? '' : 's'} contributes to this profile.`
+                : 'No independent held-out evidence yet — treat the level estimate as provisional.'}
+            </p>
+          )}
           <p className="text-xs text-ink2 mt-2">{nextFocus(result)}</p>
         </section>
 
@@ -94,6 +105,14 @@ export default function Proficiency({ onXp }) {
                   <div className="h-full bg-ink rounded-full transition-all" style={{ width: `${part.score ?? 0}%` }} />
                 </div>
                 <p className="text-[11px] text-ink2">{d.blurb}</p>
+                {part.samples > 0 && (
+                  <p className="text-[10px] text-ink3">
+                    {part.samples} sample{part.samples === 1 ? '' : 's'}
+                    {Number.isFinite(part.effectiveSamples) ? ` · ${part.effectiveSamples} effective after evidence weighting` : ''}
+                    {part.heldOutSamples ? ` · ${part.heldOutSamples} held-out` : ''}
+                    {part.delayedSamples ? ` · ${part.delayedSamples} delayed` : ''}
+                  </p>
+                )}
               </div>
             );
           })}

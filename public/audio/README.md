@@ -1,8 +1,8 @@
-# Real native audio — drop-in folder
+# Verified authentic audio workflow
 
-The "Authentic audio" listening tracks play real recorded MP3s from this
-folder. The app works without them (it falls back to TTS with a notice),
-but recorded native speech is far better ear training.
+The app does **not** treat an arbitrary file placed in this folder as authentic
+native-speech evidence. An authentic recording must carry provenance metadata
+(source, licence/consent basis) and pass `authenticAudio.validateAsset`.
 
 ## Pack workflow (preferred)
 
@@ -14,29 +14,21 @@ or it is refused:
 node scripts/audio-pack.mjs resolve --archive <archive.org-item-id> --out draft.json
 # fill in region/register tags, confirm license…
 node scripts/audio-pack.mjs validate --file draft.json
-node scripts/audio-pack.mjs status        # see the S1–S7 ladder coverage
+node scripts/audio-pack.mjs status        # see the S1–S8 ladder coverage
 ```
 
-Progression: S1 slow TTS → S2 normal TTS → S3 clear native → S4 natural →
-S5 accent variation → S6 spontaneous → S7 noise/interruptions. A stage
+Progression: S1 slow supported speech → S2 normal clear speech → S3 natural
+native → S4 speaker variation → S5 accent variation → S6 spontaneous → S7
+noise/interruptions → S8 explicitly tagged realistic conversation. A stage
 unlocks after 5 attempts at ≥80% (`fp.listeningProgression.v1`).
 
-## Manual drop-in (still supported)
+## Local files
 
-| File | Content |
-|---|---|
-| `corbeau.mp3` | La Fontaine — *Le Corbeau et le Renard* (~1 min) |
-| `cigale.mp3` | La Fontaine — *La Cigale et la Fourmi* (~1 min) |
+Local audio files can be used by a validated pack, but the filename itself is
+never provenance. Put the file in the deployment, then reference that path from
+a pack entry that also supplies its genuine `sourceUrl`, `license` and
+`consentBasis`.
 
-LibriVox recordings of La Fontaine's *Fables* are public domain:
-<https://librivox.org> (search "Fables de La Fontaine"). Download the chapter
-MP3s for *Le Corbeau et le Renard* (Book I, fable 2) and *La Cigale et la
-Fourmi* (Book I, fable 1), rename, drop here, redeploy.
-
-Any other public-domain French audio can be added the same way: add a track
-with an `audioSrc` in `src/lib/listening.js` pointing at a file here.
-
-> Note: these files are not committed because the build environment used to
-> assemble the app has no network access to librivox.org/archive.org. The
-> player detects a missing file and falls back to TTS, so shipping without
-> them is safe.
+The repository currently ships no native-recording files in this directory.
+The two La Fontaine texts remain useful TTS listening material, but are not
+labelled or scored as authentic recording comprehension.

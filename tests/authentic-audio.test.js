@@ -43,21 +43,32 @@ describe('validateAsset — provenance is strict', () => {
   });
 });
 
-describe('stageFor — the S1–S7 ladder', () => {
+describe('stageFor — the S1–S8 ladder', () => {
+  it('defines eight explicit learner-facing stages', () => {
+    assert.equal(MAX_STAGE, 8);
+    assert.equal(Object.keys(STAGES).length, 8);
+    for (let stage = 1; stage <= MAX_STAGE; stage++) assert.ok(STAGES[stage]?.label);
+  });
   it('TTS maps to stages 1–2 by rate', () => {
     assert.equal(stageFor({ sourceType: 'tts', rate: 0.7 }), 1);
     assert.equal(stageFor({ sourceType: 'tts', rate: 0.95 }), 2);
     assert.equal(stageFor({}), 2);
   });
-  it('clean native recording → S3; natural/radio → S4', () => {
+  it('provenance-backed native recording starts at S3; documented speaker variation → S4', () => {
     assert.equal(stageFor(base), 3);
-    assert.equal(stageFor({ ...base, register: 'radio' }), 4);
+    assert.equal(stageFor({ ...base, register: 'natural-read' }), 3);
+    assert.equal(stageFor({ ...base, speakers: ['A', 'B'] }), 4);
   });
-  it('multi-accent sets → S5; spontaneous → S6; noise/overlap → S7 (highest wins)', () => {
+  it('multi-accent → S5; spontaneous → S6; noise/overlap → S7; explicit realistic conversation → S8', () => {
     assert.equal(stageFor({ ...base, accentVariety: true }), 5);
     assert.equal(stageFor({ ...base, register: 'conversation' }), 6);
     assert.equal(stageFor({ ...base, register: 'spontaneous', noise: 'busy' }), 7);
     assert.equal(stageFor({ ...base, overlap: true }), 7);
+    assert.equal(stageFor({ ...base, realisticConversation: true }), 8);
+  });
+  it('never accepts an imported stage claim over derived metadata', () => {
+    const { assets } = mergeCatalogs([{ ...base, stage: 8 }]);
+    assert.equal(assets[0].stage, 3);
   });
 });
 
@@ -105,9 +116,14 @@ describe('playbackPlan + track conversion', () => {
     assert.equal(plan.stage, 1);
   });
   it('pack assets convert to listening tracks tagged kind authentique', () => {
-    const t = authenticTrackFromAsset({ ...base, cefr: 'B2' });
+    const t = authenticTrackFromAsset({ ...base, cefr: 'B2', stage: 3, speakers: ['Reader'], duration: 42 });
     assert.equal(t.kind, 'authentique');
     assert.equal(t.cefr, 'B2');
     assert.equal(t.audioSrc, base.audioSrc);
+    assert.equal(t.sourceType, 'recording');
+    assert.equal(t.license, 'public-domain');
+    assert.equal(t.sourceUrl, base.sourceUrl);
+    assert.deepEqual(t.speakers, ['Reader']);
+    assert.equal(t.duration, 42);
   });
 });

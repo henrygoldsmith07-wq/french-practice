@@ -11,8 +11,20 @@
 // UI says so rather than implying an encryption that is not there.
 
 import { makeSyncCode, restoreSyncCode } from './account.js';
+import { markBackup } from './storage.js';
 
 const SIGNED_OUT = { available: false, user: null };
+const MAX_SYNC_REQUEST_BYTES = 4 * 1024 * 1024;
+const encoder = new TextEncoder();
+
+async function responseJson(response) {
+  try {
+    const body = await response.json();
+    return body && typeof body === 'object' ? body : null;
+  } catch {
+    return null;
+  }
+}
 
 /** Who is signed in, and whether sign-in exists on this deployment at all. */
 export async function fetchAccount() {
@@ -38,10 +50,14 @@ export async function signOut() {
 }
 
 export async function remoteUpdatedAt() {
-  const response = await fetch('/api/sync', { headers: { accept: 'application/json' } });
-  if (!response.ok) return null;
-  const body = await response.json();
-  return body.state?.updated_at ?? null;
+  try {
+    const response = await fetch('/api/sync', { headers: { accept: 'application/json' } });
+    if (!response.ok) return null;
+    const body = await responseJson(response);
+    return body?.state?.updated_at ?? null;
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -60,31 +76,41 @@ export async function push(passphrase, expected, force = false) {
   let code;
   let response;
   try {
-    code = await makeSyncCode(passphrase || '');
+    // Cloud generation must be side-effect free until the remote write really
+    // succeeds. Manual sync-code generation keeps account.js's default marker.
+    code = await makeSyncCode(passphrase || '', { mark: false });
+    const requestBody = JSON.stringify({
+      payload: { code },
+      version: 1,
+      expectedUpdatedAt: expected ?? null,
+      force: Boolean(force),
+    });
+    if (encoder.encode(requestBody).byteLength > MAX_SYNC_REQUEST_BYTES) {
+      return { status: 'error', message: 'This snapshot is too large for account sync. Your local progress is unchanged.' };
+    }
     response = await fetch('/api/sync', {
       method: 'PUT',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({
-        payload: { code },
-        version: 1,
-        expectedUpdatedAt: expected ?? null,
-        force: Boolean(force),
-      }),
+      body: requestBody,
     });
   } catch {
     return { status: 'error', message: 'Could not reach account sync. Your local progress is unchanged.' };
   }
   if (response.status === 409) {
-    const body = await response.json().catch(() => ({}));
-    return { status: 'conflict', remoteUpdatedAt: body.updated_at ?? null };
+    const body = await responseJson(response);
+    return { status: 'conflict', remoteUpdatedAt: body?.updated_at ?? null };
   }
   if (response.status === 401) return { status: 'signed-out' };
   if (response.status === 503) return { status: 'unavailable', message: 'Sync is not configured for this deployment.' };
   if (!response.ok) {
-    const body = await response.json().catch(() => ({}));
-    return { status: 'error', message: body.error || `Sync failed (${response.status})` };
+    const body = await responseJson(response);
+    return { status: 'error', message: body?.error || `Sync failed (${response.status})` };
   }
-  const body = await response.json();
+  const body = await responseJson(response);
+  if (!body || typeof body.updated_at !== 'string' || !Number.isFinite(Date.parse(body.updated_at))) {
+    return { status: 'error', message: 'Account sync returned an invalid response. Your local progress is unchanged.' };
+  }
+  markBackup();
   return { status: 'ok', updatedAt: body.updated_at, encrypted: Boolean(passphrase) };
 }
 
@@ -95,23 +121,40 @@ export async function push(passphrase, expected, force = false) {
  * than as a network failure — only this device can tell those apart.
  */
 export async function pull(passphrase) {
-  const response = await fetch('/api/sync', { headers: { accept: 'application/json' } });
+  let response;
+  try {
+    response = await fetch('/api/sync', { headers: { accept: 'application/json' } });
+  } catch {
+    return { status: 'error', message: 'Could not reach account sync. Your local progress is unchanged.' };
+  }
   if (response.status === 401) return { status: 'signed-out' };
   if (response.status === 503) return { status: 'unavailable', message: 'Sync is not configured for this deployment.' };
   if (!response.ok) return { status: 'error', message: `Sync failed (${response.status})` };
-  const body = await response.json();
-  if (!body.state?.payload?.code) return { status: 'empty' };
+  const body = await responseJson(response);
+  if (!body) return { status: 'error', message: 'Account sync returned an invalid response. Your local progress is unchanged.' };
+  if (body.state == null) return { status: 'empty' };
+  const code = body.state?.payload?.code;
+  if (typeof code !== 'string' || !code) {
+    return { status: 'error', message: 'The remote snapshot is malformed. Your local progress is unchanged.' };
+  }
   try {
-    const restored = await restoreSyncCode(body.state.payload.code, passphrase || '');
+    const restored = await restoreSyncCode(code, passphrase || '');
     return { status: 'ok', restored, updatedAt: body.state.updated_at };
   } catch (error) {
-    return { status: 'error', message: error.message || 'Could not restore that code.' };
+    return { status: 'error', message: `${error.message || 'Could not restore that code.'} Local progress was not replaced.` };
   }
 }
 
 /** Removes the account's copy. This device keeps its progress. */
 export async function deleteRemote() {
-  const response = await fetch('/api/sync', { method: 'DELETE' });
+  let response;
+  try {
+    response = await fetch('/api/sync', { method: 'DELETE' });
+  } catch {
+    return { status: 'error', message: 'Could not reach account sync. This device keeps its progress.' };
+  }
+  if (response.status === 401) return { status: 'signed-out' };
+  if (response.status === 503) return { status: 'unavailable', message: 'Sync is not configured for this deployment.' };
   if (!response.ok) return { status: 'error', message: `Delete failed (${response.status})` };
   return { status: 'empty' };
 }

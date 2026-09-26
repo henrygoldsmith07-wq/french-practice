@@ -1,6 +1,20 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { readFile } from 'node:fs/promises';
+import { URL } from 'node:url';
 import { SITUATIONS, getSituations, getScenario, getScenariosAsync } from '../src/lib/data.js';
+
+// Browser fetch handles Vite-emitted scenario assets. Node fetch does not read
+// file: URLs, so expose the same transport only inside this test process.
+const nativeFetch = globalThis.fetch;
+globalThis.fetch = async (input, init) => {
+  const url = input instanceof URL ? input : new URL(input);
+  if (url.protocol === 'file:') {
+    const body = await readFile(url, 'utf8');
+    return { ok: true, status: 200, json: async () => JSON.parse(body) };
+  }
+  return nativeFetch(input, init);
+};
 
 // The scenario corpus (FR included) is a per-language registry chunk now, so
 // every situation assertion resolves the registry first.
