@@ -1,11 +1,20 @@
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { getSrs, getGrammarProgress, getSessions, getMetrics, getSettings } from '../lib/storage';
 import { LEVELS, coverageReport, profileFor, promotionGate } from '../lib/cefr';
 import { DIMENSIONS, nextFocus, proficiency } from '../lib/proficiency';
 import { assistanceFading, retentionCalibration } from '../lib/learningAdaptation';
 import { GRAMMAR_TOPICS } from '../lib/grammar';
 import { vocabCountByCefr } from '../lib/vocab';
-import { startPlacement, selectItem, answerItem, placementResultFrom } from '../lib/placement';
+import {
+  startPlacement, selectItem, answerItem, placementResultFrom,
+} from '../lib/placement';
+import {
+  startListeningStage, selectListeningItem, confirmPlayback, canAnswerListeningItem,
+  markListeningUnavailable, answerListeningItem, listeningStageResult,
+  perSkillEstimates, practiceRecommendations, PLAYBACK_GATE_MS,
+} from '../lib/placementListening';
+import { stopSpeaking, ttsSupported } from '../lib/tts';
+import { saveLastPlacement } from '../lib/storage';
 import { Target, Check, ChevronRight } from './icons';
 
 // The proficiency screen: one score, five components, and an honest account of
@@ -170,48 +179,60 @@ const Row = ({ label, value }) => (
 
 // ------------------------------------------------------------- placement ----
 
+// Shuffled display order per item id — the authored banks park most answers
+// at index 0; the engines still score canonical indices via this map.
+function shuffledOrder(mapRef, item) {
+  if (!mapRef.current.has(item.id)) {
+    const ord = item.options.map((_, i) => i);
+    for (let i = ord.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [ord[i], ord[j]] = [ord[j], ord[i]];
+    }
+    mapRef.current.set(item.id, ord);
+  }
+  return mapRef.current.get(item.id);
+}
+
 function PlacementTest({ seedLevel, onDone, onCancel }) {
   const [state, setState] = useState(() => startPlacement({ seedLevel }));
+  const [listening, setListening] = useState(null); // null = listening stage not started
   // Shuffled display order per item id — the bank parks most answers at
   // index 0; the engine still scores canonical indices via this map.
   const orderRef = useRef(new Map());
-  const orderFor = (it) => {
-    if (!orderRef.current.has(it.id)) {
-      const ord = it.options.map((_, i) => i);
-      for (let i = ord.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [ord[i], ord[j]] = [ord[j], ord[i]];
-      }
-      orderRef.current.set(it.id, ord);
-    }
-    return orderRef.current.get(it.id);
-  };
+  const orderFor = (it) => shuffledOrder(orderRef, it);
   const item = state.done ? null : selectItem(state);
   const shown = item ? orderFor(item) : [];
   const result = state.done ? placementResultFrom(state) : null;
 
-  if (result) {
+  // ── Stage 2: the listening stage runs after the adaptive receptive test ──
+  if (result && !listening) {
     return (
-      <div className="h-full overflow-y-auto nice-scroll px-[22px] py-6">
-        <div className="max-w-[600px] mx-auto space-y-4 text-center">
-          <h2 className="text-xl font-bold">Placement result</h2>
-          <p className="text-5xl font-bold">{result.level}</p>
-          <p className="text-sm text-ink2">
-            Most likely {result.range}, from {result.itemsAsked} questions ({result.correct} correct).
-          </p>
-          <p className="text-xs text-ink2">
-            Confidence {Math.round(result.confidence * 100)}%. A short test cannot place you more precisely than
-            about half a band — the range is the honest answer.
-          </p>
-          {result.weakest && (
-            <p className="text-sm">Weakest area: <strong>{result.weakest}</strong>. Strongest: <strong>{result.strongest}</strong>.</p>
-          )}
-          <button onClick={() => onDone(result)} className="w-full bg-ink text-bg font-bold rounded-[14px] px-5 py-3 text-sm">
-            Set my level to {result.level}
-          </button>
-        </div>
-      </div>
+      <ListeningStageIntro
+        receptive={result}
+        onStart={() => setListening(startListeningStage({ seedTheta: result.theta }))}
+        onSkip={() => setListening(startListeningStage({ seedTheta: result.theta, bank: [] }))}
+      />
     );
+  }
+  if (listening && !listening.done) {
+    return (
+      <ListeningStage
+        state={listening}
+        setState={setListening}
+        onDone={(final) => {
+          const skills = perSkillEstimates({ receptive: result, listening: listeningStageResult(final) });
+          const recs = practiceRecommendations({ skills, listening: listeningStageResult(final) });
+          onDone({ ...result, skills, skillNeeds: recs.skillNeeds, directives: recs.directives });
+        }}
+        onCancel={onCancel}
+      />
+    );
+  }
+  if (result && listening?.done) {
+    const listenRes = listeningStageResult(listening);
+    const skills = perSkillEstimates({ receptive: result, listening: listenRes });
+    const recs = practiceRecommendations({ skills, listening: listenRes });
+    return <PlacementResult result={result} skills={skills} skillNeeds={recs.skillNeeds} directives={recs.directives} listenRes={listenRes} onDone={onDone} />;
   }
 
   if (!item) {
@@ -231,7 +252,7 @@ function PlacementTest({ seedLevel, onDone, onCancel }) {
           <div className="h-full bg-ink rounded-full transition-all" style={{ width: `${Math.min(100, progress * 100)}%` }} />
         </div>
         <p className="text-xs text-ink2">
-          Question {state.asked.length + 1} · the test adapts, so it gets harder when you are right and easier when you are not.
+          Question {state.asked.length + 1} · the test adapts — harder when you're right, easier when you're not.
         </p>
 
         <section className="bg-surface border border-line rounded-2xl p-4 space-y-3">
@@ -249,6 +270,219 @@ function PlacementTest({ seedLevel, onDone, onCancel }) {
             ))}
           </div>
         </section>
+      </div>
+    </div>
+  );
+}
+
+// ── Stage 2 intro: consent + honest TTS expectation ─────────────────────
+function ListeningStageIntro({ receptive, onStart, onSkip }) {
+  return (
+    <div className="h-full overflow-y-auto nice-scroll px-[22px] py-6">
+      <div className="max-w-[600px] mx-auto space-y-4 text-center">
+        <h2 className="text-xl font-bold">Listening check</h2>
+        <p className="text-sm text-ink2">
+          Your written work placed at <strong>{receptive.level}</strong> ({receptive.range}).
+          Now the part most tests fake: <strong>you'll hear short clips</strong> — no transcript
+          until you answer. If audio can't play, items are recorded unmeasured, never wrong.
+        </p>
+        <p className="text-xs text-ink2">Measured: numbers · time · negatives · detail · gist · inference · intention.</p>
+        <button onClick={onStart} className="w-full bg-ink text-bg font-bold rounded-[14px] px-5 py-3 text-sm">Start listening</button>
+        <button onClick={onSkip} className="text-xs text-ink2 underline hover:text-ink">Skip — measure listening later</button>
+      </div>
+    </div>
+  );
+}
+
+// ── Stage 2 runner: audio-gated items, transcript hidden until answered ──
+function ListeningStage({ state, setState, onDone, onCancel }) {
+  // Per-component shuffle map (options order only — scoring stays canonical).
+  const orderRef = useRef(new Map());
+  const playTimerRef = useRef(null);
+  const [played, setPlayed] = useState(false);
+  const [starting, setStarting] = useState(false);
+  const [playFailed, setPlayFailed] = useState(false);
+
+  const item = selectListeningItem(state);
+  const finishedRef = useRef(false);
+
+  // Bank exhausted (or the stage marked itself done): hand the final state
+  // back ONCE, from an effect — never from render.
+  useEffect(() => {
+    if (item || finishedRef.current) return;
+    finishedRef.current = true;
+    onDone(state);
+  }, [item, state, onDone]);
+
+  // Reset the per-item playback state when the item changes.
+  useEffect(() => {
+    setPlayed(false);
+    setPlayFailed(false);
+    setStarting(false);
+    const timer = playTimerRef.current;
+    return () => {
+      if (timer) clearTimeout(timer);
+      stopSpeaking();
+    };
+  }, [item?.id]);
+
+  useEffect(() => () => stopSpeaking(), []);
+
+  // Audio never confirmed within the gate: record the item as UNAVAILABLE
+  // (never wrong) so the selector moves on and the report says "unmeasured".
+  // Runs before any early return — hooks cannot be conditional.
+  useEffect(() => {
+    if (playFailed && !played && item?.id) {
+      setState((s) => markListeningUnavailable(s, item.id));
+    }
+  }, [playFailed, played, item?.id, setState]);
+
+  if (!item) {
+    // Bank exhausted (or all unavailable): the effect above has handed the
+    // final state back; render nothing.
+    return null;
+  }
+
+  const play = () => {
+    if (starting || played || playFailed) return;
+    if (!ttsSupported()) { setPlayFailed(true); return; }
+    try {
+      const u = new SpeechSynthesisUtterance(item.audio);
+      u.lang = 'fr-FR';
+      u.rate = 0.9;
+      let settled = false;
+      const settle = (fn) => {
+        if (settled) return;
+        settled = true;
+        if (playTimerRef.current) clearTimeout(playTimerRef.current);
+        playTimerRef.current = null;
+        setStarting(false);
+        fn();
+      };
+      u.onstart = () => settle(() => {
+        setPlayed(true);
+        setState((s) => confirmPlayback(s, item.id));
+      });
+      u.onerror = () => settle(() => setPlayFailed(true));
+      setStarting(true);
+      playTimerRef.current = setTimeout(() => settle(() => setPlayFailed(true)), PLAYBACK_GATE_MS);
+    } catch {
+      setPlayFailed(true);
+    }
+  };
+
+  const unavailable = playFailed && !played;
+  const shown = item ? shuffledOrder(orderRef, item) : [];
+  const answeredIds = new Set(state.responses.map((r) => r.id));
+  const currentAnswered = answeredIds.has(item?.id);
+
+  return (
+    <div className="h-full overflow-y-auto nice-scroll px-[22px] py-6">
+      <div className="max-w-[600px] mx-auto space-y-4">
+        <div className="flex items-center justify-between">
+          <h2 className="text-lg font-bold">Listening check</h2>
+          <button onClick={onCancel} className="text-xs text-ink2 underline hover:text-ink">Cancel</button>
+        </div>
+        <p className="text-xs text-ink2">
+          Clip {state.asked.length + 1} · listen, then choose — the script stays hidden until you answer.
+        </p>
+        <section className="bg-surface border border-line rounded-2xl p-4 space-y-3">
+          <div className="grid place-items-center py-2">
+            <button
+              onClick={play}
+              disabled={starting || played || playFailed}
+              className="btn btn-primary min-h-14 px-6 rounded-2xl text-sm"
+            >
+              {starting ? 'Starting…' : played ? 'Replay' : 'Play clip'}
+            </button>
+          </div>
+          {played && <p className="text-center text-[11px] text-ink3">You can replay once more if needed.</p>}
+          {unavailable && (
+            <p className="text-center text-[11px] text-amber-700">
+              Audio couldn't play — this item is recorded as unmeasured, never wrong.
+            </p>
+          )}
+          <div className="space-y-2">
+            {shown.map((originalIdx) => (
+              <button
+                key={originalIdx}
+                disabled={!canAnswerListeningItem(state, item.id) || currentAnswered}
+                onClick={() => setState((s) => answerListeningItem(s, item.id, originalIdx))}
+                className="w-full text-left border border-line rounded-xl px-3 py-2.5 text-sm hover:border-ink transition disabled:opacity-60"
+              >
+                {item.options[originalIdx]}
+              </button>
+            ))
+            }
+          </div>
+          {currentAnswered && (
+            <div className="text-center">
+              <button
+                onClick={() => {
+                  if (finishedRef.current) return;
+                  finishedRef.current = true;
+                  onDone(state);
+                }}
+                className="w-full bg-ink text-bg font-bold rounded-[14px] px-5 py-3 text-sm"
+              >
+                Finish listening check
+              </button>
+            </div>
+          )}
+        </section>
+      </div>
+    </div>
+  );
+}
+
+// ── Stage 3 result: per-skill estimates + what changes in practice ───────
+function PlacementResult({ result, skills, skillNeeds, directives, listenRes, onDone }) {
+  const skillLabels = {
+    grammar: 'Grammar (recognition)', vocab: 'Vocabulary', reading: 'Reading',
+    listening: 'Listening (heard audio)',
+  };
+  return (
+    <div className="h-full overflow-y-auto nice-scroll px-[22px] py-6">
+      <div className="max-w-[600px] mx-auto space-y-4 text-center">
+        <h2 className="text-xl font-bold">Placement result</h2>
+        <p className="text-5xl font-bold">{result.level}</p>
+        <p className="text-sm text-ink2">
+          Most likely {result.range}, from {result.itemsAsked} written questions ({result.correct} correct)
+          {listenRes?.answered ? ` and ${listenRes.answered} heard clips (${listenRes.correct} correct)` : ''}.
+        </p>
+        <p className="text-xs text-ink2">
+          Confidence {Math.round(result.confidence * 100)}% — a short test can't place you more precisely than
+          about half a band; the range is the honest answer.
+        </p>
+        <div className="bg-surface border border-line rounded-2xl p-4 text-left space-y-1.5">
+          <p className="text-[11px] font-bold uppercase tracking-wider text-ink3">By skill</p>
+          {Object.entries(skills).map(([skill, est]) => (
+            <p key={skill} className="text-sm text-ink2">
+              {skillLabels[skill] || skill}:{' '}
+              <strong className="text-ink">{est.level || '—'}</strong>
+              {est.range && est.range !== est.level ? ` (${est.range})` : ''}
+              {est.evidence === 'audio-unavailable' && ' · audio unavailable, not measured'}
+            </p>
+          ))}
+        </div>
+        {directives.length > 0 && (
+          <div className="bg-surface2 border border-line rounded-2xl p-4 text-left space-y-1.5">
+            <p className="text-[11px] font-bold uppercase tracking-wider text-ink3">What changes in your sessions</p>
+            {directives.map((d) => (
+              <p key={d.id} className="text-xs text-ink2"><strong className="text-ink">{d.why}</strong> {d.detail}</p>
+            ))
+            }
+          </div>
+        )}
+        <button
+          onClick={() => {
+            try { saveLastPlacement({ ...result, skills, skillNeeds, directives }); } catch { /* never blocks */ }
+            onDone({ ...result, skills, skillNeeds, directives });
+          }}
+          className="w-full bg-ink text-bg font-bold rounded-[14px] px-5 py-3 text-sm"
+        >
+          Set my level to {result.level}
+        </button>
       </div>
     </div>
   );

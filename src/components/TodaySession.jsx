@@ -24,7 +24,7 @@ import { balancedDrillTopic } from '../lib/assignment';
 import { recordSelectionTrial, getSelectionTrial, saveSelectionTrial } from '../lib/storage';
 import {
   getSrs, getNotebook, getDueWeaknesses, rateCard,
-  getMistakeGraph, saveMistakeGraph, getStudyChecks, getLearnerErrors, getSkillNeeds,
+  getMistakeGraph, saveMistakeGraph, getStudyChecks, getLearnerErrors, getSkillNeeds, getPlacementSkillNeeds,
 } from '../lib/storage';
 import { getErrorNotebook, selectCorrectedErrors, selectDueRetypes } from '../lib/errorNotebook';
 // The vocab library is a separate lazy chunk (per-language registries) — it
@@ -267,11 +267,11 @@ export default function TodaySession({ open, onClose, minutes = 20, apiKey, mock
       dayIndex,
       balanced,
       balancedDrillTopic: balanced ? rotationTopic : null,
-      // Per-modality need from the learner-error model: where are the open
-      // (active/recovering) weaknesses, and how urgent are they? Shifts the
-      // speak/listen/retrieve weights — the session matches the learner's
-      // actual weak skills, not a fixed daily shape.
-      skillNeeds: getSkillNeeds(),
+      // Per-modality need: live evidence first (open weaknesses in the
+      // learner-error model), placement-derived profile as the cold-start
+      // seed for a brand-new learner's first sessions. Neither present →
+      // the exact reference split.
+      skillNeeds: getSkillNeeds() || getPlacementSkillNeeds(),
     });
     // Resolve what can actually run: no segment is ever scheduled that
     // cannot run. Offline, the AI drill becomes the authored drill (or

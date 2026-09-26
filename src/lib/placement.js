@@ -35,8 +35,11 @@ export function abilityToLevel(theta) {
 /** Rasch probability of a correct answer. */
 export const pCorrect = (theta, difficulty) => 1 / (1 + Math.exp(-(theta - difficulty)));
 
-const item = (id, cefr, skill, difficulty, q, options, answer, why) =>
-  ({ id, cefr, skill, difficulty, q, options, answer, why });
+// The authored per-item explanations (why each answer is right) are kept in
+// git history, not in the bundle: no screen renders them (placement shows no
+// per-item review), and shipped bytes are budgeted.
+const item = (id, cefr, skill, difficulty, q, options, answer) =>
+  ({ id, cefr, skill, difficulty, q, options, answer });
 
 /**
  * The item bank. Skills are mixed on purpose — a placement that only tests
@@ -46,59 +49,59 @@ const item = (id, cefr, skill, difficulty, q, options, answer, why) =>
  */
 export const ITEM_BANK = [
   // ---- A1 ----
-  item('p-a1-1', 'A1', 'grammar', -2.3, '« Bonjour, comment ça ___ ? »', ['va', 'vas', 'allez'], 0, 'Fixed phrase: comment ça va.'),
-  item('p-a1-2', 'A1', 'grammar', -2.1, 'Je ___ anglais.', ['es', 'suis', 'est'], 1, 'être: je suis.'),
-  item('p-a1-3', 'A1', 'vocab', -2.0, '« le pain » veut dire :', ['bread', 'pan', 'pain'], 0, 'False friend — «pain» is bread.'),
-  item('p-a1-4', 'A1', 'grammar', -1.8, 'Elle a ___ frère.', ['un', 'une', 'des'], 0, 'frère is masculine singular.'),
-  item('p-a1-5', 'A1', 'vocab', -1.9, 'Pour demander l’heure :', ['Il est quelle heure ?', 'Où est l’heure ?', 'Quel heure il fait ?'], 0, 'Standard way to ask the time.'),
-  item('p-a1-6', 'A1', 'grammar', -1.7, 'Nous ___ à Paris.', ['habitons', 'habitez', 'habite'], 0, '-er verb, nous form.'),
-  item('p-a1-7', 'A1', 'reading', -2.2, '« Fermé le lundi » signifie :', ['Closed on Mondays', 'Open on Mondays', 'Closes at one'], 0, 'Shop-sign reading.'),
-  item('p-a1-8', 'A1', 'vocab', -1.8, '« l’eau » se boit ou se mange ?', ['se boit', 'se mange', 'les deux'], 0, 'Water is drunk.'),
+  item('p-a1-1', 'A1', 'grammar', -2.3, '« Bonjour, comment ça ___ ? »', ['va', 'vas', 'allez'], 0),
+  item('p-a1-2', 'A1', 'grammar', -2.1, 'Je ___ anglais.', ['es', 'suis', 'est'], 1),
+  item('p-a1-3', 'A1', 'vocab', -2.0, '« le pain » veut dire :', ['bread', 'pan', 'pain'], 0),
+  item('p-a1-4', 'A1', 'grammar', -1.8, 'Elle a ___ frère.', ['un', 'une', 'des'], 0),
+  item('p-a1-5', 'A1', 'vocab', -1.9, 'Pour demander l’heure :', ['Il est quelle heure ?', 'Où est l’heure ?', 'Quel heure il fait ?'], 0),
+  item('p-a1-6', 'A1', 'grammar', -1.7, 'Nous ___ à Paris.', ['habitons', 'habitez', 'habite'], 0),
+  item('p-a1-7', 'A1', 'reading', -2.2, '« Fermé le lundi » signifie :', ['Closed on Mondays', 'Open on Mondays', 'Closes at one'], 0),
+  item('p-a1-8', 'A1', 'vocab', -1.8, '« l’eau » se boit ou se mange ?', ['se boit', 'se mange', 'les deux'], 0),
 
   // ---- A2 ----
-  item('p-a2-1', 'A2', 'grammar', -1.3, 'Hier, nous ___ au cinéma.', ['allons', 'sommes allés', 'irons'], 1, 'Passé composé with être.'),
-  item('p-a2-2', 'A2', 'grammar', -1.1, 'Il y a ___ lait dans le frigo.', ['du', 'de la', 'des'], 0, 'lait is masculine → du.'),
-  item('p-a2-3', 'A2', 'grammar', -0.9, 'Quand j’étais petit, je ___ souvent au parc.', ['allais', 'suis allé', 'irai'], 0, 'Repeated past habit → imparfait.'),
-  item('p-a2-4', 'A2', 'vocab', -1.2, '« une grève » est :', ['a strike', 'a beach', 'a grief'], 0, 'Homograph with «grève» (shore) but the common sense is a strike.'),
-  item('p-a2-5', 'A2', 'grammar', -0.8, 'Je travaille ici ___ deux ans.', ['depuis', 'pendant', 'dans'], 0, 'Still ongoing → depuis.'),
-  item('p-a2-6', 'A2', 'listening', -1.0, '« Le train à destination de Lille partira voie 4 » — que fait-on ?', ['aller voie 4', 'descendre du train', 'acheter un billet'], 0, 'Station announcement comprehension.'),
-  item('p-a2-7', 'A2', 'grammar', -1.4, 'Tu ___ venir demain ?', ['peux', 'peut', 'pouvez'], 0, 'pouvoir, tu form.'),
-  item('p-a2-8', 'A2', 'vocab', -0.9, 'Le contraire de « cher » :', ['bon marché', 'lourd', 'ouvert'], 0, 'cheap vs expensive.'),
+  item('p-a2-1', 'A2', 'grammar', -1.3, 'Hier, nous ___ au cinéma.', ['allons', 'sommes allés', 'irons'], 1),
+  item('p-a2-2', 'A2', 'grammar', -1.1, 'Il y a ___ lait dans le frigo.', ['du', 'de la', 'des'], 0),
+  item('p-a2-3', 'A2', 'grammar', -0.9, 'Quand j’étais petit, je ___ souvent au parc.', ['allais', 'suis allé', 'irai'], 0),
+  item('p-a2-4', 'A2', 'vocab', -1.2, '« une grève » est :', ['a strike', 'a beach', 'a grief'], 0),
+  item('p-a2-5', 'A2', 'grammar', -0.8, 'Je travaille ici ___ deux ans.', ['depuis', 'pendant', 'dans'], 0),
+  item('p-a2-6', 'A2', 'listening', -1.0, '« Le train à destination de Lille partira voie 4 » — que fait-on ?', ['aller voie 4', 'descendre du train', 'acheter un billet'], 0),
+  item('p-a2-7', 'A2', 'grammar', -1.4, 'Tu ___ venir demain ?', ['peux', 'peut', 'pouvez'], 0),
+  item('p-a2-8', 'A2', 'vocab', -0.9, 'Le contraire de « cher » :', ['bon marché', 'lourd', 'ouvert'], 0),
 
   // ---- B1 ----
-  item('p-b1-1', 'B1', 'grammar', -0.3, 'Si j’avais le temps, je ___ plus de sport.', ['fais', 'ferai', 'ferais'], 2, 'si + imparfait → conditionnel présent.'),
-  item('p-b1-2', 'B1', 'grammar', -0.1, 'C’est la ville ___ je suis né.', ['que', 'où', 'dont'], 1, 'Place → où.'),
-  item('p-b1-3', 'B1', 'grammar', 0.1, 'Le livre ___ je parle est épuisé.', ['dont', 'que', 'lequel'], 0, 'parler de → dont.'),
-  item('p-b1-4', 'B1', 'vocab', -0.2, '« améliorer » signifie :', ['to improve', 'to worsen', 'to postpone'], 0, 'Core B1 verb.'),
-  item('p-b1-5', 'B1', 'grammar', 0.2, 'Il a réussi ___ travaillant beaucoup.', ['en', 'de', 'par'], 0, 'Gérondif: en + participe présent.'),
-  item('p-b1-6', 'B1', 'reading', 0.0, '« Faute de moyens, le projet a été reporté. » Pourquoi ?', ['manque d’argent', 'trop de succès', 'erreur de date'], 0, '«faute de» = for lack of.'),
-  item('p-b1-7', 'B1', 'listening', 0.3, '« Je vous rappelle dans la foulée » veut dire :', ['tout de suite après', 'demain', 'jamais'], 0, 'Common workplace idiom.'),
-  item('p-b1-8', 'B1', 'grammar', -0.4, 'Nous ___ déjà mangé quand il est arrivé.', ['avions', 'avons', 'aurons'], 0, 'Plus-que-parfait.'),
+  item('p-b1-1', 'B1', 'grammar', -0.3, 'Si j’avais le temps, je ___ plus de sport.', ['fais', 'ferai', 'ferais'], 2),
+  item('p-b1-2', 'B1', 'grammar', -0.1, 'C’est la ville ___ je suis né.', ['que', 'où', 'dont'], 1),
+  item('p-b1-3', 'B1', 'grammar', 0.1, 'Le livre ___ je parle est épuisé.', ['dont', 'que', 'lequel'], 0),
+  item('p-b1-4', 'B1', 'vocab', -0.2, '« améliorer » signifie :', ['to improve', 'to worsen', 'to postpone'], 0),
+  item('p-b1-5', 'B1', 'grammar', 0.2, 'Il a réussi ___ travaillant beaucoup.', ['en', 'de', 'par'], 0),
+  item('p-b1-6', 'B1', 'reading', 0.0, '« Faute de moyens, le projet a été reporté. » Pourquoi ?', ['manque d’argent', 'trop de succès', 'erreur de date'], 0),
+  item('p-b1-7', 'B1', 'listening', 0.3, '« Je vous rappelle dans la foulée » veut dire :', ['tout de suite après', 'demain', 'jamais'], 0),
+  item('p-b1-8', 'B1', 'grammar', -0.4, 'Nous ___ déjà mangé quand il est arrivé.', ['avions', 'avons', 'aurons'], 0),
 
   // ---- B2 ----
-  item('p-b2-1', 'B2', 'grammar', 0.8, 'Il faut que tu ___ à l’heure.', ['es', 'sois', 'seras'], 1, 'il faut que + subjonctif.'),
-  item('p-b2-2', 'B2', 'grammar', 1.0, 'Le rapport ___ tu parles n’existe pas.', ['dont', 'que', 'auquel'], 0, 'parler de → dont.'),
-  item('p-b2-3', 'B2', 'grammar', 1.2, 'Bien qu’il ___ tard, on continue.', ['soit', 'est', 'serait'], 0, 'bien que + subjonctif.'),
-  item('p-b2-4', 'B2', 'vocab', 0.9, '« Certes, … » annonce :', ['une concession', 'une conclusion', 'une cause'], 0, 'Concessive marker.'),
-  item('p-b2-5', 'B2', 'grammar', 1.1, 'Je ne bois ___ du thé. (only tea)', ['que', 'pas', 'plus'], 0, 'ne… que = restriction.'),
-  item('p-b2-6', 'B2', 'reading', 1.3, '« L’écart se creuse » décrit :', ['une différence qui augmente', 'un trou dans la route', 'un accord'], 0, 'Figurative use in press French.'),
-  item('p-b2-7', 'B2', 'grammar', 0.7, 'Il a dit qu’il ___ fatigué.', ['était', 'est', 'sera'], 0, 'Concordance des temps.'),
-  item('p-b2-8', 'B2', 'vocab', 1.2, '« sensible » en français signifie surtout :', ['perceptible / sensitive', 'raisonnable', 'ennuyeux'], 0, 'False friend with English "sensible".'),
+  item('p-b2-1', 'B2', 'grammar', 0.8, 'Il faut que tu ___ à l’heure.', ['es', 'sois', 'seras'], 1),
+  item('p-b2-2', 'B2', 'grammar', 1.0, 'Le rapport ___ tu parles n’existe pas.', ['dont', 'que', 'auquel'], 0),
+  item('p-b2-3', 'B2', 'grammar', 1.2, 'Bien qu’il ___ tard, on continue.', ['soit', 'est', 'serait'], 0),
+  item('p-b2-4', 'B2', 'vocab', 0.9, '« Certes, … » annonce :', ['une concession', 'une conclusion', 'une cause'], 0),
+  item('p-b2-5', 'B2', 'grammar', 1.1, 'Je ne bois ___ du thé. (only tea)', ['que', 'pas', 'plus'], 0),
+  item('p-b2-6', 'B2', 'reading', 1.3, '« L’écart se creuse » décrit :', ['une différence qui augmente', 'un trou dans la route', 'un accord'], 0),
+  item('p-b2-7', 'B2', 'grammar', 0.7, 'Il a dit qu’il ___ fatigué.', ['était', 'est', 'sera'], 0),
+  item('p-b2-8', 'B2', 'vocab', 1.2, '« sensible » en français signifie surtout :', ['perceptible / sensitive', 'raisonnable', 'ennuyeux'], 0),
 
   // ---- C1 ----
-  item('p-c1-1', 'C1', 'grammar', 1.8, '« Quoi qu’il ___, je pars demain. »', ['arrive', 'arrivera', 'arriverait'], 0, 'quoi que + subjonctif.'),
-  item('p-c1-2', 'C1', 'vocab', 2.0, 'Elle a réussi, ___ tous les obstacles.', ['en dépit de', 'à cause de', 'grâce à'], 0, 'Concessive preposition.'),
-  item('p-c1-3', 'C1', 'vocab', 2.2, '« Ce n’est pas mauvais » est :', ['une litote (= très bon)', 'une critique', 'une question'], 0, 'Litote — assertion by negated opposite.'),
-  item('p-c1-4', 'C1', 'grammar', 2.1, '« Le suspect aurait pris la fuite » exprime :', ['une info non confirmée', 'un regret', 'une condition'], 0, 'Conditionnel journalistique.'),
-  item('p-c1-5', 'C1', 'reading', 2.3, '« Force est de constater que… » introduit :', ['un constat qu’on ne peut nier', 'une hypothèse', 'une question'], 0, 'Formal assertion.'),
-  item('p-c1-6', 'C1', 'grammar', 1.9, 'J’ai beau ___, je ne comprends pas.', ['relire', 'relis', 'relisant'], 0, 'avoir beau + infinitif.'),
-  item('p-c1-7', 'C1', 'vocab', 2.4, '« mine de rien » signifie :', ['sans en avoir l’air', 'avec colère', 'très vite'], 0, 'Spoken idiom.'),
-  item('p-c1-8', 'C1', 'grammar', 2.0, 'Elles se sont ___ compte de l’erreur.', ['rendu', 'rendues', 'rendus'], 0, '«compte» is the object — no agreement.'),
+  item('p-c1-1', 'C1', 'grammar', 1.8, '« Quoi qu’il ___, je pars demain. »', ['arrive', 'arrivera', 'arriverait'], 0),
+  item('p-c1-2', 'C1', 'vocab', 2.0, 'Elle a réussi, ___ tous les obstacles.', ['en dépit de', 'à cause de', 'grâce à'], 0),
+  item('p-c1-3', 'C1', 'vocab', 2.2, '« Ce n’est pas mauvais » est :', ['une litote (= très bon)', 'une critique', 'une question'], 0),
+  item('p-c1-4', 'C1', 'grammar', 2.1, '« Le suspect aurait pris la fuite » exprime :', ['une info non confirmée', 'un regret', 'une condition'], 0),
+  item('p-c1-5', 'C1', 'reading', 2.3, '« Force est de constater que… » introduit :', ['un constat qu’on ne peut nier', 'une hypothèse', 'une question'], 0),
+  item('p-c1-6', 'C1', 'grammar', 1.9, 'J’ai beau ___, je ne comprends pas.', ['relire', 'relis', 'relisant'], 0),
+  item('p-c1-7', 'C1', 'vocab', 2.4, '« mine de rien » signifie :', ['sans en avoir l’air', 'avec colère', 'très vite'], 0),
+  item('p-c1-8', 'C1', 'grammar', 2.0, 'Elles se sont ___ compte de l’erreur.', ['rendu', 'rendues', 'rendus'], 0),
 
   // ---- C2 probes: only reached by a very strong run ----
-  item('p-c2-1', 'C2', 'vocab', 2.9, '« Il n’est pas sans savoir » signifie :', ['il sait parfaitement', 'il ne sait pas', 'il hésite'], 0, 'Double negative litote.'),
-  item('p-c2-2', 'C2', 'grammar', 3.1, '« Encore eût-il fallu que je le ___. »', ['susse', 'sache', 'saurais'], 0, 'Subjonctif imparfait of savoir.'),
-  item('p-c2-3', 'C2', 'vocab', 3.0, '« à l’envi » signifie :', ['à volonté, sans cesse', 'avec jalousie', 'à contrecœur'], 0, 'Not «à l’envie» — a distinct word.'),
+  item('p-c2-1', 'C2', 'vocab', 2.9, '« Il n’est pas sans savoir » signifie :', ['il sait parfaitement', 'il ne sait pas', 'il hésite'], 0),
+  item('p-c2-2', 'C2', 'grammar', 3.1, '« Encore eût-il fallu que je le ___. »', ['susse', 'sache', 'saurais'], 0),
+  item('p-c2-3', 'C2', 'vocab', 3.0, '« à l’envi » signifie :', ['à volonté, sans cesse', 'avec jalousie', 'à contrecœur'], 0),
 ];
 
 export const DEFAULT_CONFIG = {

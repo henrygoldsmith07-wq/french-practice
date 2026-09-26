@@ -2112,8 +2112,33 @@ export function saveLastPlacement(result) {
     itemsAsked: Number.isFinite(Number(result.itemsAsked)) ? Math.round(Number(result.itemsAsked)) : null,
     confidence: Number.isFinite(Number(result.confidence)) ? Number(result.confidence) : null,
     range: result.range != null ? String(result.range) : null,
+    // Placement 2.0: per-skill estimates (listening from HEARD audio) and the
+    // practice directives derived from them. These are what make placement
+    // change the first week instead of ending at a result screen.
+    skills: result.skills && typeof result.skills === 'object' ? result.skills : null,
+    skillNeeds: result.skillNeeds && typeof result.skillNeeds === 'object' ? result.skillNeeds : null,
+    directives: Array.isArray(result.directives) ? result.directives.slice(0, 8) : null,
     at: new Date().toISOString(),
   };
   write(KEYS.lastPlacement, saved);
   return saved;
 }
+
+/**
+ * Placement-derived modality needs for the session allocator. The planner
+ * prefers LIVE evidence from the learner-error model; this is the COLD-START
+ * seed — a brand-new learner's first sessions follow their placement profile
+ * before any error evidence exists. Null when no placement (or a pre-2.0
+ * placement without skillNeeds) is stored.
+ */
+export const getPlacementSkillNeeds = () => {
+  const last = getLastPlacement();
+  const needs = last?.skillNeeds;
+  if (!needs || typeof needs !== 'object') return null;
+  const out = {};
+  for (const key of ['listen', 'speak', 'retrieve']) {
+    const v = Number(needs[key]);
+    if (Number.isFinite(v) && v > 0) out[key] = Math.min(1, v);
+  }
+  return Object.keys(out).length ? out : null;
+};
