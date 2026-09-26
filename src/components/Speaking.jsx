@@ -1,6 +1,7 @@
 import DailyChallenge from './DailyChallenge';
 import Pronunciation from './Pronunciation';
 import { Mic, Clock, MessageCircle, ChevronLeft, ChevronRight } from './icons';
+import { CARD_ROW, ICON_BTN_ROUND, ICON_BTN_SQUARE } from '../components/classNames.js';
 
 // Speaking hub: the practice drills that aren't full conversations.
 // Pronunciation (read aloud) and Shadowing (listen & repeat) score your
@@ -46,9 +47,9 @@ export default function Speaking({ mode, onModeChange, apiKey, mockMode, ttsRate
               <button
                 key={m.id}
                 onClick={() => onModeChange(m.id)}
-                className="w-full flex items-center gap-3.5 bg-surface border border-line rounded-2xl px-4 py-3.5 text-left hover:border-ink3 transition-colors"
+                className={CARD_ROW}
               >
-                <span className="w-10 h-10 shrink-0 grid place-items-center rounded-xl bg-surface2 text-ink">
+                <span className={ICON_BTN_SQUARE}>
                   <m.icon size={18} />
                 </span>
                 <span className="flex-1 min-w-0">
@@ -71,7 +72,7 @@ export default function Speaking({ mode, onModeChange, apiKey, mockMode, ttsRate
           <button
             onClick={() => onModeChange(null)}
             aria-label="Back to speaking practice"
-            className="w-10 h-10 grid place-items-center rounded-full bg-surface2 text-ink2 hover:bg-line"
+            className={ICON_BTN_ROUND}
           >
             <ChevronLeft size={18} />
           </button>

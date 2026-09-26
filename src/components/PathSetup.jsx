@@ -4,6 +4,7 @@ import { GOALS, createPath, getPath, retakePlacement } from '../lib/path';
 import { startPlacement, selectItem, answerItem, placementResultFrom } from '../lib/placement';
 import { saveLastPlacement } from '../lib/storage';
 import { Plane, GraduationCap, Briefcase, MessageCircle, Check, X } from './icons';
+import { CARD_ROW, ICON_BTN_SQUARE } from '../components/classNames.js';
 
 const GOAL_ICONS = { travel: Plane, school: GraduationCap, business: Briefcase, fluency: MessageCircle };
 
@@ -119,9 +120,9 @@ export default function PathSetup({ open, onClose, onCreated }) {
                 <button
                   key={g.id}
                   onClick={() => startTest(g.id)}
-                  className="w-full flex items-center gap-3.5 bg-surface border border-line rounded-2xl px-4 py-3.5 text-left hover:border-ink3 transition-colors"
+                  className={CARD_ROW}
                 >
-                  <span className="w-10 h-10 shrink-0 grid place-items-center rounded-xl bg-surface2 text-ink">
+                  <span className={ICON_BTN_SQUARE}>
                     <GoalIcon size={18} />
                   </span>
                   <span>

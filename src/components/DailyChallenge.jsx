@@ -5,6 +5,7 @@ import { randomTopic } from '../lib/data';
 import { transcribe, friendlyError } from '../lib/groq';
 import { Spinner } from './ui';
 import { RefreshCw, Mic, Square } from './icons';
+import { SECTION_LABEL_SM } from '../components/classNames.js';
 
 // "Think on Your Feet": random topic, 45-second countdown, WPM flow tracking.
 
@@ -156,7 +157,7 @@ export default function DailyChallenge({ apiKey, mockMode, onActivity }) {
                 : 'Build confidence: keep talking without stopping, mistakes and all.'}
             </p>
             <div>
-              <h4 className="text-[11px] font-bold uppercase tracking-wider text-ink2 mb-1">Your improvisation</h4>
+              <h4 className={SECTION_LABEL_SM}>Your improvisation</h4>
               <p className="text-sm text-ink leading-relaxed">{result.transcript}</p>
             </div>
           </div>

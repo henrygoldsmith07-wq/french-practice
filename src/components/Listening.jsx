@@ -16,6 +16,7 @@ import { playbackFor } from '../lib/accents';
 import { shuffleOptions } from './GrammarExercises';
 import { STAGES } from '../lib/authenticAudio';
 import { hasCapabilityNow } from '../lib/capabilities';
+import { CARD_ROW, ICON_BTN_ROUND, ICON_BTN_SQUARE, TAG_PILL } from '../components/classNames.js';
 
 // Listening hub: TTS-narrated tracks (mini-podcasts, dialogues, news,
 // scenes) with listen-first transcripts, per-line highlighting, variable
@@ -87,9 +88,9 @@ export default function Listening({ mode, onModeChange, ttsRate, level = 'B1', o
         {hasCapabilityNow('conditions-listening') && (
         <button
           onClick={() => onModeChange('conditions')}
-          className="w-full flex items-center gap-3.5 bg-surface border border-line rounded-2xl px-4 py-3.5 text-left hover:border-ink3 transition-colors"
+          className={CARD_ROW}
         >
-          <span className="w-10 h-10 shrink-0 grid place-items-center rounded-xl bg-surface2 text-ink"><Volume size={18} /></span>
+          <span className={ICON_BTN_SQUARE}><Volume size={18} /></span>
           <span className="flex-1">
             <span className="block text-sm font-semibold text-ink">Conditions gym — S6–S7 training</span>
             <span className="block text-xs text-ink3">Hesitations, overlapping voices, noise beds (synthetic)</span>
@@ -100,9 +101,9 @@ export default function Listening({ mode, onModeChange, ttsRate, level = 'B1', o
 
         <button
           onClick={() => onModeChange('dictation')}
-          className="w-full flex items-center gap-3.5 bg-surface border border-line rounded-2xl px-4 py-3.5 text-left hover:border-ink3 transition-colors"
+          className={CARD_ROW}
         >
-          <span className="w-10 h-10 shrink-0 grid place-items-center rounded-xl bg-surface2 text-ink"><Volume size={18} /></span>
+          <span className={ICON_BTN_SQUARE}><Volume size={18} /></span>
           <span className="flex-1">
             <span className="block text-sm font-semibold text-ink">Dictée</span>
             <span className="block text-xs text-ink3">Type what you hear, word by word</span>
@@ -112,9 +113,9 @@ export default function Listening({ mode, onModeChange, ttsRate, level = 'B1', o
 
         <button
           onClick={() => onModeChange('course')}
-          className="w-full flex items-center gap-3.5 bg-surface border border-line rounded-2xl px-4 py-3.5 text-left hover:border-ink3 transition-colors"
+          className={CARD_ROW}
         >
-          <span className="w-10 h-10 shrink-0 grid place-items-center rounded-xl bg-surface2 text-ink"><Play size={18} /></span>
+          <span className={ICON_BTN_SQUARE}><Play size={18} /></span>
           <span className="flex-1">
             <span className="block text-sm font-semibold text-ink">Audio course — hands-free</span>
             <span className="block text-xs text-ink3">Listen, repeat aloud, learn — no taps needed</span>
@@ -127,9 +128,9 @@ export default function Listening({ mode, onModeChange, ttsRate, level = 'B1', o
         {hasCapabilityNow('number-listening') && (
         <button
           onClick={() => onModeChange('numbers')}
-          className="w-full flex items-center gap-3.5 bg-surface border border-line rounded-2xl px-4 py-3.5 text-left hover:border-ink3 transition-colors"
+          className={CARD_ROW}
         >
-          <span className="w-10 h-10 shrink-0 grid place-items-center rounded-xl bg-surface2 text-ink"><Volume size={18} /></span>
+          <span className={ICON_BTN_SQUARE}><Volume size={18} /></span>
           <span className="flex-1">
             <span className="block text-sm font-semibold text-ink">Les nombres — rapid fire</span>
             <span className="block text-xs text-ink3">Hear numbers, prices, times & years; type the digits</span>
@@ -158,7 +159,7 @@ export default function Listening({ mode, onModeChange, ttsRate, level = 'B1', o
                   <span className="flex-1 min-w-0">
                     <span className="flex items-center gap-2">
                       <span className="text-sm font-semibold text-ink truncate" lang="fr">{t.title}</span>
-                      <span className="shrink-0 px-1.5 py-0.5 rounded-md border border-line text-[10px] font-semibold text-ink3">{t.cefr}</span>
+                      <span className={TAG_PILL}>{t.cefr}</span>
                     </span>
                     <span className="block text-xs text-ink3 truncate">{t.description}</span>
                   </span>
@@ -177,7 +178,7 @@ function Shell({ title, onBack, children }) {
     <div className="h-full overflow-y-auto nice-scroll px-4 py-5">
       <div className="max-w-md mx-auto space-y-4">
         <div className="flex items-center gap-2">
-          <button onClick={onBack} aria-label="Back to listening" className="w-10 h-10 grid place-items-center rounded-full bg-surface2 text-ink2 hover:bg-line">
+          <button onClick={onBack} aria-label="Back to listening" className={ICON_BTN_ROUND}>
             <ChevronLeft size={18} />
           </button>
           <div className="flex-1 min-w-0 text-center">

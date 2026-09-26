@@ -6,6 +6,7 @@ import {
   Map, ChevronRight, Check, Lock, CheckCircle, Target,
   MessageCircle, Volume, Layers, Clock, Book, BookOpen, TrendingUp, SCENARIO_ICONS,
 } from './icons';
+import { CARD_ROW, ICON_BTN_SQUARE } from '../components/classNames.js';
 
 const LESSON_ICONS = {
   scenario: MessageCircle, dictation: Volume, cards: Layers, quickfire: Clock,
@@ -27,9 +28,9 @@ export default function LearningPath({ path, dueCount, onStartLesson, onOpenSetu
     return (
       <button
         onClick={onOpenSetup}
-        className="w-full flex items-center gap-3.5 bg-surface border border-line rounded-2xl px-4 py-3.5 text-left hover:border-ink3 transition-colors"
+        className={CARD_ROW}
       >
-        <span className="w-10 h-10 shrink-0 grid place-items-center rounded-xl bg-surface2 text-ink">
+        <span className={ICON_BTN_SQUARE}>
           <Map size={18} />
         </span>
         <span className="flex-1">

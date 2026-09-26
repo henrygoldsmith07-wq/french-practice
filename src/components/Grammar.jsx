@@ -7,6 +7,7 @@ import { categoriesForErrors } from '../lib/errorTaxonomy';
 import { getGrammarErrors } from '../lib/storage';
 import { currentSessionId, newEncounterId } from '../lib/evidenceIdentity';
 import { ChevronLeft, ChevronRight, Book, CheckCircle, Search, Target } from './icons';
+import { CARD_ROW, ICON_BTN_ROUND, ICON_BTN_SQUARE, ICON_BTN_SQUARE_SM, TAG_PILL } from '../components/classNames.js';
 
 // Accent- and case-insensitive haystack match, so «etre» finds «être».
 const norm = (s) => String(s).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
@@ -114,7 +115,7 @@ export default function Grammar({ focusTopicId, onFocusConsumed, onXp, onActivit
             onClick={() => setTopicId(tip.id)}
             className="w-full text-left bg-surface border border-line rounded-2xl px-4 py-3.5 hover:border-ink3 transition-colors flex items-start gap-3"
           >
-            <span className="w-9 h-9 shrink-0 grid place-items-center rounded-xl bg-surface2 text-ink">
+            <span className={ICON_BTN_SQUARE_SM}>
               <Target size={16} />
             </span>
             <span className="min-w-0">
@@ -171,15 +172,15 @@ export default function Grammar({ focusTopicId, onFocusConsumed, onXp, onActivit
               <li key={t.id}>
                 <button
                   onClick={() => setTopicId(t.id)}
-                  className="w-full flex items-center gap-3.5 bg-surface border border-line rounded-2xl px-4 py-3.5 text-left hover:border-ink3 transition-colors"
+                  className={CARD_ROW}
                 >
-                  <span className="w-10 h-10 shrink-0 grid place-items-center rounded-xl bg-surface2 text-ink">
+                  <span className={ICON_BTN_SQUARE}>
                     {mastered ? <CheckCircle size={18} /> : <Book size={18} />}
                   </span>
                   <span className="flex-1 min-w-0">
                     <span className="flex items-center gap-2">
                       <span className="text-sm font-semibold text-ink truncate" lang="fr">{t.title}</span>
-                      <span className="shrink-0 px-1.5 py-0.5 rounded-md border border-line text-[10px] font-semibold text-ink3">{t.cefr}</span>
+                      <span className={TAG_PILL}>{t.cefr}</span>
                     </span>
                     <span className="block text-xs text-ink3 truncate">{t.summary}</span>
                     {p && (
@@ -222,7 +223,7 @@ function TopicLesson({ topic, best, onBack, onQuizFinish }) {
     <div className="h-full overflow-y-auto nice-scroll px-4 py-5">
       <div className="max-w-md mx-auto space-y-4">
         <div className="flex items-center gap-2">
-          <button onClick={onBack} aria-label="Back to grammar library" className="w-10 h-10 grid place-items-center rounded-full bg-surface2 text-ink2 hover:bg-line">
+          <button onClick={onBack} aria-label="Back to grammar library" className={ICON_BTN_ROUND}>
             <ChevronLeft size={18} />
           </button>
           <div className="flex-1 min-w-0 text-center">

@@ -4,6 +4,7 @@ import Reading from './Reading';
 import Writing from './Writing';
 import { hasCapabilityNow } from '../lib/capabilities';
 import { Mic, Volume, BookOpen, Pencil, ChevronLeft, ChevronRight } from './icons';
+import { CARD_ROW, ICON_BTN_SQUARE } from '../components/classNames.js';
 
 // Skills hub: the four skill areas behind one tab so the bottom nav stays
 // usable. Deep links (Home cards, path lessons) jump straight to an area.
@@ -31,9 +32,9 @@ export default function Skills({ area, onAreaChange, speaking, listening, common
               <button
                 key={a.id}
                 onClick={() => onAreaChange(a.id)}
-                className="w-full flex items-center gap-3.5 bg-surface border border-line rounded-2xl px-4 py-3.5 text-left hover:border-ink3 transition-colors"
+                className={CARD_ROW}
               >
-                <span className="w-10 h-10 shrink-0 grid place-items-center rounded-xl bg-surface2 text-ink"><a.icon size={18} /></span>
+                <span className={ICON_BTN_SQUARE}><a.icon size={18} /></span>
                 <span className="flex-1 min-w-0">
                   <span className="block text-sm font-semibold text-ink">{a.title}</span>
                   <span className="block text-xs text-ink3">{a.subtitle}</span>

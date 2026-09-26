@@ -7,6 +7,7 @@ import { SpeakButton } from './ui';
 import {
   ChevronLeft, ChevronRight, Check, X, Volume, Pencil, Layers, Bookmark, BookmarkFilled, Trophy, Mic,
 } from './icons';
+import { ICON_BTN_ROUND, ICON_BTN_SQUARE } from '../components/classNames.js';
 
 // Offline phrase drills: shadowing, EN→FR type-it, and flip cards.
 // Pools real-world situations, the phrasebook, and the learner's starred lines.
@@ -85,7 +86,7 @@ export default function PhraseDrills({ onXp, initialPool = 'all', onBack }) {
               onClick={() => setScreen({ mode: 'run', kind: m.id })}
               className="w-full flex items-center gap-3.5 bg-surface border border-line rounded-2xl px-4 py-3.5 text-left hover:border-ink3 transition-colors disabled:opacity-40"
             >
-              <span className="w-10 h-10 shrink-0 grid place-items-center rounded-xl bg-surface2 text-ink">
+              <span className={ICON_BTN_SQUARE}>
                 <m.icon size={18} />
               </span>
               <span className="flex-1 min-w-0">
@@ -188,7 +189,7 @@ function DrillRun({ kind, poolMode, starred, onXp, onStarChange, onBack }) {
     <div className="h-full overflow-y-auto nice-scroll px-4 py-5">
       <div className="max-w-md mx-auto space-y-4">
         <div className="flex items-center gap-2">
-          <button type="button" onClick={onBack} aria-label="Back" className="w-10 h-10 grid place-items-center rounded-full bg-surface2 text-ink2 hover:bg-line">
+          <button type="button" onClick={onBack} aria-label="Back" className={ICON_BTN_ROUND}>
             <ChevronLeft size={18} />
           </button>
           <div className="flex-1 text-center">

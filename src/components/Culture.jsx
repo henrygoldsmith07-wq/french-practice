@@ -13,6 +13,7 @@ import { SpeakButton } from './ui';
 import { shuffleOptions } from './GrammarExercises';
 import { ChevronLeft, ChevronRight, Check, X, RefreshCw, Lightbulb, Trophy, Search } from './icons';
 import { getCultureSeen, saveCultureSeen } from '../lib/stores/seenStore';
+import { CARD_ROW, CARD_ROW_ACCENT, ICON_BTN_ROUND } from '../components/classNames.js';
 
 // Seen progress lives in stores/seenStore (learner-routed); components never
 // touch browser storage directly (pinned by tests/storage-boundary.test.js).
@@ -126,7 +127,7 @@ export default function Culture({ onXp }) {
           <>
             <button
               onClick={() => setView({ mode: 'quiz' })}
-              className="w-full flex items-center gap-3.5 bg-accent text-onaccent rounded-2xl px-4 py-3.5 text-left hover:opacity-90 transition-opacity"
+              className={CARD_ROW_ACCENT}
             >
               <Trophy size={18} className="shrink-0" />
               <span className="flex-1">
@@ -143,7 +144,7 @@ export default function Culture({ onXp }) {
                 <button
                   key={s.id}
                   onClick={() => openSection(s.id)}
-                  className="w-full flex items-center gap-3.5 bg-surface border border-line rounded-2xl px-4 py-3.5 text-left hover:border-ink3 transition-colors"
+                  className={CARD_ROW}
                 >
                   <span className="w-10 h-10 shrink-0 grid place-items-center rounded-xl bg-surface2 text-xl" role="img" aria-hidden="true">{s.emoji}</span>
                   <span className="flex-1 min-w-0">
@@ -169,7 +170,7 @@ function SectionView({ section, onBack }) {
     <div className="h-full overflow-y-auto nice-scroll px-4 py-5">
       <div className="max-w-md mx-auto space-y-4">
         <div className="flex items-center gap-2">
-          <button onClick={onBack} aria-label="Back to culture" className="w-10 h-10 grid place-items-center rounded-full bg-surface2 text-ink2 hover:bg-line">
+          <button onClick={onBack} aria-label="Back to culture" className={ICON_BTN_ROUND}>
             <ChevronLeft size={18} />
           </button>
           <h2 className="flex-1 text-center text-sm font-semibold text-ink flex items-center justify-center gap-1.5">
@@ -254,7 +255,7 @@ function CultureQuiz({ onXp, onBack }) {
     <div className="h-full overflow-y-auto nice-scroll px-4 py-5">
       <div className="max-w-md mx-auto space-y-4">
         <div className="flex items-center gap-2">
-          <button onClick={onBack} aria-label="Back to culture" className="w-10 h-10 grid place-items-center rounded-full bg-surface2 text-ink2 hover:bg-line">
+          <button onClick={onBack} aria-label="Back to culture" className={ICON_BTN_ROUND}>
             <ChevronLeft size={18} />
           </button>
           <h2 className="flex-1 text-center text-sm font-semibold text-ink">Culture quiz</h2>

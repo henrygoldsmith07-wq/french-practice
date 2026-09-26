@@ -4,6 +4,7 @@ import {
 } from '../lib/storage';
 import { POMODORO, habitStreak, goalCalendar, goalStreak, fmtClock } from '../lib/focus';
 import { X, Play, Square, RefreshCw, Check, Plus, Trash, Flame, Target } from './icons';
+import { ICON_BTN_ROUND_SOFT, TOP_BAR, INPUT_FIELD } from '../components/classNames.js';
 
 // Focus & habits (full-screen): a study/Pomodoro timer with a distraction-free
 // focus mode, a daily habit tracker with streaks, and a goal-streak calendar.
@@ -51,9 +52,9 @@ export default function Focus({ open, onClose }) {
 
   return (
     <div className="fixed inset-0 z-50 bg-bg flex flex-col" role="dialog" aria-modal="true" aria-label="Focus and habits">
-      <div className="flex items-center gap-2 px-4 py-3 border-b border-line bg-surface shrink-0">
+      <div className={TOP_BAR}>
         <h2 className="flex-1 text-sm font-semibold text-ink">Focus & habits</h2>
-        <button onClick={onClose} aria-label="Close focus" className="w-10 h-10 grid place-items-center rounded-full text-ink2 hover:bg-surface2 hover:text-ink">
+        <button onClick={onClose} aria-label="Close focus" className={ICON_BTN_ROUND_SOFT}>
           <X size={18} />
         </button>
       </div>
@@ -241,7 +242,7 @@ function Habits() {
             onKeyDown={(e) => e.key === 'Enter' && add()}
             placeholder="Add a habit…"
             aria-label="New habit"
-            className="flex-1 min-w-0 bg-surface border border-line rounded-xl px-4 py-2.5 text-sm text-ink placeholder:text-ink3 focus:outline-none focus:border-ink"
+            className={INPUT_FIELD}
           />
           <button onClick={add} disabled={!name.trim()} aria-label="Add habit" className="btn btn-primary w-11 rounded-xl"><Plus size={16} /></button>
         </div>

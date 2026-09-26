@@ -55,6 +55,7 @@ import { Flame, Bolt, Sun, Moon, Gear, Key, ArrowRight, Home, MessageCircle, Lay
 import Mascot from './components/Mascot';
 import LearnHub from './components/LearnHub';
 import ProgressHub from './components/ProgressHub';
+import { ICON_BTN_ROUND_SOFT } from './components/classNames.js';
 
 // Focused 5-tab nav: Today | Speak | Review | Learn | Progress
 // Everything else lives underneath Learn / Progress so the bar never competes.
@@ -420,7 +421,7 @@ export default function App() {
           <CoinsIcon size={13} /> {coins}
         </button>
         <div className="ml-auto flex items-center gap-2">
-          <button onClick={() => openOverlay('search')} aria-label="Search the studio" title="Search" className="w-10 h-10 grid place-items-center rounded-full text-ink2 hover:bg-surface2 hover:text-ink">
+          <button onClick={() => openOverlay('search')} aria-label="Search the studio" title="Search" className={ICON_BTN_ROUND_SOFT}>
             <Search size={18} />
           </button>
           <button onClick={() => openOverlay('profile')} aria-label="Open your profile" title="Profile" className="w-10 h-10 grid place-items-center rounded-full bg-surface2 hover:bg-line text-lg">

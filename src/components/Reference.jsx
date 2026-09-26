@@ -13,6 +13,7 @@ import PhraseDrills from './PhraseDrills';
 import ConjugationDrill from './ConjugationDrill';
 import { shuffleOptions } from './GrammarExercises';
 import { X, ChevronLeft, ChevronRight, Check, Play, Book, Volume, FileText, Plus, Layers, MessageCircle, Target } from './icons';
+import { CARD_ROW, ICON_BTN_ROUND, ICON_BTN_ROUND_SOFT, ICON_BTN_SQUARE, TOP_BAR, INPUT_FIELD } from '../components/classNames.js';
 
 // Reference & tools (full-screen): verb conjugation tables, a minimal-pairs
 // ear drill, cloze tests, phrase drills, and an offline dictionary / frequency
@@ -57,9 +58,9 @@ export default function Reference({ open, onClose, onImported, onXp, initialTool
               <button
                 key={t.id}
                 onClick={() => setTool(t.id)}
-                className="w-full flex items-center gap-3.5 bg-surface border border-line rounded-2xl px-4 py-3.5 text-left hover:border-ink3 transition-colors"
+                className={CARD_ROW}
               >
-                <span className="w-10 h-10 shrink-0 grid place-items-center rounded-xl bg-surface2 text-ink"><t.icon size={18} /></span>
+                <span className={ICON_BTN_SQUARE}><t.icon size={18} /></span>
                 <span className="flex-1 min-w-0">
                   <span className="block text-sm font-semibold text-ink">{t.title}</span>
                   <span className="block text-xs text-ink3">{t.blurb}</span>
@@ -75,16 +76,16 @@ export default function Reference({ open, onClose, onImported, onXp, initialTool
 
   return (
     <div className="fixed inset-0 z-50 bg-bg flex flex-col" role="dialog" aria-modal="true" aria-label="Reference and tools">
-      <div className="flex items-center gap-2 px-4 py-3 border-b border-line bg-surface shrink-0">
+      <div className={TOP_BAR}>
         {tool ? (
-          <button onClick={() => { stopSpeaking(); setTool(null); }} aria-label="Back to tools" className="w-10 h-10 grid place-items-center rounded-full bg-surface2 text-ink2 hover:bg-line">
+          <button onClick={() => { stopSpeaking(); setTool(null); }} aria-label="Back to tools" className={ICON_BTN_ROUND}>
             <ChevronLeft size={18} />
           </button>
         ) : <span className="w-10" aria-hidden="true" />}
         <h2 className="flex-1 text-center text-sm font-semibold text-ink">
           {tool ? (tools.find((t) => t.id === tool)?.title || 'Reference') : 'Reference & tools'}
         </h2>
-        <button onClick={() => { stopSpeaking(); onClose(); }} aria-label="Close reference" className="w-10 h-10 grid place-items-center rounded-full text-ink2 hover:bg-surface2 hover:text-ink">
+        <button onClick={() => { stopSpeaking(); onClose(); }} aria-label="Close reference" className={ICON_BTN_ROUND_SOFT}>
           <X size={18} />
         </button>
       </div>
@@ -408,7 +409,7 @@ function Dictionary({ onImported }) {
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Search French or English…"
             aria-label="Search the dictionary"
-            className="flex-1 min-w-0 bg-surface border border-line rounded-xl px-4 py-2.5 text-sm text-ink placeholder:text-ink3 focus:outline-none focus:border-ink"
+            className={INPUT_FIELD}
           />
           <button onClick={() => setShowImport((v) => !v)} aria-label="Import a word list" className="btn btn-secondary min-h-11 px-3 rounded-xl">
             <Plus size={16} />

@@ -3,6 +3,7 @@ import { speak, stopSpeaking } from '../lib/tts';
 import { recordSkillScore } from '../lib/storage';
 import { newEncounterId } from '../lib/evidenceIdentity';
 import { Play, RefreshCw, Check, X } from './icons';
+import { EMPTY_CARD } from '../components/classNames.js';
 
 // Numbers rapid-fire: hear a number, price, time or year in French, type the
 // digits. The 70/80/90 system and fast liaisons are exactly what learners
@@ -68,7 +69,7 @@ export default function NumberDash({ ttsRate, onXp, onActivity }) {
 
   if (!round) {
     return (
-      <div className="bg-surface border border-line rounded-2xl p-6 text-center space-y-3">
+      <div className={EMPTY_CARD}>
         <p className="text-sm text-ink2">
           Ten rounds: hear a number, price, time or year — type the digits.
           Soixante-quinze, quatre-vingt-douze… no mercy.

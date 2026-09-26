@@ -34,6 +34,7 @@ import {
   ExamBenchmark, ErrorCategories,
 } from './AnalyticsEvidence';
 import { X, Clock, Layers, Book, Mic, Volume, BarChart, TrendingUp } from './icons';
+import { ICON_BTN_ROUND_SOFT, TOP_BAR } from '../components/classNames.js';
 
 // Analytics (full-screen): headline metrics, a skill breakdown, weekly and
 // monthly reports, and activity heatmaps — all from locally-recorded data.
@@ -94,9 +95,9 @@ export default function Analytics({ open, onClose }) {
 
   return (
     <div className="fixed inset-0 z-50 bg-bg flex flex-col" role="dialog" aria-modal="true" aria-label="Analytics">
-      <div className="flex items-center gap-2 px-4 py-3 border-b border-line bg-surface shrink-0">
+      <div className={TOP_BAR}>
         <h2 className="flex-1 text-sm font-semibold text-ink">Analytics</h2>
-        <button onClick={onClose} aria-label="Close analytics" className="w-10 h-10 grid place-items-center rounded-full text-ink2 hover:bg-surface2 hover:text-ink">
+        <button onClick={onClose} aria-label="Close analytics" className={ICON_BTN_ROUND_SOFT}>
           <X size={18} />
         </button>
       </div>

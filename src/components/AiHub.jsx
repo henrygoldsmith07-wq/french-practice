@@ -10,6 +10,7 @@ import {
   GraduationCap, MessageCircle, Globe, Target, Map, RefreshCw, BookOpen, Play, Square,
   ChevronLeft, ChevronRight, ArrowRight, Sparkles, Camera, Check, Plus,
 } from './icons';
+import { CARD_ROW, ICON_BTN_ROUND, ICON_BTN_SQUARE, INPUT_FIELD } from '../components/classNames.js';
 
 // AI hub: five tools built directly on the LLM — a tutor you can ask
 // anything, in-character chat partners, an instant translator, an exercise
@@ -79,9 +80,9 @@ export default function AiHub({ apiKey, mockMode, level, onXp }) {
               <button
                 key={m.id}
                 onClick={() => setMode(m.id)}
-                className="w-full flex items-center gap-3.5 bg-surface border border-line rounded-2xl px-4 py-3.5 text-left hover:border-ink3 transition-colors"
+                className={CARD_ROW}
               >
-                <span className="w-10 h-10 shrink-0 grid place-items-center rounded-xl bg-surface2 text-ink"><m.icon size={18} /></span>
+                <span className={ICON_BTN_SQUARE}><m.icon size={18} /></span>
                 <span className="flex-1 min-w-0">
                   <span className="block text-sm font-semibold text-ink">{m.title}</span>
                   <span className="block text-xs text-ink3">{m.subtitle}</span>
@@ -98,7 +99,7 @@ export default function AiHub({ apiKey, mockMode, level, onXp }) {
   return (
     <div className="h-full flex flex-col min-h-0">
       <div className="flex items-center gap-2 px-4 pt-3 pb-1 shrink-0">
-        <button onClick={() => setMode(null)} aria-label="Back to AI studio" className="w-10 h-10 grid place-items-center rounded-full bg-surface2 text-ink2 hover:bg-line">
+        <button onClick={() => setMode(null)} aria-label="Back to AI studio" className={ICON_BTN_ROUND}>
           <ChevronLeft size={18} />
         </button>
         <h2 className="flex-1 text-center text-sm font-semibold text-ink">{active.title}</h2>
@@ -245,7 +246,7 @@ function Characters({ apiKey, mockMode, level, onXp }) {
               <button
                 key={c.id}
                 onClick={() => setCharacter(c)}
-                className="w-full flex items-center gap-3.5 bg-surface border border-line rounded-2xl px-4 py-3.5 text-left hover:border-ink3 transition-colors"
+                className={CARD_ROW}
               >
                 <span className="w-10 h-10 shrink-0 grid place-items-center rounded-full bg-surface2 text-ink text-sm font-bold">
                   {c.name.replace('Grand-mère ', '')[0]}
@@ -317,7 +318,7 @@ function Translator({ apiKey, mockMode, onXp }) {
       <div className="max-w-md mx-auto space-y-4">
         <div className="flex items-center justify-center gap-3">
           <span className={`text-sm font-semibold ${direction === 'en-fr' ? 'text-ink' : 'text-ink3'}`}>English</span>
-          <button onClick={swap} aria-label="Swap direction" className="w-10 h-10 grid place-items-center rounded-full bg-surface2 text-ink2 hover:bg-line">
+          <button onClick={swap} aria-label="Swap direction" className={ICON_BTN_ROUND}>
             <RefreshCw size={15} />
           </button>
           <span className={`text-sm font-semibold ${direction === 'fr-en' ? 'text-ink' : 'text-ink3'}`}>Français</span>
@@ -390,7 +391,7 @@ function ExerciseMaker({ apiKey, mockMode, level, onXp }) {
                 onChange={(e) => setTopic(e.target.value)}
                 placeholder="Any topic — a tense, a situation, a word…"
                 aria-label="Exercise topic"
-                className="flex-1 min-w-0 bg-surface border border-line rounded-xl px-4 py-2.5 text-sm text-ink placeholder:text-ink3 focus:outline-none focus:border-ink"
+                className={INPUT_FIELD}
               />
               <button type="submit" disabled={!topic.trim() || busy} className="btn btn-primary min-h-11 px-4 rounded-xl text-sm">
                 <Sparkles size={14} /> Go

@@ -5,6 +5,7 @@ import { speak, ttsSupported } from '../lib/tts';
 import { langName } from '../lib/i18n';
 import { contentLang } from '../lib/content/active';
 import { ChevronLeft, Check, X, Volume, RefreshCw } from './icons';
+import { ICON_BTN_ROUND, EMPTY_CARD } from '../components/classNames.js';
 
 // Active-recall quiz over a review deck. Cycles three question shapes so the
 // same words get tested from different angles — recognise the meaning, produce
@@ -150,7 +151,7 @@ export default function VocabQuiz({ deck, library, title, onRate, onXp, onActivi
     <div className="h-full overflow-y-auto nice-scroll px-4 py-5">
       <div className="max-w-md mx-auto space-y-5">
         <div className="flex items-center gap-2">
-          <button onClick={onBack} aria-label="Exit quiz" className="w-10 h-10 grid place-items-center rounded-full bg-surface2 text-ink2 hover:bg-line">
+          <button onClick={onBack} aria-label="Exit quiz" className={ICON_BTN_ROUND}>
             <ChevronLeft size={18} />
           </button>
           <div className="flex-1 min-w-0 text-center">
@@ -165,7 +166,7 @@ export default function VocabQuiz({ deck, library, title, onRate, onXp, onActivi
         </div>
 
         {/* prompt */}
-        <div className="bg-surface border border-line rounded-2xl p-6 text-center space-y-3">
+        <div className={EMPTY_CARD}>
           {mode === 'choice' && (
             <>
               <p className="text-[11px] font-bold uppercase tracking-wider text-ink3">What does this mean?</p>

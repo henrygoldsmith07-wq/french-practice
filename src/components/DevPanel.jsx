@@ -5,6 +5,7 @@ import {
 } from '../lib/storage';
 import { benchmarkStatus, mergeBenchmarkItems } from '../lib/intelligibility';
 import { ChevronRight, X } from './icons';
+import { ICON_BTN_ROUND_SOFT, TOP_BAR } from '../components/classNames.js';
 
 // Measurement-stack reads/writes live in researchStoreHeavy.js, which is
 // dynamically imported here: the panel is opt-in developer tooling, so its
@@ -62,7 +63,7 @@ export default function DevPanel({ telemetry, apiKey, mockMode, onMockMode, onCl
 
   return (
     <div className="fixed inset-0 z-50 bg-bg flex flex-col" role="dialog" aria-modal="true" aria-label="Developer panel">
-      <div className="flex items-center gap-2 px-4 py-3 border-b border-line bg-surface shrink-0">
+      <div className={TOP_BAR}>
         <h2 className="flex-1 text-lg font-bold text-ink">Developer Panel</h2>
         <label className="flex items-center gap-2 text-xs text-ink2 cursor-pointer">
           <input
@@ -73,7 +74,7 @@ export default function DevPanel({ telemetry, apiKey, mockMode, onMockMode, onCl
           />
           Mock Mode (offline)
         </label>
-        <button onClick={onClose} aria-label="Close developer panel" className="w-10 h-10 grid place-items-center rounded-full text-ink2 hover:bg-surface2 hover:text-ink">
+        <button onClick={onClose} aria-label="Close developer panel" className={ICON_BTN_ROUND_SOFT}>
           <X size={18} />
         </button>
       </div>

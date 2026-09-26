@@ -16,6 +16,7 @@ import { decodeToMono16k } from '../lib/acoustics';
 import { analyzePhonology } from '../lib/phonologicalScore';
 import { recordMistake, isAsrUncertain } from '../lib/mistakeGraph';
 import { Mic, Square, Play, RefreshCw } from './icons';
+import { SECTION_LABEL_SM } from '../components/classNames.js';
 
 // Pronunciation ("read aloud") and Shadowing ("listen & repeat") drills.
 // The learner speaks the target sentence; Whisper transcribes; the word-level
@@ -243,7 +244,7 @@ export default function Pronunciation({ mode, apiKey, mockMode, level, onXp, onA
           {/* Phonological breakdown: components with confidence tiers */}
           {result.phonology && result.phonology.components.some((c) => c.id !== 'intelligibility' && c.score != null) && (
             <div className="space-y-1.5">
-              <h4 className="text-[11px] font-bold uppercase tracking-wider text-ink2 mb-1">Phonological components</h4>
+              <h4 className={SECTION_LABEL_SM}>Phonological components</h4>
               {result.phonology.components.filter((c) => c.score != null).map((c) => (
                 <div key={c.id} className="flex items-center gap-2" title={c.note}>
                   <span className="w-40 shrink-0 truncate text-xs text-ink">{c.label}</span>
@@ -271,7 +272,7 @@ export default function Pronunciation({ mode, apiKey, mockMode, level, onXp, onA
             </div>
           )}
           <div>
-            <h4 className="text-[11px] font-bold uppercase tracking-wider text-ink2 mb-1">The recognizer heard</h4>
+            <h4 className={SECTION_LABEL_SM}>The recognizer heard</h4>
             <p className="text-sm text-ink2" lang={activeLangId}>{result.heard || '—'}</p>
             <p className="text-[11px] text-ink3 mt-1">Underlined words above weren't recognized — they're your likely trouble spots.</p>
           </div>

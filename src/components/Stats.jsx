@@ -9,6 +9,7 @@ import { MILESTONES, CERTIFICATES } from '../lib/game';
 import { totalReviews } from '../lib/memory';
 import { renderCertificate } from './charts';
 import { Check, Lock, Download, Flame, Coins } from './icons';
+import { ICON_BTN_SQUARE, ICON_BTN_SQUARE_SM } from '../components/classNames.js';
 
 // Motivation panel inside the profile: weekly goal, learning statistics,
 // the learning calendar, streak freezes, milestones and certificates.
@@ -64,7 +65,7 @@ export default function Stats({ weeklyGoal, onCoinsChange }) {
       {/* streak freeze */}
       <section className="bg-surface border border-line rounded-2xl p-5 space-y-2">
         <div className="flex items-center gap-3">
-          <span className="w-10 h-10 shrink-0 grid place-items-center rounded-xl bg-surface2 text-ink"><Flame size={18} /></span>
+          <span className={ICON_BTN_SQUARE}><Flame size={18} /></span>
           <div className="flex-1 min-w-0">
             <p className="text-sm font-semibold text-ink">Streak freeze</p>
             <p className="text-xs text-ink3">
@@ -262,7 +263,7 @@ function Certificates({ stats }) {
           const earned = (stats[c.metric] || 0) >= c.target;
           return (
             <div key={c.id} className={`flex items-center gap-3 bg-surface border border-line rounded-2xl px-4 py-3 ${earned ? '' : 'opacity-55'}`}>
-              <span className="w-9 h-9 shrink-0 grid place-items-center rounded-xl bg-surface2 text-ink">
+              <span className={ICON_BTN_SQUARE_SM}>
                 {earned ? <Check size={16} /> : <Lock size={14} />}
               </span>
               <div className="flex-1 min-w-0">

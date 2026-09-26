@@ -12,6 +12,7 @@ import {
   recordLanguageEvidence,
 } from '../lib/storage';
 import { Book, ChevronRight, Layers, MessageCircle, Mic, Target } from './icons';
+import { ICON_BTN_SQUARE_SM } from '../components/classNames.js';
 
 const FILTERS = [
   ['all', 'All structures'],
@@ -210,7 +211,7 @@ function StructureCard({ entry, onLog, onSlip, onOpenGrammar }) {
   return (
     <article className="bg-surface border border-line rounded-2xl p-4 space-y-3">
       <div className="flex items-start gap-3">
-        <span className="w-9 h-9 shrink-0 grid place-items-center rounded-xl bg-surface2 text-ink"><Book size={16} /></span>
+        <span className={ICON_BTN_SQUARE_SM}><Book size={16} /></span>
         <div className="flex-1 min-w-0">
           <div className="flex flex-wrap items-center gap-2">
             <h3 className="text-sm font-bold text-ink" lang="fr">{entry.title}</h3>

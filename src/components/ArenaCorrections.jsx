@@ -5,6 +5,7 @@ import { ArrowRight, Book, Lightbulb } from './icons';
 import { explainMistake, friendlyError, generateExercises } from '../lib/groq';
 import { saveToNotebook } from '../lib/storage';
 import { getGrammarTopic } from '../lib/grammar';
+import { SECTION_LABEL_SM } from '../components/classNames.js';
 
 // The Arena's correction-side UI cluster: the learner's turn bubble with its
 // tiered corrections, the redo comparison, the on-demand rule explanation and
@@ -80,7 +81,7 @@ export function UserBubble({ turn, idx, redoActive, onRedo, onCancelRedo, onGram
       {expanded && (
         <div className="w-full sm:max-w-[85%] fade-in bg-surface2 border border-line rounded-2xl p-4 space-y-3 text-left">
           <div>
-            <h4 className="text-[11px] font-bold uppercase tracking-wider text-ink2 mb-1">Corrections</h4>
+            <h4 className={SECTION_LABEL_SM}>Corrections</h4>
             {evaluation.corrections_detailed?.length ? (
               <TieredCorrections detailed={evaluation.corrections_detailed} />
             ) : (

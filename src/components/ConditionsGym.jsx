@@ -8,6 +8,7 @@ import { recordAttempt } from '../lib/authenticAudio';
 import { getListeningProgression, saveListeningProgression } from '../lib/stores/researchStoreHeavy.js';
 import { Play, Square, Check, X, ChevronLeft } from './icons';
 import { SpeakButton } from './ui';
+import { ICON_BTN_ROUND } from '../components/classNames.js';
 
 // Conditions gym — synthetic S6–S7 listening training.
 //
@@ -139,7 +140,7 @@ export default function ConditionsGym({ ttsRate = 1, onBack }) {
     <div className="h-full overflow-y-auto nice-scroll px-4 py-5">
       <div className="max-w-lg mx-auto space-y-4">
         <div className="flex items-center gap-2">
-          <button onClick={() => { stop(); onBack?.(); }} aria-label="Back to listening" className="w-10 h-10 grid place-items-center rounded-full bg-surface2 text-ink2 hover:bg-line">
+          <button onClick={() => { stop(); onBack?.(); }} aria-label="Back to listening" className={ICON_BTN_ROUND}>
             <ChevronLeft size={18} />
           </button>
           <div className="flex-1 min-w-0 text-center">

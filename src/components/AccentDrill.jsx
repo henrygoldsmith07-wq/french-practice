@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
 import { recordSkillScore } from '../lib/storage';
 import { RefreshCw, Check, X, Play } from './icons';
+import { EMPTY_CARD } from '../components/classNames.js';
 
 // Accent typing trainer: the word appears stripped of its accents — retype
 // it correctly. On-screen accent keys mean no OS keyboard gymnastics, and
@@ -66,7 +67,7 @@ export default function AccentDrill({ onXp, sessionMode, onDone }) {
 
   if (!game) {
     return (
-      <div className="bg-surface border border-line rounded-2xl p-6 text-center space-y-3">
+      <div className={EMPTY_CARD}>
         <p className="text-sm text-ink2">
           The word appears without its accents — retype it with every é, è, ç and œ in place.
           Use the accent keys below the input.

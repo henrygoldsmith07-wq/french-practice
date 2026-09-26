@@ -3,6 +3,7 @@ import { getSettings } from '../lib/storage';
 import { BarChart, Map, Clock, Target, Layers } from './icons';
 import { ChevronRight } from './icons';
 import { featureAvailableNow, hasCapabilityNow } from '../lib/languages';
+import { CHIP } from '../components/classNames.js';
 
 const LazyProfile = lazy(() => import('./Profile'));
 const LazyAnalytics = lazy(() => import('./Analytics'));
@@ -151,8 +152,8 @@ export default function ProgressHub({
           ))}
         </div>
         <div className="flex flex-wrap justify-center gap-2 pt-2">
-          <span className="inline-block bg-surface border border-line rounded-full px-3.5 py-1.5 text-xs font-semibold text-ink2">Private by architecture</span>
-          <span className="inline-block bg-surface border border-line rounded-full px-3.5 py-1.5 text-xs font-semibold text-ink2">Works offline</span>
+          <span className={CHIP}>Private by architecture</span>
+          <span className={CHIP}>Works offline</span>
         </div>
         {/* Progressive disclosure: study enrolment, evidence experiments and
             diagnostics serve research operators, not the learner scoreboard.

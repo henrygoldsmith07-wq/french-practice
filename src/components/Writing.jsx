@@ -11,6 +11,7 @@ import { SpeakButton, Spinner } from './ui';
 import { getErrorNotebook, markCorrectedByLearner } from '../lib/errorNotebook';
 import { explainCorrection } from '../lib/writing';
 import { Pencil, Check, X, RefreshCw, ChevronLeft, ChevronRight, MessageCircle, BookOpen, Clock, Target } from './icons';
+import { CARD_ROW, ICON_BTN_ROUND, ICON_BTN_SQUARE } from '../components/classNames.js';
 
 // Writing hub: typing drill (accent-exact), conjugation drill, sentence
 // completion, free writing with AI correction, and the essay studio.
@@ -47,9 +48,9 @@ export default function Writing({ apiKey, mockMode, level, onXp, onActivity }) {
               <button
                 key={m.id}
                 onClick={() => setMode(m.id)}
-                className="w-full flex items-center gap-3.5 bg-surface border border-line rounded-2xl px-4 py-3.5 text-left hover:border-ink3 transition-colors"
+                className={CARD_ROW}
               >
-                <span className="w-10 h-10 shrink-0 grid place-items-center rounded-xl bg-surface2 text-ink"><m.icon size={18} /></span>
+                <span className={ICON_BTN_SQUARE}><m.icon size={18} /></span>
                 <span className="flex-1 min-w-0">
                   <span className="block text-sm font-semibold text-ink">{m.title}</span>
                   <span className="block text-xs text-ink3">{m.subtitle}</span>
@@ -67,7 +68,7 @@ export default function Writing({ apiKey, mockMode, level, onXp, onActivity }) {
     <div className="h-full overflow-y-auto nice-scroll px-4 py-5">
       <div className="max-w-md mx-auto space-y-4">
         <div className="flex items-center gap-2">
-          <button onClick={() => setMode(null)} aria-label="Back to writing" className="w-10 h-10 grid place-items-center rounded-full bg-surface2 text-ink2 hover:bg-line">
+          <button onClick={() => setMode(null)} aria-label="Back to writing" className={ICON_BTN_ROUND}>
             <ChevronLeft size={18} />
           </button>
           <h2 className="flex-1 text-center text-sm font-semibold text-ink">{active.title}</h2>

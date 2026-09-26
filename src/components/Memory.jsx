@@ -16,6 +16,7 @@ import {
 import { currentSessionId, newEncounterId } from '../lib/evidenceIdentity';
 import { activeLanguage } from '../lib/i18n';
 import { ChevronLeft, ChevronRight, Check, X, Layers, Target, Book } from './icons';
+import { ICON_BTN_ROUND, ICON_BTN_SQUARE } from '../components/classNames.js';
 
 // Memory & revision dashboard: retention buckets from the forgetting curve,
 // weak-word and mistake drills, custom-flashcard study, and the review
@@ -51,7 +52,7 @@ export default function Memory({ onBack, onOpenDeck, onXp }) {
     <div className="h-full overflow-y-auto nice-scroll px-4 py-5">
       <div className="max-w-md mx-auto space-y-4">
         <div className="flex items-center gap-2">
-          <button onClick={onBack} aria-label="Back to packs" className="w-10 h-10 grid place-items-center rounded-full bg-surface2 text-ink2 hover:bg-line">
+          <button onClick={onBack} aria-label="Back to packs" className={ICON_BTN_ROUND}>
             <ChevronLeft size={18} />
           </button>
           <div className="flex-1 text-center">
@@ -193,7 +194,7 @@ function DrillCard({ icon: DrillIcon, title, subtitle, badge, disabled, onClick 
       disabled={disabled}
       className="w-full flex items-center gap-3.5 bg-surface border border-line rounded-2xl px-4 py-3.5 text-left hover:border-ink3 transition-colors disabled:opacity-50 disabled:hover:border-line"
     >
-      <span className="w-10 h-10 shrink-0 grid place-items-center rounded-xl bg-surface2 text-ink"><DrillIcon size={18} /></span>
+      <span className={ICON_BTN_SQUARE}><DrillIcon size={18} /></span>
       <span className="flex-1 min-w-0">
         <span className="block text-sm font-semibold text-ink">{title}</span>
         <span className="block text-xs text-ink3">{subtitle}</span>

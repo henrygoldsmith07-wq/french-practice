@@ -7,6 +7,7 @@ import { buildOfflinePack, offlinePackSize, offlinePackSummary } from '../lib/of
 import { makeSyncCode, restoreSyncCode } from '../lib/account';
 import { fetchAccount, startGoogleSignIn, signOut as signOutAccount, push as pushRemote, pull as pullRemote, deleteRemote, remoteUpdatedAt } from '../lib/cloudAccount';
 import { X, Check, Download, Upload, BookOpen, Volume, RefreshCw, Copy, Key } from './icons';
+import { ICON_BTN_ROUND_SOFT, TOP_BAR } from '../components/classNames.js';
 
 // Offline features: the app is a client-side PWA, so once the service worker
 // has cached it, every lesson works with no network and TTS audio is
@@ -218,9 +219,9 @@ export default function Offline({ open, onClose, pwa }) {
 
   return (
     <div className="fixed inset-0 z-50 bg-bg flex flex-col" role="dialog" aria-modal="true" aria-label="Offline">
-      <div className="flex items-center gap-2 px-4 py-3 border-b border-line bg-surface shrink-0">
+      <div className={TOP_BAR}>
         <h2 className="flex-1 text-sm font-semibold text-ink">Offline & devices</h2>
-        <button onClick={onClose} aria-label="Close offline" className="w-10 h-10 grid place-items-center rounded-full text-ink2 hover:bg-surface2 hover:text-ink">
+        <button onClick={onClose} aria-label="Close offline" className={ICON_BTN_ROUND_SOFT}>
           <X size={18} />
         </button>
       </div>

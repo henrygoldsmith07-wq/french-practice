@@ -9,6 +9,7 @@ import { Play, Volume, RefreshCw, Check } from './icons';
 import { dictationSpeed, diacriticStrict, DICTATION_LEVELS } from '../lib/dictationProgression';
 import { getMetrics, getReviewEvents } from '../lib/storage';
 import { listeningDifficultyLadder } from '../lib/learningAdaptation';
+import { SECTION_LABEL_SM } from '../components/classNames.js';
 
 // Dictée: pure listening drill. The app speaks a French sentence the learner
 // cannot see; they type what they heard and get a word-level diff + accuracy
@@ -142,7 +143,7 @@ export default function Dictation({ ttsRate, level: cefr = 'B1', onXp, onActivit
               </span>
             </div>
             <div>
-              <h4 className="text-[11px] font-bold uppercase tracking-wider text-ink2 mb-1">The sentence</h4>
+              <h4 className={SECTION_LABEL_SM}>The sentence</h4>
               <p className="text-[15px] leading-relaxed" lang={activeLangCode()}>
                 {targetWords.map((w, i) => (
                   <span key={i} className={displayHits[i] ? 'text-ink' : 'text-ink3 underline decoration-2 underline-offset-2'}>
@@ -153,7 +154,7 @@ export default function Dictation({ ttsRate, level: cefr = 'B1', onXp, onActivit
               <p className="text-xs text-ink3 italic mt-1.5">{sentence.translation}</p>
             </div>
             <div>
-              <h4 className="text-[11px] font-bold uppercase tracking-wider text-ink2 mb-1">You wrote</h4>
+              <h4 className={SECTION_LABEL_SM}>You wrote</h4>
               <p className="text-sm text-ink2" lang={activeLangCode()}>{input || '—'}</p>
             </div>
             {/* Session mode: the segment ends once a clean pass repairs the

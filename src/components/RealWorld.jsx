@@ -15,6 +15,7 @@ import {
   X, ChevronLeft, ChevronRight, Check, MessageCircle, FileText, Trophy, Search, Lightbulb, Bookmark, BookmarkFilled,
 } from './icons';
 import { getRealWorldSeen, saveRealWorldSeen } from '../lib/stores/seenStore';
+import { CARD_ROW, CARD_ROW_ACCENT, ICON_BTN_ROUND, ICON_BTN_ROUND_SOFT, TOP_BAR } from '../components/classNames.js';
 
 // Seen progress lives in stores/seenStore (learner-routed); components never
 // touch browser storage directly (pinned by tests/storage-boundary.test.js).
@@ -78,9 +79,9 @@ export default function RealWorld({ open, onClose, onRoleplay, onXp }) {
 
   return (
     <div className="fixed inset-0 z-50 bg-bg flex flex-col" role="dialog" aria-modal="true" aria-label="Real-world practice">
-      <div className="flex items-center gap-2 px-4 py-3 border-b border-line bg-surface shrink-0">
+      <div className={TOP_BAR}>
         <h2 className="flex-1 text-sm font-semibold text-ink">Real-world practice</h2>
-        <button onClick={onClose} aria-label="Close real-world practice" className="w-10 h-10 grid place-items-center rounded-full text-ink2 hover:bg-surface2 hover:text-ink">
+        <button onClick={onClose} aria-label="Close real-world practice" className={ICON_BTN_ROUND_SOFT}>
           <X size={18} />
         </button>
       </div>
@@ -171,7 +172,7 @@ function Hub({ onOpen, onExam, query, setQuery, tip, totalPhrases, opened, seen 
           <>
             <button
               onClick={onExam}
-              className="w-full flex items-center gap-3.5 bg-accent text-onaccent rounded-2xl px-4 py-3.5 text-left hover:opacity-90 transition-opacity"
+              className={CARD_ROW_ACCENT}
             >
               <FileText size={18} className="shrink-0" />
               <span className="flex-1">
@@ -186,7 +187,7 @@ function Hub({ onOpen, onExam, query, setQuery, tip, totalPhrases, opened, seen 
                 <button
                   key={s.id}
                   onClick={() => onOpen(s.id)}
-                  className="w-full flex items-center gap-3.5 bg-surface border border-line rounded-2xl px-4 py-3.5 text-left hover:border-ink3 transition-colors"
+                  className={CARD_ROW}
                 >
                   <span className="w-10 h-10 shrink-0 grid place-items-center rounded-xl bg-surface2 text-xl" role="img" aria-hidden="true">{s.emoji}</span>
                   <span className="flex-1 min-w-0">
@@ -233,7 +234,7 @@ function Situation({ situation, onBack, onRoleplay }) {
     <div className="h-full overflow-y-auto nice-scroll px-4 py-5">
       <div className="max-w-md mx-auto space-y-4">
         <div className="flex items-center gap-2">
-          <button onClick={onBack} aria-label="Back to situations" className="w-10 h-10 grid place-items-center rounded-full bg-surface2 text-ink2 hover:bg-line">
+          <button onClick={onBack} aria-label="Back to situations" className={ICON_BTN_ROUND}>
             <ChevronLeft size={18} />
           </button>
           <h2 className="flex-1 text-center text-sm font-semibold text-ink flex items-center justify-center gap-1.5">
@@ -328,7 +329,7 @@ function Exam({ onXp, onBack }) {
     <div className="h-full overflow-y-auto nice-scroll px-4 py-5">
       <div className="max-w-md mx-auto space-y-4">
         <div className="flex items-center gap-2">
-          <button onClick={onBack} aria-label="Back to real-world practice" className="w-10 h-10 grid place-items-center rounded-full bg-surface2 text-ink2 hover:bg-line">
+          <button onClick={onBack} aria-label="Back to real-world practice" className={ICON_BTN_ROUND}>
             <ChevronLeft size={18} />
           </button>
           <h2 className="flex-1 text-center text-sm font-semibold text-ink">{EXAM.title}</h2>

@@ -10,6 +10,7 @@ import { saveToNotebook, getNotebook, getFieldNotes } from '../lib/storage';
 import { SpeakButton } from './ui';
 import Mascot from './Mascot';
 import { Search, X, MessageCircle, Book, BookOpen, Volume, Check, Bookmark } from './icons';
+import { TAG_PILL } from '../components/classNames.js';
 
 // Global search: one box over the whole studio — words, scenarios, grammar
 // topics, readings, listening tracks and personal Field Notes — with deep links into each.
@@ -80,7 +81,7 @@ export default function GlobalSearch({ open, onClose, onGo }) {
       <button onClick={onClick} disabled={!onClick} className="flex-1 min-w-0 text-left">
         <span className="flex items-center gap-2">
           <span className="text-sm font-semibold text-ink truncate" lang="fr">{title}</span>
-          {badge && <span className="shrink-0 px-1.5 py-0.5 rounded-md border border-line text-[10px] font-semibold text-ink3">{badge}</span>}
+          {badge && <span className={TAG_PILL}>{badge}</span>}
         </span>
         {sub && <span className="block text-xs text-ink3 truncate">{sub}</span>}
       </button>

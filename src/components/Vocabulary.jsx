@@ -17,6 +17,7 @@ import { weakEntries, notebookAsEntries, reviewOrder, dueEntries, frontierTier, 
 import { fsrsRetention, isProductiveUnlocked } from '../lib/fsrs';
 import { SpeakButton } from './ui';
 import { ChevronLeft, ChevronRight, Layers, Book, Plus, Trash, BarChart, Clock, Search, Target } from './icons';
+import { CARD_ROW, CARD_ROW_ACCENT, ICON_BTN_ROUND, ICON_BTN_SQUARE, ICON_BTN_SQUARE_SM } from '../components/classNames.js';
 
 // Vocabulary hub: themed packs, a cross-pack SRS review queue, the personal
 // notebook of saved/custom words, and the memory & revision dashboard.
@@ -146,7 +147,7 @@ export default function Vocabulary({ apiKey, mockMode, onActivity, onXp }) {
         {dueTotal > 0 && (
           <button
             onClick={() => setView({ mode: 'deck', packId: 'review' })}
-            className="w-full flex items-center gap-3.5 bg-accent text-onaccent rounded-2xl px-4 py-3.5 text-left hover:opacity-90 transition-opacity"
+            className={CARD_ROW_ACCENT}
           >
             <BarChart size={18} className="shrink-0" />
             <span className="flex-1">
@@ -162,9 +163,9 @@ export default function Vocabulary({ apiKey, mockMode, onActivity, onXp }) {
         {/* memory & revision dashboard */}
         <button
           onClick={() => setView({ mode: 'memory' })}
-          className="w-full flex items-center gap-3.5 bg-surface border border-line rounded-2xl px-4 py-3.5 text-left hover:border-ink3 transition-colors"
+          className={CARD_ROW}
         >
-          <span className="w-10 h-10 shrink-0 grid place-items-center rounded-xl bg-surface2 text-ink"><Clock size={18} /></span>
+          <span className={ICON_BTN_SQUARE}><Clock size={18} /></span>
           <span className="flex-1">
             <span className="block text-sm font-semibold text-ink">Memory & revision</span>
             <span className="block text-xs text-ink3">Forgetting curves, weak words, mistakes, heatmap</span>
@@ -175,9 +176,9 @@ export default function Vocabulary({ apiKey, mockMode, onActivity, onXp }) {
         {/* notebook */}
         <button
           onClick={() => setView({ mode: 'notebook' })}
-          className="w-full flex items-center gap-3.5 bg-surface border border-line rounded-2xl px-4 py-3.5 text-left hover:border-ink3 transition-colors"
+          className={CARD_ROW}
         >
-          <span className="w-10 h-10 shrink-0 grid place-items-center rounded-xl bg-surface2 text-ink"><Book size={18} /></span>
+          <span className={ICON_BTN_SQUARE}><Book size={18} /></span>
           <span className="flex-1">
             <span className="block text-sm font-semibold text-ink">My notebook</span>
             <span className="block text-xs text-ink3">
@@ -238,7 +239,7 @@ export default function Vocabulary({ apiKey, mockMode, onActivity, onXp }) {
                     aria-expanded={open}
                     className="w-full flex items-center gap-3 px-4 py-3.5 text-left hover:bg-surface2 transition-colors"
                   >
-                    <span className="w-9 h-9 shrink-0 grid place-items-center rounded-xl bg-surface2 text-ink"><Layers size={16} /></span>
+                    <span className={ICON_BTN_SQUARE_SM}><Layers size={16} /></span>
                     <span className="flex-1 min-w-0">
                       <span className="block text-sm font-semibold text-ink">{g.label}</span>
                       <span className="block text-[11px] text-ink3">{g.packs.length} pack{g.packs.length > 1 ? 's' : ''} · {words} words</span>
@@ -414,7 +415,7 @@ function Deck({ packId, onBack, srs, onRated, onSavedChange, apiKey, mockMode, o
     <div className="h-full overflow-y-auto nice-scroll px-4 py-5">
       <div className="max-w-md mx-auto space-y-4">
         <div className="flex items-center gap-2">
-          <button onClick={onBack} aria-label="Back to packs" className="w-10 h-10 grid place-items-center rounded-full bg-surface2 text-ink2 hover:bg-line">
+          <button onClick={onBack} aria-label="Back to packs" className={ICON_BTN_ROUND}>
             <ChevronLeft size={18} />
           </button>
           <div className="flex-1 min-w-0 text-center">
@@ -427,7 +428,7 @@ function Deck({ packId, onBack, srs, onRated, onSavedChange, apiKey, mockMode, o
           <button
             onClick={() => setIndex((i) => (i + 1) % deck.length)}
             aria-label="Next card"
-            className="w-10 h-10 grid place-items-center rounded-full bg-surface2 text-ink2 hover:bg-line"
+            className={ICON_BTN_ROUND}
           >
             <ChevronRight size={18} />
           </button>
@@ -498,7 +499,7 @@ function Notebook({ notebook, onBack, onChange }) {
     <div className="h-full overflow-y-auto nice-scroll px-4 py-5">
       <div className="max-w-md mx-auto space-y-4">
         <div className="flex items-center gap-2">
-          <button onClick={onBack} aria-label="Back to packs" className="w-10 h-10 grid place-items-center rounded-full bg-surface2 text-ink2 hover:bg-line">
+          <button onClick={onBack} aria-label="Back to packs" className={ICON_BTN_ROUND}>
             <ChevronLeft size={18} />
           </button>
           <div className="flex-1 text-center">

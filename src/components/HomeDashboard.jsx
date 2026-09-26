@@ -9,6 +9,7 @@ import { ArrowRight, Layers, MessageCircle, Play, Target, Mic, BookOpen, StudioM
 import { weaknessAnalysis, dailyRecommendations } from '../lib/personalise';
 import { SCENARIO_ICONS } from './icons';
 import Mascot from './Mascot';
+import { CHIP } from '../components/classNames.js';
 
 function suggestScenario(sessions, scenarios = getScenarios()) {
   if (!scenarios.length) return { id: 'open', title: 'Open conversation' };
@@ -288,10 +289,10 @@ export default function HomeDashboard({ dailyGoal = 30, level, onStartLesson, on
             </div>
           )}
           <div className="mt-6 flex flex-wrap justify-center gap-2">
-            <span className="inline-block bg-surface border border-line rounded-full px-3.5 py-1.5 text-xs font-semibold text-ink2">Installable PWA</span>
-            <span className="inline-block bg-surface border border-line rounded-full px-3.5 py-1.5 text-xs font-semibold text-ink2">Works offline</span>
-            <span className="inline-block bg-surface border border-line rounded-full px-3.5 py-1.5 text-xs font-semibold text-ink2">No account required</span>
-            <span className="inline-block bg-surface border border-line rounded-full px-3.5 py-1.5 text-xs font-semibold text-ink2">Private by architecture</span>
+            <span className={CHIP}>Installable PWA</span>
+            <span className={CHIP}>Works offline</span>
+            <span className={CHIP}>No account required</span>
+            <span className={CHIP}>Private by architecture</span>
           </div>
         </section>
       </div>

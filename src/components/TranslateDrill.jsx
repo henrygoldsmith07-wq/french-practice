@@ -4,6 +4,7 @@ import { allEntries } from '../lib/vocab';
 import { recordSkillScore } from '../lib/storage';
 import { SpeakButton } from './ui';
 import { Play, RefreshCw, Check, X } from './icons';
+import { EMPTY_CARD } from '../components/classNames.js';
 
 // The active language's content code ('fr'/'de'/'es') — used for the
 // direction chips and lang attributes so the drill never hard-codes French.
@@ -70,7 +71,7 @@ export default function TranslateDrill({ onXp }) {
 
   if (!game) {
     return (
-      <div className="bg-surface border border-line rounded-2xl p-6 text-center space-y-3">
+      <div className={EMPTY_CARD}>
         <p className="text-sm text-ink2">
           Eight sentences, alternating directions: English → {langName()}, then {langName()} → English.
           Close paraphrases count — accents and punctuation are forgiven.

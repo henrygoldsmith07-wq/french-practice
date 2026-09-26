@@ -7,6 +7,7 @@ import { newEncounterId } from '../lib/evidenceIdentity';
 import { SpeakButton, Spinner } from './ui';
 import { shuffleOptions } from './GrammarExercises';
 import { BookOpen, ChevronLeft, ChevronRight, Check, X, RefreshCw, Bookmark, BookmarkFilled } from './icons';
+import { TAG_PILL } from '../components/classNames.js';
 
 // Reading hub: graded readers, a branching interactive story, articles,
 // news and public-domain classics — with dual-language display, per-word
@@ -61,7 +62,7 @@ export default function Reading({ apiKey, mockMode, onXp, onActivity }) {
                   <span className="flex-1 min-w-0">
                     <span className="flex items-center gap-2">
                       <span className="text-sm font-semibold text-ink truncate" lang="fr">{t.title}</span>
-                      <span className="shrink-0 px-1.5 py-0.5 rounded-md border border-line text-[10px] font-semibold text-ink3">{t.cefr}</span>
+                      <span className={TAG_PILL}>{t.cefr}</span>
                     </span>
                     <span className="block text-xs text-ink3 truncate">{t.description}</span>
                   </span>
