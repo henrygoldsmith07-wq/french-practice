@@ -17,7 +17,7 @@ import { stopSpeaking, ttsSupported } from '../lib/tts';
 import { saveLastPlacement } from '../lib/storage';
 import { Target, Check, ChevronRight } from './icons';
 
-// The proficiency screen: one score, five components, and an honest account of
+// The proficiency screen: one score, seven components, and an honest account of
 // how much evidence sits behind it. Everything shown here is derived from
 // things the learner actually did — XP and streaks are deliberately absent,
 // because attendance is not proficiency.
@@ -69,6 +69,7 @@ export default function Proficiency({ onXp }) {
         <section className="bg-surface border border-line rounded-2xl p-4 text-center">
           <p className="text-5xl font-bold tabular-nums">{result.score === null ? '—' : result.score}</p>
           <p className="text-sm font-semibold mt-1">{result.band || 'No score yet'}</p>
+          <p className="text-[11px] text-ink3 mt-1">Working CEFR level {level} · score is within this level, not an XP conversion.</p>
           <p className="text-xs text-ink2 mt-2">
             {result.score === null
               ? result.note

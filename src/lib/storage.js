@@ -104,10 +104,10 @@ export function shouldOnboard() {
   return !returning;
 }
 
-// ---- data portability (manual "sync across devices", no backend) ----
+// ---- data portability (local export/import + optional account snapshot) ----
 // Export every fp.* key except the private API key into a portable backup,
-// and restore it on another device. There is no server; this is the honest
-// way to move progress between machines.
+// and restore it on another device. account.js wraps the same payload in an
+// LS1 sync code; cloudAccount.js may optionally store that code server-side.
 
 export function exportProgress() {
   const data = {};

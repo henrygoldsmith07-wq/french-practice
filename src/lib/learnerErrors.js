@@ -396,10 +396,76 @@ export function recordLearnerSuccess(model, success = {}, { at = new Date().toIS
 
 const STATUS_ORDER = { active: 0, recovering: 1, resolved: 2 };
 
-export function prioritiseLearnerErrors(model, { limit = 12, includeResolved = false } = {}) {
+const RETENTION_FAILURE_MODES = /^(weakness-retest|held-out|srs)$/i;
+const EXAM_EVIDENCE = /exam/i;
+
+function ageDays(at, now) {
+  const then = Date.parse(at || '');
+  const nowMs = Number(now instanceof Date ? now.getTime() : now);
+  if (!Number.isFinite(then) || !Number.isFinite(nowMs)) return 0;
+  return Math.max(0, (nowMs - then) / 86400000);
+}
+
+function lastErrorEvidence(entry) {
+  if (!entry?.lastErrorAt || !Array.isArray(entry.evidence)) return null;
+  for (let i = entry.evidence.length - 1; i >= 0; i -= 1) {
+    if (entry.evidence[i]?.at === entry.lastErrorAt) return entry.evidence[i];
+  }
+  return null;
+}
+
+/**
+ * Internal learning-value score for one weakness. It deliberately rewards
+ * corroboration rather than raw event count: recurrence, repeated misses,
+ * multiple activity modes and a failed delayed-recall check all strengthen
+ * the case that this is a real learning need. A lone fresh mistake remains
+ * visible, but receives low confidence until another independent signal
+ * confirms it.
+ *
+ * The number is for ordering only — it is never shown as learner proficiency.
+ */
+export function learnerErrorPriority(entry, { now = Date.now() } = {}) {
+  if (!entry || typeof entry !== 'object') return 0;
+  const errors = Math.max(0, Number(entry.errorCount) || 0);
+  const recurrences = Math.max(0, Number(entry.recurrenceCount) || 0);
+  const modes = Array.isArray(entry.modes) ? new Set(entry.modes.filter(Boolean)).size : 0;
+  const repeated = Math.max(0, errors - 1);
+
+  // Confidence is intentionally low for a one-off. Independent corroboration
+  // raises it quickly; recurrence is the strongest confirmation.
+  const confidence = Math.min(1,
+    0.32
+      + Math.min(3, repeated) * 0.22
+      + Math.min(2, Math.max(0, modes - 1)) * 0.16
+      + Math.min(2, recurrences) * 0.28);
+  const statusWeight = entry.status === 'active' ? 1 : entry.status === 'recovering' ? 0.62 : 0.15;
+  const recency = 0.55 + 0.45 * Math.pow(2, -ageDays(entry.lastErrorAt || entry.lastSeen, now) / 30);
+
+  const errorEvidence = lastErrorEvidence(entry);
+  const errorScore = entry.status === 'active'
+    ? clampScore(errorEvidence?.score ?? entry.lastScore)
+    : null;
+  const severity = errorScore == null ? 1 : 0.85 + ((100 - errorScore) / 100) * 0.65;
+  const recurrence = 1 + Math.min(4, recurrences) * 0.3;
+  const frequency = 1 + Math.min(5, repeated) * 0.16;
+  const crossMode = 1 + Math.min(2, Math.max(0, modes - 1)) * 0.12;
+
+  // Failing an actual retention/transfer check is the strongest local signal
+  // that an apparent repair did not stick.
+  const retentionFailure = entry.status === 'active' && RETENTION_FAILURE_MODES.test(String(errorEvidence?.mode || '')) ? 1.5 : 1;
+  const examImportance = EXAM_EVIDENCE.test(`${errorEvidence?.mode || ''} ${errorEvidence?.source || ''}`) ? 1.12 : 1;
+  const assistedSuccesses = (entry.evidence || []).filter((e) => e?.assisted === true).length;
+  const assistanceDependence = 1 + Math.min(3, assistedSuccesses) * 0.07;
+
+  return statusWeight * confidence * recency * severity * recurrence * frequency * crossMode
+    * retentionFailure * examImportance * assistanceDependence;
+}
+
+export function prioritiseLearnerErrors(model, { limit = 12, includeResolved = false, now = Date.now() } = {}) {
   const entries = createLearnerErrorModel(model).entries.filter((entry) => includeResolved || entry.status !== 'resolved');
   return entries
-    .sort((a, b) => STATUS_ORDER[a.status] - STATUS_ORDER[b.status]
+    .sort((a, b) => learnerErrorPriority(b, { now }) - learnerErrorPriority(a, { now })
+      || STATUS_ORDER[a.status] - STATUS_ORDER[b.status]
       || b.recurrenceCount - a.recurrenceCount
       || b.errorCount - a.errorCount
       || (a.lastSeen < b.lastSeen ? 1 : -1))
@@ -452,19 +518,26 @@ export function recoveryHistory(model, { limit = 6 } = {}) {
 // pressure — a listening-dominated profile shifts listening hard, while a
 // single weak entry cannot zero out the rest. Returns null when there is
 // nothing open: the allocator then uses the exact reference split.
-export function skillNeedsFromModel(model) {
+export function skillNeedsFromModel(model, { now = Date.now() } = {}) {
   const entries = createLearnerErrorModel(model).entries.filter((entry) => entry.status !== 'resolved');
   if (!entries.length) return null;
-  const weightOf = (entry) => (entry.status === 'active' ? 1 : 0.5) * Math.min(4, entry.errorCount);
+  // Use the same evidence-aware pressure as weakness ordering. The previous
+  // normalised raw-error-count model made a single one-off mistake equal
+  // maximum modality need whenever it was the only open gap.
+  const weightOf = (entry) => learnerErrorPriority(entry, { now });
   const byCategory = {};
   for (const entry of entries) {
     byCategory[entry.category] = (byCategory[entry.category] || 0) + weightOf(entry);
   }
-  const total = Object.values(byCategory).reduce((sum, w) => sum + w, 0) || 1;
+  const total = Object.values(byCategory).reduce((sum, w) => sum + w, 0);
+  // A small prior prevents one weakly-supported observation from consuming
+  // the full adaptive budget while still letting several corroborated gaps
+  // create strong pressure.
+  const evidencePrior = 1;
   const need = (categories) => {
     const sum = categories.reduce((acc, c) => acc + (byCategory[c] || 0), 0);
     if (sum <= 0) return 0;
-    return Math.round(Math.min(1, Math.sqrt(sum / total)) * 100) / 100;
+    return Math.round(Math.min(1, Math.sqrt(sum / (total + evidencePrior))) * 100) / 100;
   };
   return {
     listen: need(['listening']),

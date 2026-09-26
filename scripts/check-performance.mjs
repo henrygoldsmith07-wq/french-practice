@@ -25,6 +25,18 @@ const FIRSTLOAD_BUDGET_KB = 450;
 // languages' content legitimately ships once. Set from the current build with
 // headroom; the first-load budget is the boot-time guard.
 const TOTAL_BUDGET_KB = 1800;
+// Additional JS needed when a learner opens each main surface, excluding the
+// boot closure already downloaded. These are raw-byte budgets for the static
+// dependency closure of the surface entry chunk(s), not just the top file.
+// That makes accidental eager imports into Today/Speak/etc. fail CI even when
+// no individual chunk is large enough to trip BUDGET_KB.
+const SURFACE_BUDGETS = [
+  { label: 'Today', stems: ['TodaySession'], budget: 100 },
+  { label: 'Speak', stems: ['ChatArena'], budget: 650 },
+  { label: 'Review', stems: ['Vocabulary'], budget: 300 },
+  { label: 'Learn', stems: ['Skills'], budget: 625 },
+  { label: 'Progress', stems: ['Proficiency', 'Analytics'], budget: 700 },
+];
 
 const fail = (msg) => { console.error(msg); process.exit(1); };
 
@@ -72,10 +84,10 @@ if (entry && entry[0] > ENTRY_BUDGET_KB) {
 // app boots — dynamic `import()` chunks do NOT count. Walk the closure from
 // the built bundle's import statements so a future accidental static import
 // of a heavy module fails this gate instead of quietly slowing first paint.
-if (entry) {
-  const byName = new Map(chunks.map(([kb, name]) => [name, kb]));
-  const closure = new Set([entry[1]]);
-  const queue = [entry[1]];
+const byName = new Map(chunks.map(([kb, name]) => [name, kb]));
+const dependencyClosure = (starts) => {
+  const closure = new Set(starts.filter((name) => byName.has(name)));
+  const queue = [...closure];
   while (queue.length) {
     const cur = queue.pop();
     const text = rawTexts.get(cur);
@@ -85,11 +97,41 @@ if (entry) {
       if (dep && !closure.has(dep)) { closure.add(dep); queue.push(dep); }
     }
   }
+  return closure;
+};
+
+let bootClosure = new Set();
+if (entry) {
+  bootClosure = dependencyClosure([entry[1]]);
+  const closure = bootClosure;
   const firstLoad = [...closure].reduce((sum, n) => sum + (byName.get(n) || 0), 0);
   const parts = [...closure].map((n) => `${n} (${byName.get(n) || '?'} KB)`).join(' + ');
   console.log(`First-load JS: ${firstLoad} KB = ${parts} (budget ${FIRSTLOAD_BUDGET_KB})`);
   if (firstLoad > FIRSTLOAD_BUDGET_KB) {
     console.error(`✗ First-load JS is ${firstLoad} KB, over the ${FIRSTLOAD_BUDGET_KB} KB budget (${parts}). The entry graph must stay lazy: move heavy content/research modules behind dynamic import().`);
+    failed = true;
+  }
+}
+
+// ---- main-surface gates -----------------------------------------------------
+// Count only JS additional to boot. If a named surface chunk disappears, fail
+// rather than silently stop measuring it: either the surface was intentionally
+// removed (update this table) or it was merged into another graph and needs a
+// fresh explicit budget.
+for (const surface of SURFACE_BUDGETS) {
+  const starts = surface.stems.map((stem) => chunks.find(([, name]) =>
+    new RegExp(`(^|[/\\\\])${stem}-[^/\\\\]*\\.js$`).test(name))?.[1]);
+  if (starts.some((name) => !name)) {
+    console.error(`✗ ${surface.label} performance entry not found (${surface.stems.join(' + ')}). Update the surface budget mapping deliberately.`);
+    failed = true;
+    continue;
+  }
+  const closure = dependencyClosure(starts);
+  const additional = [...closure].filter((name) => !bootClosure.has(name));
+  const kb = additional.reduce((sum, name) => sum + (byName.get(name) || 0), 0);
+  console.log(`${surface.label} additional JS: ${kb} KB across ${additional.length} chunks (budget ${surface.budget})`);
+  if (kb > surface.budget) {
+    console.error(`✗ ${surface.label} needs ${kb} KB additional JS, over its ${surface.budget} KB surface budget.`);
     failed = true;
   }
 }

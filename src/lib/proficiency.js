@@ -1,6 +1,6 @@
 // The proficiency score.
 //
-// One number, 0–100, backed by five sub-scores that each come from something
+// One number, 0–100, backed by seven sub-scores that each come from something
 // the learner actually did — not from XP, not from streak length, not from
 // how many days the app was opened. XP measures attendance; this measures
 // French.
@@ -18,11 +18,13 @@
 import { LEVELS, levelIndex, profileFor } from './cefr.js';
 
 export const DIMENSIONS = [
-  { id: 'vocabulary', label: 'Vocabulary', weight: 0.25, blurb: 'Words held in long-term memory, weighted by how well they stick.' },
-  { id: 'grammar', label: 'Grammar', weight: 0.20, blurb: 'Syllabus points mastered at 80+ on their quiz.' },
-  { id: 'speaking', label: 'Speaking', weight: 0.25, blurb: 'Recent conversation scores, recency-weighted.' },
-  { id: 'listening', label: 'Listening', weight: 0.15, blurb: 'Comprehension quizzes and dictation accuracy.' },
-  { id: 'writing', label: 'Writing', weight: 0.15, blurb: 'Composition and correction scores.' },
+  { id: 'vocabulary', label: 'Vocabulary', weight: 0.20, blurb: 'Words held in long-term memory, weighted by how well they stick.' },
+  { id: 'grammar', label: 'Grammar', weight: 0.16, blurb: 'Syllabus points mastered at 80+ on their quiz.' },
+  { id: 'speaking', label: 'Speaking', weight: 0.20, blurb: 'Recent conversation scores, recency-weighted.' },
+  { id: 'listening', label: 'Listening', weight: 0.12, blurb: 'Comprehension quizzes and dictation accuracy.' },
+  { id: 'reading', label: 'Reading', weight: 0.10, blurb: 'Comprehension of written French in scored reading tasks.' },
+  { id: 'writing', label: 'Writing', weight: 0.12, blurb: 'Composition and correction scores.' },
+  { id: 'pronunciation', label: 'Pronunciation', weight: 0.10, blurb: 'How clearly recent spoken attempts were understood.' },
 ];
 
 const HALF_LIFE_DAYS = 45;
@@ -101,10 +103,28 @@ export function listeningScore({ metrics = [] } = {}, now = Date.now()) {
   return { score: mean === null ? null : Math.round(mean), samples: records.length };
 }
 
+/** Reading comprehension from scored reading activities. */
+export function readingScore({ metrics = [] } = {}, now = Date.now()) {
+  const records = metrics
+    .filter((m) => m.skill === 'reading')
+    .map((m) => ({ score: Number(m.score), at: m.at }));
+  const mean = weightedMean(records, now);
+  return { score: mean === null ? null : Math.round(mean), samples: records.length };
+}
+
 /** Writing: composition and correction scores. */
 export function writingScore({ metrics = [] } = {}, now = Date.now()) {
   const records = metrics
     .filter((m) => m.skill === 'writing')
+    .map((m) => ({ score: Number(m.score), at: m.at }));
+  const mean = weightedMean(records, now);
+  return { score: mean === null ? null : Math.round(mean), samples: records.length };
+}
+
+/** Pronunciation/intelligibility from scored spoken activities. */
+export function pronunciationScore({ metrics = [] } = {}, now = Date.now()) {
+  const records = metrics
+    .filter((m) => m.skill === 'pronunciation')
     .map((m) => ({ score: Number(m.score), at: m.at }));
   const mean = weightedMean(records, now);
   return { score: mean === null ? null : Math.round(mean), samples: records.length };
@@ -122,7 +142,9 @@ export function proficiency(evidence = {}, now = Date.now()) {
     grammar: grammarScore({ topicScores: evidence.topicScores, level }),
     speaking: speakingScore({ sessions: evidence.sessions }, now),
     listening: listeningScore({ metrics: evidence.metrics }, now),
+    reading: readingScore({ metrics: evidence.metrics }, now),
     writing: writingScore({ metrics: evidence.metrics }, now),
+    pronunciation: pronunciationScore({ metrics: evidence.metrics }, now),
   };
 
   const present = DIMENSIONS.filter((d) => parts[d.id].score !== null);
@@ -148,7 +170,8 @@ export function proficiency(evidence = {}, now = Date.now()) {
   // Confidence: how much of the weight is covered, times how much evidence
   // sits behind the behavioural dimensions.
   const coverage = totalWeight;
-  const samples = parts.speaking.samples + parts.listening.samples + parts.writing.samples;
+  const samples = parts.speaking.samples + parts.listening.samples + parts.reading.samples
+    + parts.writing.samples + parts.pronunciation.samples;
   const depth = Math.min(1, samples / 12);
   const confidence = Math.round(Math.max(0, Math.min(1, coverage * 0.6 + depth * 0.4)) * 100) / 100;
 

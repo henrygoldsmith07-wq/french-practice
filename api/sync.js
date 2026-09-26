@@ -5,10 +5,11 @@
 // sets a passphrase. This route never parses it. Signing in simply saves you
 // carrying it by hand.
 //
-// Whole-document replace, last-writer-wins, with the comparison done by the
-// CLIENT. The server has no way to tell which of two practice histories is
-// correct, and a wrong merge would silently corrupt one. It reports
-// `updated_at` and lets the client ask.
+// Whole-document replace with optimistic concurrency. The server cannot decide
+// how two practice histories should be merged, but it CAN guarantee that a
+// device never overwrites a snapshot newer than the one it observed. The
+// client sends the last-seen `updated_at`; the database compares it atomically
+// at write time and returns 409 on a stale write.
 
 import { DatabaseNotConfigured, deleteState, findUserById, readState, writeState } from './_lib/db.js';
 import { MissingAuthSecret, readCookies, readSession, SESSION_COOKIE } from './_lib/session.js';
@@ -85,9 +86,30 @@ export default async function handler(req, res) {
         || typeof body.payload.code !== 'string' || !body.payload.code.startsWith('LS1:')) {
         return json(res, 400, { error: 'payload must be a Le Studio sync code' });
       }
+      const expectedUpdatedAt = body.expectedUpdatedAt ?? null;
+      if (expectedUpdatedAt !== null && (
+        typeof expectedUpdatedAt !== 'string'
+        || !Number.isFinite(Date.parse(expectedUpdatedAt))
+      )) {
+        return json(res, 400, { error: 'expectedUpdatedAt must be a valid timestamp or null' });
+      }
+      if (body.force !== undefined && typeof body.force !== 'boolean') {
+        return json(res, 400, { error: 'force must be boolean' });
+      }
 
       const version = Number.isInteger(body.version) ? body.version : 1;
-      const { updated_at } = await writeState(user.id, body.payload, version);
+      const written = await writeState(user.id, body.payload, version, {
+        expectedUpdatedAt,
+        force: body.force === true,
+      });
+      if (!written) {
+        const current = await readState(user.id);
+        return json(res, 409, {
+          error: 'Sync conflict',
+          updated_at: current?.updated_at ?? null,
+        });
+      }
+      const { updated_at } = written;
       return json(res, 200, { updated_at });
     }
 

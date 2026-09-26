@@ -5,6 +5,8 @@ import {
   recordLearnerError,
   recordLearnerSuccess,
   prioritiseLearnerErrors,
+  learnerErrorPriority,
+  skillNeedsFromModel,
   learnerErrorSummary,
   recoveryHistory,
   evidenceStrength,
@@ -302,4 +304,59 @@ test('legacy models without evidence fields still normalise and stay compatible'
     sessionId: 'ses_b', encounterId: 'ses_b:enc2',
   }, { at: '2026-08-01T14:00:00.000Z' });
   assert.equal(resolvedTwo.entries[0].status, 'resolved', 'two distinct identified encounters resolve');
+});
+
+test('adaptive priority prefers corroborated weakness evidence over a severe one-off', () => {
+  const now = Date.parse('2026-09-10T12:00:00.000Z');
+  let model = createLearnerErrorModel();
+  model = recordLearnerError(model, {
+    category: 'grammar', key: 'one-off', label: 'One-off grammar slip', mode: 'writing', score: 5,
+  }, { at: '2026-09-09T12:00:00.000Z' });
+  model = recordLearnerError(model, {
+    category: 'listening', key: 'confirmed-gap', label: 'Confirmed listening gap', mode: 'dictation', score: 65,
+  }, { at: '2026-09-07T12:00:00.000Z' });
+  model = recordLearnerError(model, {
+    category: 'listening', key: 'confirmed-gap', label: 'Confirmed listening gap', mode: 'listening', score: 65,
+  }, { at: '2026-09-08T12:00:00.000Z' });
+
+  const ranked = prioritiseLearnerErrors(model, { now, limit: 10 });
+  assert.equal(ranked[0].id, 'listening:confirmed-gap',
+    'repeated evidence in independent modes should outrank a single noisy miss');
+  assert.ok(
+    learnerErrorPriority(ranked[0], { now }) > learnerErrorPriority(ranked[1], { now }),
+    'the ordering comes from evidence strength, not insertion order',
+  );
+});
+
+test('failed delayed recall is stronger priority evidence than an equivalent ordinary miss', () => {
+  const now = Date.parse('2026-09-10T12:00:00.000Z');
+  let model = createLearnerErrorModel();
+  model = recordLearnerError(model, {
+    category: 'grammar', key: 'ordinary', label: 'Ordinary miss', mode: 'grammar', score: 45,
+  }, { at: '2026-09-09T12:00:00.000Z' });
+  model = recordLearnerError(model, {
+    category: 'grammar', key: 'retention', label: 'Retention failure', mode: 'weakness-retest', score: 45,
+  }, { at: '2026-09-09T12:00:00.000Z' });
+
+  const ranked = prioritiseLearnerErrors(model, { now, limit: 10 });
+  assert.equal(ranked[0].id, 'grammar:retention',
+    'a failed delayed retest is the strongest local sign that learning did not stick');
+});
+
+test('skill needs remain cautious on one-off noise and rise with corroboration', () => {
+  const now = Date.parse('2026-09-10T12:00:00.000Z');
+  let oneOff = createLearnerErrorModel();
+  oneOff = recordLearnerError(oneOff, {
+    category: 'listening', key: 'noise', label: 'Possible listening gap', mode: 'dictation', score: 20,
+  }, { at: '2026-09-09T12:00:00.000Z' });
+  const weakSignal = skillNeedsFromModel(oneOff, { now });
+
+  let confirmed = oneOff;
+  confirmed = recordLearnerError(confirmed, {
+    category: 'listening', key: 'noise', label: 'Possible listening gap', mode: 'listening', score: 35,
+  }, { at: '2026-09-10T08:00:00.000Z' });
+  const strongSignal = skillNeedsFromModel(confirmed, { now });
+
+  assert.ok(weakSignal.listen < 0.65, 'one observation stays a cautious allocation signal');
+  assert.ok(strongSignal.listen > weakSignal.listen, 'independent confirmation increases Today allocation pressure');
 });

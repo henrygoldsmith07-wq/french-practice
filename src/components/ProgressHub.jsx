@@ -21,11 +21,11 @@ function ScreenLoader() {
 }
 
 const SECTIONS_ALL = [
-  { id: 'stats', title: 'Stats & streak', subtitle: 'XP, level, streak & weekly goal — your private dashboard.', icon: BarChart },
-  { id: 'path', title: 'Learning path', subtitle: '12 units · checkpoints · 60 lessons per goal.', icon: Map },
-  { id: 'proficiency', title: 'Proficiency', subtitle: 'Your CEFR score, level gates & placement test.', icon: Target },
-  { id: 'language', title: 'Living language', subtitle: 'See what you can use without reaching for help.', icon: Layers },
-  { id: 'analytics', title: 'Analytics', subtitle: 'Time, retention & skill breakdown.', icon: BarChart },
+  { id: 'proficiency', title: 'Language ability', subtitle: 'Seven evidence-backed skills, CEFR working level and uncertainty.', icon: Target },
+  { id: 'language', title: 'What you can use', subtitle: 'See which language transfers into independent, unassisted use.', icon: Layers },
+  { id: 'analytics', title: 'Evidence & trends', subtitle: 'Skill breakdown, retention, weaknesses and change over time.', icon: BarChart },
+  { id: 'path', title: 'Learning path', subtitle: 'Curriculum units, checkpoints and what comes next.', icon: Map },
+  { id: 'stats', title: 'Activity', subtitle: 'XP, streak and weekly practice — activity, not proficiency.', icon: BarChart },
   { id: 'focus', title: 'Focus & habits', subtitle: 'Timer, Pomodoro & habit tracker.', icon: Clock },
 ];
 
@@ -133,8 +133,8 @@ export default function ProgressHub({
               in the hub the learner is standing in. */}
           <p className="text-ink2 mt-1.5 text-sm max-w-xl mx-auto">
             {hasCapabilityNow('learning-path')
-              ? 'Streak, learning path and analytics — the quiet scoreboard. No guilt, just shape and momentum.'
-              : 'Streak, proficiency and analytics — the quiet scoreboard. No guilt, just shape and momentum.'}
+              ? 'Start with what your French evidence says: current ability, weaknesses, recovery and the next useful action.'
+              : 'Start with what your language evidence says: current ability, weaknesses, recovery and the next useful action.'}
           </p>
         </div>
         <div className="grid gap-3.5 sm:grid-cols-2">

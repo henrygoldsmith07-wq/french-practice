@@ -4,9 +4,8 @@
 // with a household active, members keep independent goals/CEFR/progress
 // (one-shot claim migrates the pre-household single-user state).
 
-import { read, write, remove, KEYS } from './storageCore.js';
-
-const KEY = KEYS.path;
+import { getPath, savePath } from './pathState.js';
+export { getPath, savePath, clearPath } from './pathState.js';
 
 export const CEFR_LEVELS = ['A1', 'A2', 'B1', 'B2', 'C1', 'C2'];
 
@@ -29,20 +28,6 @@ export { getRoadmap };
 // (src/lib/placement.js). It is kept in git history, not in the bundle.
 
 // ---- path state ----
-
-export function getPath() {
-  try {
-    return read(KEY, null);
-  } catch {
-    return null;
-  }
-}
-
-export function savePath(path) {
-  try {
-    write(KEY, path);
-  } catch { /* storage unavailable */ }
-}
 
 export function createPath(goal, cefr) {
   const path = {
@@ -86,8 +71,6 @@ export function retakePlacement(goal, cefr, existing = getPath()) {
   savePath(path);
   return path;
 }
-
-export const clearPath = () => remove(KEY);
 
 const lessonKey = (unit, idx) => `${unit.id}.${idx}`;
 

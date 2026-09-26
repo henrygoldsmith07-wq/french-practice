@@ -7,10 +7,10 @@
 // cards — without hand-writing thousands more card literals: the packs are
 // built from the dictionary at module load.
 //
-// Each language's dictionary is loaded through its own async loader so the
-// OTHER languages' dictionaries split into lazy chunks and never weigh down
-// the active language's graph (getPacksFor(lang) is only called for the
-// active language — the loaders for the other two never even start).
+// The Beta-language dictionaries are data assets, not JavaScript modules.
+// They still load lazily for the active language, but keeping ~90 KB of static
+// word lists out of executable JS creates real application-JS headroom and
+// avoids parsing thousands of object literals before those languages are used.
 
 import { FREQUENCY_WORDS } from './frequency.js';
 
@@ -21,6 +21,38 @@ const freqBucket = (rank) => (rank <= 1 ? 1 : rank <= 3 ? 2 : rank <= 5 ? 3 : ra
 // One deck per this many words — small enough to finish in a sitting, and the
 // array is roughly frequency-ordered so lower packs are the more useful words.
 const CHUNK = 150;
+
+const ASSET_URLS = {
+  de: new URL('../assets/content/frequency-de.tsv', import.meta.url),
+  es: new URL('../assets/content/frequency-es.tsv', import.meta.url),
+};
+
+export function parseFrequencyAsset(text) {
+  return String(text || '')
+    .split('\n')
+    .filter(Boolean)
+    .map((line) => {
+      const first = line.indexOf('\t');
+      const second = first < 0 ? -1 : line.indexOf('\t', first + 1);
+      if (first <= 0 || second <= first + 1) return null;
+      const rank = Number(line.slice(0, first));
+      if (!Number.isInteger(rank) || rank < 1 || rank > 10) return null;
+      return {
+        rank,
+        fr: line.slice(first + 1, second),
+        en: line.slice(second + 1),
+      };
+    })
+    .filter((row) => row?.fr && row.en);
+}
+
+async function loadFrequencyAsset(lang) {
+  const url = ASSET_URLS[lang];
+  if (!url) return [];
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`Could not load ${lang} frequency dictionary`);
+  return parseFrequencyAsset(await response.text());
+}
 
 // Drop repeated head-words (kept first, i.e. the most frequent sense) so a term
 // that recurs across bands doesn't appear twice in the decks or the dictionary.
@@ -73,8 +105,8 @@ export const FREQUENCY_PACKS = buildPacks(FREQUENCY_WORDS, 'French', 'fq');
 // German and Spanish load on demand: the promise is shared per language and
 // not cached on failure, so a transient error can be retried.
 const loaders = {
-  de: () => import('./content/frequency-de.js').then((m) => buildPacks(m.FREQUENCY_WORDS_DE, 'German', 'fqde')),
-  es: () => import('./content/frequency-es.js').then((m) => buildPacks(m.FREQUENCY_WORDS_ES, 'Spanish', 'fqes')),
+  de: () => loadFrequencyAsset('de').then((words) => buildPacks(words, 'German', 'fqde')),
+  es: () => loadFrequencyAsset('es').then((words) => buildPacks(words, 'Spanish', 'fqes')),
 };
 const cache = new Map();
 export function getFrequencyPacksFor(lang) {
@@ -98,14 +130,14 @@ export function getFrequencyWordsFor(lang) {
   if (lang === 'fr') return Promise.resolve(dedupeByTerm(FREQUENCY_WORDS));
   if (lang === 'de') {
     if (!deWordsPromise) {
-      deWordsPromise = import('./content/frequency-de.js').then((m) => dedupeByTerm(m.FREQUENCY_WORDS_DE));
+      deWordsPromise = loadFrequencyAsset('de').then(dedupeByTerm);
       deWordsPromise.catch(() => { deWordsPromise = null; });
     }
     return deWordsPromise;
   }
   if (lang === 'es') {
     if (!esWordsPromise) {
-      esWordsPromise = import('./content/frequency-es.js').then((m) => dedupeByTerm(m.FREQUENCY_WORDS_ES));
+      esWordsPromise = loadFrequencyAsset('es').then(dedupeByTerm);
       esWordsPromise.catch(() => { esWordsPromise = null; });
     }
     return esWordsPromise;

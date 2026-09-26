@@ -2,10 +2,13 @@
 
 An adaptive language-practice studio — **French (Full)** today, with **German**
 and **Spanish** in **Beta** — built as a single-page React + Tailwind PWA.
-Everything runs client-side: no backend, no account, learner data stays in the
-browser's own storage. AI features (conversation partner, corrections, drills)
-use the learner's own provider key by default; a shared deployment can point the
-app at an authenticated relay that holds the key server-side instead.
+Le Studio is **local-first**: no account is required and learner state lives in
+the browser by default. Deployments may optionally enable Google sign-in plus an
+encrypted cross-device snapshot service; if that backend is absent or offline,
+ordinary learning continues locally. AI features (conversation partner,
+corrections, drills) use the learner's own provider key by default; a shared
+deployment can instead point the app at an authenticated relay that holds the
+provider key server-side.
 
 The product is organised around one idea: **Today**. A learner presses one
 button and gets a composed session — listen, speak, repair a weakness, recall —
@@ -34,8 +37,10 @@ research vocabulary — copy is test-enforced (`tests/segment-explain.test.js`).
 
 Every scored activity feeds one shared **error model** (`src/lib/learnerErrors.js`,
 persisted via `src/lib/stores/learnerErrorStore.js`): a mistake classifies into
-a category + key, becomes an *active weakness*, and is prioritised by
-recurrence and error count the next time practice is planned. The model spans
+a category + key, becomes an *active weakness*, and is prioritised by evidence
+strength: recurrence, repeated/cross-mode misses, recency, severity, delayed
+recall failure and assistance dependence. A one-off slip stays visible but is
+deliberately down-weighted until independent evidence confirms it. The model spans
 grammar, vocabulary, listening, pronunciation, speaking, writing and reading —
 a weakness found in one mode is repaired by whichever mode best targets it.
 
@@ -51,8 +56,10 @@ XP, streaks and coins track *activity* and are never inputs to proficiency.
   fluency mode with a post-session debrief, pronunciation read-aloud scoring,
   shadowing, and a 45-second improv drill. Audio is MediaRecorder + on-device
   analysis; transcription and marking use the AI provider (or mock mode).
-- **Listening** — dictée, number drills, and TTS-narrated tracks with
-  comprehension quizzes. All audio is synthesised locally, so it works offline.
+- **Listening** — dictée, number drills, authored TTS tracks and provenance-gated
+  authentic recordings with comprehension work. TTS/offline material remains
+  available without a network; real recordings require a valid licensed/consent
+  source record and may need network access unless already cached.
 - **Reading** — graded texts, an interactive story, tap-to-translate into a
   personal notebook, comprehension quizzes that feed the error model.
 - **Writing** — copy drills, sentence completion, free writing and an essay
@@ -105,6 +112,9 @@ examiner-benchmark validation track.
 
 ## 8. AI / privacy architecture
 
+- **Local-first by default.** No account is required. Practice state, SRS,
+  learner models and settings remain in browser storage unless the learner
+  explicitly exports or syncs them.
 - **Bring your own key.** The provider key lives in `localStorage`
   (`fp.groqKey`) via the settings store; it is never exported, and a build-time
   guard (`npm run check:secrets`) fails the build if a provider secret is ever
@@ -112,6 +122,12 @@ examiner-benchmark validation track.
 - **Optional relay** for shared hosting: `VITE_GROQ_RELAY_URL` routes AI calls
   through an authenticated server that holds the key (`server/relay.js`).
 - **Mock mode** makes the whole studio workable with no key at all.
+- **Optional Google account + cloud snapshot.** When `DATABASE_URL`,
+  `AUTH_SECRET` and Google OAuth credentials are configured, `/api/auth/*` and
+  `/api/sync` can store one portable sync-code snapshot per account. Pushes use
+  server-side optimistic concurrency so a stale device cannot silently replace
+  a newer snapshot. A passphrase encrypts the snapshot client-side with AES-GCM;
+  without a passphrase the snapshot is portable but not end-to-end encrypted.
 - **Pulse sharing is opt-in and transcript-free**; turning it off deletes the
   mirror immediately. The evidence study writes only anonymised, local data and
   never enrols without explicit consent.
@@ -121,9 +137,11 @@ examiner-benchmark validation track.
 Installable PWA with a service worker (network-first, cache-fallback) caching
 the whole app. Content libraries are per-language lazy chunks. All practice
 content, SRS, drills and TTS audio work offline; only live AI conversation and
-marking need the network. Progress moves between devices via JSON export/import
-(household namespacing preserved), and the OS badge/reminders use the shared
-live due count (`src/hooks/useStudioBoot.js`).
+marking (and uncached remote authentic audio) need the network. Progress moves
+between devices via JSON export/import or an `LS1:` sync code (household
+namespacing preserved). Deployments may optionally store that same snapshot
+behind Google sign-in; cloud failure never disables local practice. The OS
+badge/reminders use the shared live due count (`src/hooks/useStudioBoot.js`).
 
 ## 10. Validation and evidence status
 
@@ -187,7 +205,14 @@ src/
                           seen-lists, research (light/heavy split)
     learnerErrors.js      pure recovery-loop model (evidence-weighted)
     fsrs.js mistakeGraph.js segmentExplain.js content/ ...
-  components/             screens + hubs (all heavy screens lazy-loaded)
+  components/             screens + hubs (heavy/detail screens lazy-loaded;
+                          lightweight navigation hubs stay in the entry graph)
+api/
+  auth/                   optional Google OAuth/session routes
+  sync.js                 optional account snapshot API with conflict checks
+  _lib/                   Postgres/session/Google integration
+database/migrations/      optional account/sync schema
+server/                   optional authenticated AI relay + quota enforcement
 e2e/                      Playwright specs
 scripts/                  budget gate, content lint, validation tooling
 ```
@@ -202,10 +227,15 @@ Domain stores (`stores/*.js`) own their keys, shapes and caps and never import
 the facade (no cycles). `storage.js` remains a facade re-exporting the historical
 surface so older imports keep working; contract tests
 (`tests/storage-stores.test.js`) pin store↔facade agreement, the key map and
-the legacy-data migration.**Performance budgets** (enforced post-build by `scripts/check-performance.mjs`):
+the legacy-data migration.
+
+**Performance budgets** (enforced post-build by `scripts/check-performance.mjs`):
 first-load JS (entry + statically imported chunks) **≤ 450 kB**, per-chunk
-ceiling 600 kB, 1800 kB total. The measured sizes are reported by the gate on
-every build — never hand-copied here. Boot prefetching is signal-based
+ceiling 600 kB, 1800 kB total, plus static-closure budgets for **Today, Speak,
+Review, Learn and Progress**. The measured sizes are reported by the gate on
+every build — never hand-copied here. Beta-language frequency dictionaries are
+lazy TSV data assets rather than executable JS, so content volume does not
+consume the application-JS budget. Boot prefetching is signal-based
 (`src/lib/prefetch.js`): connection quality and the active language decide
 what warms up, so early-session transfer stays close to first-load on slow
 links and Beta languages never download French-authored chunks. Heavy content
@@ -214,4 +244,5 @@ as per-language lazy chunks and must never enter the boot graph.
 
 ## Licence
 
-See `LICENSE`.
+No repository licence file is currently included. Add an explicit licence before
+redistributing Le Studio as an open-source package.

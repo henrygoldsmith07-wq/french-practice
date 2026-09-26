@@ -2,7 +2,8 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   DIMENSIONS, bandFor, globalScore, grammarScore, listeningScore, nextFocus,
-  proficiency, recencyWeight, speakingScore, vocabularyScore, weightedMean, writingScore,
+  proficiency, pronunciationScore, readingScore, recencyWeight, speakingScore,
+  vocabularyScore, weightedMean, writingScore,
 } from '../src/lib/proficiency.js';
 
 const DAY = 86400000;
@@ -46,9 +47,21 @@ describe('sub-scores degrade to unknown, never to zero', () => {
     assert.equal(grammarScore({ topicScores: {}, level: 'A1' }).score, null);
   });
 
-  it('listening and writing with no metrics are unknown', () => {
+  it('evidence-backed skill dimensions are unknown rather than zero when unmeasured', () => {
     assert.equal(listeningScore({ metrics: [] }, now).score, null);
+    assert.equal(readingScore({ metrics: [] }, now).score, null);
     assert.equal(writingScore({ metrics: [] }, now).score, null);
+    assert.equal(pronunciationScore({ metrics: [] }, now).score, null);
+  });
+
+  it('reading and pronunciation use their own evidence streams', () => {
+    const metrics = [
+      { skill: 'reading', score: 82, at: daysAgo(1) },
+      { skill: 'pronunciation', score: 68, at: daysAgo(1) },
+      { skill: 'listening', score: 10, at: daysAgo(1) },
+    ];
+    assert.equal(readingScore({ metrics }, now).score, 82);
+    assert.equal(pronunciationScore({ metrics }, now).score, 68);
   });
 
   it('a learner with no evidence gets no score, not a zero', () => {

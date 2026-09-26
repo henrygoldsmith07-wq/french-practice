@@ -25,7 +25,7 @@ const TodaySession = lazy(() => import('./components/TodaySession'));
 // renders them directly (Learn hub owns them) and lib/prefetch.js owns their
 // intent/idle loading. Importing them here would drag them into App's chunk
 // graph for nothing.
-import { getPath } from './lib/path'; // applyActivity is dynamically imported in onActivity (keeps roadmaps.js off first load)
+import { getPath } from './lib/pathState'; // roadmap engine stays behind the activity-time dynamic import
 import { getScenarios } from './lib/data';
 import usePwaInstall from './hooks/usePwaInstall';
 import useOverlayNav from './hooks/useOverlayNav';

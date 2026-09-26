@@ -85,20 +85,54 @@ export async function readState(userId) {
 }
 
 /**
- * Replaces this account's snapshot. Whole-document overwrite: the client owns
- * conflict resolution, because it is the only side that can compare the two
- * copies meaningfully.
+ * Replaces this account's snapshot with an atomic compare-and-swap.
+ *
+ * The client still owns the human conflict decision, but the database enforces
+ * the precondition. Returning null means the expected timestamp no longer
+ * describes the server state (including the remote row being deleted).
  */
-export async function writeState(userId, payload, version) {
+export async function writeState(
+  userId,
+  payload,
+  version,
+  { expectedUpdatedAt = null, force = false } = {},
+) {
   const rows = await queryRows(
-    `insert into user_state (user_id, payload, version, updated_at)
-     values ($1, $2, $3, now())
-     on conflict (user_id) do update
-       set payload = excluded.payload, version = excluded.version, updated_at = now()
-     returning updated_at`,
-    [userId, JSON.stringify(payload), version],
+    `with current_state as (
+       select updated_at
+         from user_state
+        where user_id = $1
+     ),
+     written as (
+       insert into user_state (user_id, payload, version, updated_at)
+       select $1, $2, $3, now()
+        where $5::boolean = true
+           or (
+             $4::timestamptz is null
+             and not exists (select 1 from current_state)
+           )
+           or (
+             $4::timestamptz is not null
+             and exists (
+               select 1 from current_state
+                where updated_at = $4::timestamptz
+             )
+           )
+       on conflict (user_id) do update
+         set payload = excluded.payload,
+             version = excluded.version,
+             updated_at = now()
+       where $5::boolean = true
+          or (
+            $4::timestamptz is not null
+            and user_state.updated_at = $4::timestamptz
+          )
+       returning updated_at
+     )
+     select updated_at from written`,
+    [userId, JSON.stringify(payload), version, expectedUpdatedAt, Boolean(force)],
   );
-  return rows[0];
+  return rows[0] ?? null;
 }
 
 export async function deleteState(userId) {

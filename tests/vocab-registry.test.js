@@ -5,6 +5,7 @@
 //   - entry ids stay unique across languages (SRS ids must never collide)
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
 import { setContentLanguage, contentLang } from '../src/lib/content/active.js';
 import {
   getVocabPacks, getVocabPacksAsync, allEntries, allEntriesAsync,
@@ -15,6 +16,19 @@ import { dedupeByTerm } from '../src/lib/vocab-frequency.js';
 import {
   getScenarios, getScenariosAsync, getSituations,
 } from '../src/lib/data.js';
+
+// Browser builds fetch the lazy TSV assets normally. Node's native fetch does
+// not implement file: URLs, so make that one transport available in this test
+// process without changing the production loader contract.
+const nativeFetch = globalThis.fetch;
+globalThis.fetch = async (input, init) => {
+  const url = input instanceof URL ? input : new URL(input);
+  if (url.protocol === 'file:') {
+    const body = await readFile(url, 'utf8');
+    return { ok: true, text: async () => body };
+  }
+  return nativeFetch(input, init);
+};
 
 describe('per-language vocab registries', () => {
   it('de/es registries compose themed packs plus frequency decks', async () => {

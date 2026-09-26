@@ -1,11 +1,12 @@
-// Optional account & sync layer — fully client-side, no backend.
+// Portable sync-code primitive — generated and restored fully client-side.
 //
 // A "sync code" is a portable, self-contained snapshot of all your progress
 // that you copy on one device and paste on another (or move as a file). With a
 // passphrase it's encrypted with AES-GCM (key stretched from the passphrase via
 // PBKDF2), so it's safe to send to yourself over any channel. Without one it's
 // a plain, base64-wrapped backup. Either way the private API key is never
-// included (exportProgress omits it).
+// included (exportProgress omits it). cloudAccount.js can optionally store this
+// same opaque code behind Google sign-in; this module itself remains backend-free.
 
 import { exportProgress, importProgress, markBackup } from './storage.js';
 

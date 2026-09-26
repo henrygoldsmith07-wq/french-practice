@@ -53,16 +53,31 @@ export async function remoteUpdatedAt() {
  * user has been asked.
  */
 export async function push(passphrase, expected, force = false) {
-  if (!force) {
-    const actual = await remoteUpdatedAt();
-    if (actual !== expected) return { status: 'conflict', remoteUpdatedAt: actual };
+  // Conflict detection has to happen at the write. A separate GET immediately
+  // before an unconditional PUT is racy: another device can save between those
+  // requests and still be overwritten. The server performs an atomic
+  // compare-and-swap against expectedUpdatedAt instead.
+  let code;
+  let response;
+  try {
+    code = await makeSyncCode(passphrase || '');
+    response = await fetch('/api/sync', {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        payload: { code },
+        version: 1,
+        expectedUpdatedAt: expected ?? null,
+        force: Boolean(force),
+      }),
+    });
+  } catch {
+    return { status: 'error', message: 'Could not reach account sync. Your local progress is unchanged.' };
   }
-  const code = await makeSyncCode(passphrase || '');
-  const response = await fetch('/api/sync', {
-    method: 'PUT',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ payload: { code }, version: 1 }),
-  });
+  if (response.status === 409) {
+    const body = await response.json().catch(() => ({}));
+    return { status: 'conflict', remoteUpdatedAt: body.updated_at ?? null };
+  }
   if (response.status === 401) return { status: 'signed-out' };
   if (response.status === 503) return { status: 'unavailable', message: 'Sync is not configured for this deployment.' };
   if (!response.ok) {
