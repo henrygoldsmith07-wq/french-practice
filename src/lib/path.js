@@ -23,31 +23,10 @@ import { getRoadmap } from './roadmaps.js';
 
 export { getRoadmap };
 
-// ---- placement test (local, 12 questions, 2 per CEFR level) ----
-
-export const PLACEMENT_QUESTIONS = [
-  { level: 'A1', q: '« Bonjour, comment ça ___ ? »', options: ['va', 'vas', 'allez'], answer: 0 },
-  { level: 'A1', q: 'Je ___ anglais.', options: ['es', 'suis', 'est'], answer: 1 },
-  { level: 'A2', q: 'Hier, nous ___ au cinéma.', options: ['allons', 'sommes allés', 'irons'], answer: 1 },
-  { level: 'A2', q: 'Il y a ___ lait dans le frigo.', options: ['du', 'de la', 'des'], answer: 0 },
-  { level: 'B1', q: 'Si j’avais le temps, je ___ plus de sport.', options: ['fais', 'ferai', 'ferais'], answer: 2 },
-  { level: 'B1', q: 'C’est la ville ___ je suis né.', options: ['que', 'où', 'dont'], answer: 1 },
-  { level: 'B2', q: 'Il faut que tu ___ à l’heure.', options: ['es', 'sois', 'seras'], answer: 1 },
-  { level: 'B2', q: 'Le rapport ___ tu parles n’existe pas.', options: ['dont', 'que', 'auquel'], answer: 0 },
-  { level: 'C1', q: '« Quoi qu’il ___ , je pars demain. »', options: ['arrive', 'arrivera', 'arriverait'], answer: 0 },
-  { level: 'C1', q: 'Elle a réussi, ___ tous les obstacles.', options: ['en dépit de', 'à cause de', 'grâce à'], answer: 0 },
-  { level: 'C2', q: '« Il n’est pas sans savoir » signifie :', options: ['il ne sait pas', 'il sait parfaitement', 'il hésite'], answer: 1 },
-  { level: 'C2', q: '« Encore eût-il fallu que je le ___. »', options: ['susse', 'sache', 'saurais'], answer: 0 },
-];
-
-export function placementResult(correctCount) {
-  if (correctCount <= 2) return 'A1';
-  if (correctCount <= 4) return 'A2';
-  if (correctCount <= 7) return 'B1';
-  if (correctCount <= 9) return 'B2';
-  if (correctCount <= 11) return 'C1';
-  return 'C2';
-}
+// The old fixed 12-question placement quiz (PLACEMENT_QUESTIONS +
+// placementResult) lived here and shipped dead weight: nothing has imported
+// it since PathSetup and Proficiency moved to the adaptive Rasch placement
+// (src/lib/placement.js). It is kept in git history, not in the bundle.
 
 // ---- path state ----
 
