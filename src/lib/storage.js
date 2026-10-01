@@ -876,10 +876,19 @@ export function recordWeaknessRetestResult(topicId, passed, { scenarioId = null,
   const list = getWeaknessMemory();
   const e = list.find((x) => x.topicId === id);
   if (!e) return null;
-  // A scheduled retest is a genuine delayed independent recall by
-  // construction (delayed defaults true); callers may pass encounter identity
-  // so repeated answers to the same retest presentation cannot double-count.
-  e.retests = [...(e.retests || []), { at: now, seq: (e.seq || 0) + 1, scenarioId, sessionId, encounterId, activityId, passed, delayed: Boolean(delayed) }].slice(-12);
+  // "Delayed" is a claim about ELAPSED TIME, and it is the strongest evidence
+  // the loop has: one genuine delayed recall resolves a weakness on its own.
+  // So it is verified against the clock here rather than taken on the caller's
+  // word. A retest only counts as delayed once it has actually come due
+  // (retestDueAt <= now). The app already only surfaces due retests
+  // (getDueWeaknesses filters on exactly this), so real usage is unaffected;
+  // what this closes is the shortcut where an immediate, just-seen-the-answer
+  // retry could be declared delayed and resolve the weakness outright.
+  const cameDue = e.retestDueAt ? Date.parse(now) >= Date.parse(e.retestDueAt) : false;
+  const isDelayed = Boolean(delayed) && cameDue;
+  // Callers may still pass encounter identity so repeated answers to the same
+  // retest presentation cannot double-count.
+  e.retests = [...(e.retests || []), { at: now, seq: (e.seq || 0) + 1, scenarioId, sessionId, encounterId, activityId, passed, delayed: isDelayed }].slice(-12);
   e.seq = (e.seq || 0) + 1;
   if (passed) {
     e.repairCount = (e.repairCount || 0) + 1;
@@ -904,7 +913,7 @@ export function recordWeaknessRetestResult(topicId, passed, { scenarioId = null,
       mode: 'conversation',
       source: 'weakness-retest',
       score: 80,
-      delayed: Boolean(delayed),
+      delayed: isDelayed,
       sessionId,
       encounterId,
       activityId: activityId || scenarioId,

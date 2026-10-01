@@ -97,8 +97,19 @@ test('a delayed clean recall is strong evidence: it resolves on its own', () => 
 
 test('evidence strength: spaced recalls are delayed, same-day drills are not', () => {
   const entry = { lastErrorAt: '2026-08-01T10:00:00.000Z' };
-  // Scheduled weakness retests are spaced by design, whatever the calendar says.
-  assert.equal(evidenceStrength({ mode: 'weakness-retest' }, entry), 'delayed');
+  // The CLOCK decides, not the label. A mode name is a claim about intent;
+  // elapsed time is the evidence. A pass merely LABELLED as a scheduled
+  // retest, with no `delayed` flag and no time passed, is same-session —
+  // otherwise any pass could buy the strongest tier (and, since one delayed
+  // pass resolves a weakness, an outright resolution) by naming itself well.
+  assert.equal(evidenceStrength({ mode: 'weakness-retest' }, entry), 'unknown',
+    'no `at` and no delayed flag: independence is unknowable, never assumed');
+  assert.equal(evidenceStrength({ mode: 'held-out' }, entry), 'unknown');
+  assert.equal(evidenceStrength({ mode: 'srs' }, entry), 'unknown');
+  // Same names, but presented minutes after the mistake on the same day:
+  assert.equal(evidenceStrength({ mode: 'weakness-retest', at: '2026-08-01T10:05:00.000Z' }, entry), 'same-session');
+  assert.equal(evidenceStrength({ mode: 'held-out', at: '2026-08-01T10:05:00.000Z' }, entry), 'same-session');
+  assert.equal(evidenceStrength({ mode: 'srs', at: '2026-08-01T10:05:00.000Z' }, entry), 'same-session');
   assert.equal(evidenceStrength({ mode: 'targeted-drill', delayed: true }, entry), 'delayed');
   assert.equal(evidenceStrength({ mode: 'targeted-drill', delayed: false }, entry), 'same-session');
   // SRS reviews are delayed because they happen LATER — a same-day re-rate

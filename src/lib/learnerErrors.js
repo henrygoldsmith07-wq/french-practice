@@ -103,12 +103,14 @@ export function assistanceTier(success) {
 // session/day without the answer on screen: strong evidence, the closest
 // local signal to a real retention test.
 export const evidenceStrength = (success, entry) => {
-  const mode = String(success.mode || '');
-  // Modes the product only produces as spaced, independent recalls
-  // (scheduled weakness retests, held-out checks): delayed by design. For
-  // everything else the DATES decide — a recall on a later day than the
-  // mistake is a delayed recall, even in an SRS mode.
-  if (/^(weakness-retest|held-out|srs)$/i.test(mode)) return 'delayed';
+  // The CLOCK decides, never a label. A mode/source name is a claim about
+  // intent; elapsed time is the evidence. The old shortcut trusted
+  // `mode: 'weakness-retest' | 'held-out' | 'srs'` outright, which handed the
+  // strongest evidence tier — and, because DELAYED_PASSES_TO_RESOLVE is 1, an
+  // outright resolution — to any pass labelled that way. Nothing in the app
+  // produces those mode names today (the scheduled-retest producer sends
+  // `mode: 'conversation'` plus `source: 'weakness-retest'` and an explicit
+  // `delayed` flag), so the shortcut bought nothing and cost correctness.
   if (success.delayed === true) return 'delayed';
   if (success.delayed === false) return 'same-session';
   // Infer from the entry: a success on a different LOCAL calendar day than
@@ -458,7 +460,13 @@ export function learnerErrorPriority(entry, { now = Date.now() } = {}) {
 
   // Failing an actual retention/transfer check is the strongest local signal
   // that an apparent repair did not stick.
-  const retentionFailure = entry.status === 'active' && RETENTION_FAILURE_MODES.test(String(errorEvidence?.mode || '')) ? 1.5 : 1;
+  //
+  // Match on `source` as well as `mode`: the scheduled-retest failure path
+  // (storage.js recordWeaknessError via the weakness-retest producer) records
+  // `mode: 'conversation'` and marks the event with `source: 'weakness-retest'`,
+  // so a mode-only test never fired for the very failures it was written for.
+  const failureTag = `${errorEvidence?.mode || ''} ${errorEvidence?.source || ''}`;
+  const retentionFailure = entry.status === 'active' && RETENTION_FAILURE_MODES.test(failureTag.trim()) ? 1.5 : 1;
   const examImportance = EXAM_EVIDENCE.test(`${errorEvidence?.mode || ''} ${errorEvidence?.source || ''}`) ? 1.12 : 1;
   const assistedSuccesses = (entry.evidence || []).filter((e) => e?.assisted === true).length;
   const assistanceDependence = 1 + Math.min(3, assistedSuccesses) * 0.07;

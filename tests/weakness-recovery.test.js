@@ -28,6 +28,21 @@ async function freshStorage() {
   return import(`../src/lib/storage.js?weakness-${Date.now()}-${Math.random()}`);
 }
 
+// "Delayed" is verified against the clock at the storage boundary: a retest
+// only counts as a genuine delayed recall once its scheduled due time has
+// passed. In the app that happens on its own (getDueWeaknesses only surfaces
+// retests whose retestDueAt has arrived); in tests we have to move the clock
+// forward explicitly rather than assert the outcome from a label.
+function makeRetestDue(topicId) {
+  const KEY = 'fp.weaknessMemory';
+  const list = JSON.parse(globalThis.localStorage.getItem(KEY) || '[]');
+  const entry = list.find((x) => x && x.topicId === topicId);
+  assert.ok(entry, `no weakness entry for ${topicId}`);
+  entry.retestDueAt = new Date(Date.now() - 60_000).toISOString();
+  globalThis.localStorage.setItem(KEY, JSON.stringify(list));
+  return entry;
+}
+
 test('a same-encounter repair never resolves; two distinct-encounter repairs do', async () => {
   const storage = await freshStorage();
   storage.recordWeaknessError('passe-compose', { scenarioId: 'cafe' });
@@ -53,8 +68,35 @@ test('one delayed independent recall resolves on its own; delayed stays stronger
 
   // The scheduled retest comes due and is answered cleanly: resolved without
   // needing a second same-session pass.
+  makeRetestDue('articles');
   storage.recordWeaknessRetestResult('articles', true, { scenarioId: 'cafe', sessionId: 's2', encounterId: 's2:enc1' });
   assert.equal(storage.getWeaknessMemory()[0].status, 'resolved', 'delayed evidence resolves on its own');
+});
+
+test('a retest answered BEFORE it comes due is not delayed evidence and cannot resolve', async () => {
+  const storage = await freshStorage();
+  storage.recordWeaknessError('articles', { scenarioId: 'cafe' });
+  storage.recordWeaknessRepair('articles', { scenarioId: 'cafe', sessionId: 's1', encounterId: 's1:enc1', passed: true });
+
+  // Same call, same `delayed: true` claim — but the scheduled retest is still
+  // days away, so no time has actually passed. Labelling an immediate retry
+  // as a spaced recall would resolve the weakness on an answer the learner
+  // has just been shown. (Same encounterId as the repair, so this isolates the
+  // delayed rule from the separate two-distinct-encounters rule.)
+  storage.recordWeaknessRetestResult('articles', true, {
+    scenarioId: 'cafe', sessionId: 's1', encounterId: 's1:enc1', delayed: true,
+  });
+  const w = storage.getWeaknessMemory()[0];
+  assert.equal(w.retests.at(-1).delayed, false, 'the stored record says delayed=false, not the claimed true');
+  assert.equal(w.status, 'recovering', 'an early retest must not resolve the weakness');
+
+  // Once the scheduled retest has genuinely come due, the delayed rule applies
+  // and the same weakness does resolve.
+  makeRetestDue('articles');
+  storage.recordWeaknessRetestResult('articles', true, {
+    scenarioId: 'cafe', sessionId: 's3', encounterId: 's3:enc1', delayed: true,
+  });
+  assert.equal(storage.getWeaknessMemory()[0].status, 'resolved', 'a genuinely due retest resolves it');
 });
 
 test('legacy retests without identity never invent independence', async () => {
@@ -69,8 +111,9 @@ test('legacy retests without identity never invent independence', async () => {
   globalThis.localStorage.setItem('fp.weaknessMemory', JSON.stringify([legacy]));
   assert.equal(storage.getWeaknessMemory()[0].status, 'recovering', 'two identity-less passes cannot resolve');
 
-  // A scheduled retest — genuinely delayed by construction — still resolves
-  // the legacy weakness once it comes due.
+  // A scheduled retest — genuinely delayed — still resolves the legacy
+  // weakness once it actually comes due.
+  makeRetestDue('negation');
   storage.recordWeaknessRetestResult('negation', true, { scenarioId: 'cafe' });
   assert.equal(storage.getWeaknessMemory()[0].status, 'resolved', 'delayed recall resolves a legacy weakness');
 });
@@ -109,6 +152,7 @@ test('scheduled retest strength is forwarded to the unified learner-error model'
     score: 0,
     source: 'test-gap',
   });
+  makeRetestDue('articles');
   storage.recordWeaknessRetestResult('articles', true, {
     scenarioId: 'market',
     sessionId: 's-delayed',

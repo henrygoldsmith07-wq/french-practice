@@ -67,14 +67,35 @@ test('recovery states walk Active weakness → Improving → Resolved on real co
     recoveryStatus({ status: 'recovering', errorCount: 3, successCount: 1, cleanPasses: 1 }),
     { state: 'Improving', detail: '1 correct recall so far — it needs to hold up later too.' },
   );
-  // A DELAYED clean recall reads differently: the retention evidence held.
+  // A DELAYED clean recall that has NOT yet resolved (it arrived with help)
+  // reads honestly: it has to hold up without assistance too.
   assert.deepEqual(
     recoveryStatus({ status: 'recovering', errorCount: 3, successCount: 1, cleanPasses: 1, lastEvidence: 'delayed' }),
-    { state: 'Improving', detail: 'Clean recall a day later — one more pass and it is yours.' },
+    { state: 'Improving', detail: 'Recalled correctly a day later — it needs to hold up without help too.' },
   );
+  // Resolved is the model's own verdict, and it says WHY: a later unassisted
+  // recall, or repeated unassisted success on separate attempts.
   assert.deepEqual(
     recoveryStatus({ status: 'resolved', errorCount: 3, successCount: 3, cleanPasses: 2 }),
-    { state: 'Resolved', detail: '3 independent correct recalls.' },
+    { state: 'Resolved', detail: 'It held up on separate unassisted attempts — 2 clean answers since the last mistake.' },
+  );
+  assert.deepEqual(
+    recoveryStatus({ status: 'resolved', errorCount: 2, successCount: 1, cleanPasses: 1, lastEvidence: 'delayed' }),
+    { state: 'Resolved', detail: 'Recalled it correctly later, without help — 1 clean answer since the last mistake.' },
+  );
+  // Retrying ONE drill twice must not read as mastery. cleanPasses counts
+  // clean answers including re-answers of the same presentation, so it is
+  // never on its own a reason to say Resolved — the model has to have
+  // concluded independence (distinct encounters, or a genuine delayed recall).
+  assert.equal(
+    recoveryStatus({ status: 'recovering', errorCount: 1, successCount: 2, cleanPasses: 2 }).state,
+    'Improving',
+    'two clean passes on a weakness the model still calls recovering stay Improving',
+  );
+  assert.doesNotMatch(
+    recoveryStatus({ status: 'resolved', errorCount: 1, successCount: 2, cleanPasses: 2 }).detail,
+    /independent correct recall/i,
+    'the panel must not dress a raw count up as independent evidence',
   );
   // One success is "Improving", never "Resolved" — mastery is never granted
   // on a single correct response.

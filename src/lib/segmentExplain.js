@@ -101,14 +101,25 @@ export function recoveryStatus(entry) {
   if (!entry || typeof entry !== 'object') return null;
   const successes = Number(entry.successCount) || 0;
   const clean = Number(entry.cleanPasses) || 0;
-  if (entry.status === 'resolved' || clean >= 2) {
-    return { state: 'Resolved', detail: `${Math.max(clean, successes)} independent correct recall${Math.max(clean, successes) === 1 ? '' : 's'}.` };
+  // "Resolved" is the MODEL's verdict, never a counter's reach.
+  // `status` only becomes 'resolved' from evidence that carries independence
+  // - distinct encounters, or a genuine delayed recall (learnerErrors.js).
+  // `cleanPasses` counts unassisted clean answers INCLUDING re-answers of the
+  // same presentation, so deriving "Resolved" from it would let a learner
+  // retry one drill twice and read as having mastered it - contradicting the
+  // very model that refuses to say so. As a count of clean answers it is
+  // still honest, so it is reported as exactly that.
+  if (entry.status === 'resolved') {
+    const answers = `${clean} clean answer${clean === 1 ? '' : 's'} since the last mistake`;
+    return entry.lastEvidence === 'delayed'
+      ? { state: 'Resolved', detail: `Recalled it correctly later, without help \u2014 ${answers}.` }
+      : { state: 'Resolved', detail: `It held up on separate unassisted attempts \u2014 ${answers}.` };
   }
   if (entry.status === 'recovering' || successes > 0) {
     if (entry.lastEvidence === 'delayed') {
-      return { state: 'Improving', detail: 'Clean recall a day later — one more pass and it is yours.' };
+      return { state: 'Improving', detail: 'Recalled correctly a day later \u2014 it needs to hold up without help too.' };
     }
-    return { state: 'Improving', detail: `${successes} correct recall${successes === 1 ? '' : 's'} so far — it needs to hold up later too.` };
+    return { state: 'Improving', detail: `${successes} correct recall${successes === 1 ? '' : 's'} so far \u2014 it needs to hold up later too.` };
   }
   const mistakes = Number(entry.errorCount) || 0;
   return { state: 'Active weakness', detail: `${mistakes} recent mistake${mistakes === 1 ? '' : 's'} · due for retrieval` };
