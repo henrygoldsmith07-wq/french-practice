@@ -151,6 +151,11 @@ export const LEARNER_KEY_VALUES = [
   // profile (per-phoneme weaknesses, minimal-pair queue) are learner-owned:
   // household members must not share path progress or accent weaknesses.
   KEYS.path, KEYS.phonemeProfile,
+  // The BYOK provider key is a SECRET, so it is the sharpest case of all: two
+  // members sharing a device must never silently spend one learner's key on
+  // the other's AI requests. Learner-owned also means "Clear key" removes the
+  // real stored value rather than the empty legacy one.
+  KEYS.apiKey,
 ];
 
 const LEARNER_KEY_SET = new Set(LEARNER_KEY_VALUES);

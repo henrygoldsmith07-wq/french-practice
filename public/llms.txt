@@ -1,9 +1,12 @@
 # Le Studio — French Speaking Practice
 
 > A free, all-in-one studio for practising French — speaking, listening,
-> reading and writing — with an AI conversation partner. 100% client-side
-> (React + Vite PWA): no backend, no account, no tracking; progress lives in
-> the browser's localStorage. AI conversation and feedback are powered by the
+> reading and writing — with an AI conversation partner. It is a React + Vite PWA
+> that runs in the browser, with no tracking and no account required: progress
+> lives in the browser's localStorage by default. An account is optional and only
+> enables encrypted backup/sync across your own devices (api/ + server/ provide
+> that and an optional AI relay; nothing runs server-side unless you opt in).
+> AI conversation and feedback are powered by the
 > user's own free Groq API key (Llama for chat/scoring, Whisper for speech
 > recognition); a Mock Mode demos everything offline.
 
@@ -22,8 +25,8 @@
 - Knowledge stats: a weighted knowledge score, an 8-week growth chart and
   stat tiles (words known, grammar mastered, lessons done, units passed,
   average checkpoint, CEFR level).
-- Vocabulary: eighteen themed flashcard packs with SM-2 spaced repetition,
-  a personal notebook, custom word-list import, and a ~2,000-word
+- Vocabulary: <!-- counts:vocabPacks -->5<!-- /counts:vocabPacks --> curriculum packs covering <!-- counts:vocabEntries -->3,020<!-- /counts:vocabEntries --> words, scheduled with FSRS spaced
+  repetition, plus a personal notebook, custom word-list import, and a
   frequency-ranked offline dictionary with IPA and text-to-speech.
 - Skills: speaking drills (pronunciation coach, minimal pairs, accent
   comparison, quick fire), listening (mini-podcasts, dialogues, news,

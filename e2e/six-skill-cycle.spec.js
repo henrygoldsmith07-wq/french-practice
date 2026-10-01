@@ -58,7 +58,13 @@ async function walkToCheck(page) {
   await expect(input).toBeVisible({ timeout: 20_000 });
   await input.fill('Bonjour, je voudrais un café.');
   await input.press('Enter');
-  await page.getByRole('button', { name: /End Session/i }).first().click();
+  // The End Session control only exists once the turn has landed in the
+  // conversation history (`showEndButton && history.length > 0`). Clicking it
+  // without waiting races that render - it timed out on WebKit, where the
+  // reply settles slower. Wait for the control, then click it.
+  const endSession = page.getByRole('button', { name: /End Session/i }).first();
+  await expect(endSession).toBeVisible({ timeout: 30_000 });
+  await endSession.click();
 }
 
 async function reachCheck(page) {

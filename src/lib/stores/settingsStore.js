@@ -5,7 +5,7 @@
 // Extracted from storage.js (stores pattern). Keys, shapes and behaviour are
 // byte-identical — storageCore owns the key map and the learner-routing
 // primitives.
-import { read, write, KEYS } from '../storageCore.js';
+import { read, write, remove, KEYS } from '../storageCore.js';
 
 // Key resolution: a key saved in Settings wins; otherwise a build-time env
 // key (VITE_AI_API_KEY in .env.local) pre-configures the studio so the app
@@ -21,7 +21,12 @@ export const getApiKey = () => {
   }
 };
 export const setApiKey = (k) => write(KEYS.apiKey, k);
-export const clearApiKey = () => localStorage.removeItem(KEYS.apiKey);
+// Goes through the learner-aware remove(), not localStorage.removeItem. The
+// provider key is learner-owned (storageCore LEARNER_KEY_VALUES), so with a
+// household active it lives at `fp.learner.<memberId>.fp.groqKey`; deleting
+// the bare key would leave the active learner's real key in storage and the
+// "Clear" button would appear to do nothing.
+export const clearApiKey = () => remove(KEYS.apiKey);
 
 // ---- Arena conversation mode ------------------------------------------------
 // A preference that used to live as a raw component-level `fp.conversationMode`

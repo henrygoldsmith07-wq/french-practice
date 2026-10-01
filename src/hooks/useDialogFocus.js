@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import { getDialogTrigger, clearDialogTrigger } from '../lib/dialogTrigger.js';
 
 const FOCUSABLE = [
   'button:not([disabled])',
@@ -28,7 +29,13 @@ export default function useDialogFocus(containerRef, { active = true, initialRef
 
   useEffect(() => {
     if (!active || typeof document === 'undefined') return undefined;
-    restoreRef.current = document.activeElement;
+    // Prefer the control that actually opened this dialog (captured from the
+    // opening interaction). Fall back to activeElement only when that is a real
+    // focusable element - `<body>` is not a valid trigger, and returning focus
+    // to it silently strands keyboard users (and is what broke WebKit E2E).
+    const active = document.activeElement;
+    const remembered = getDialogTrigger();
+    restoreRef.current = remembered || (active && active !== document.body ? active : null);
     const frame = requestAnimationFrame(() => {
       const container = containerRef.current;
       if (!container) return;
@@ -66,6 +73,7 @@ export default function useDialogFocus(containerRef, { active = true, initialRef
       cancelAnimationFrame(frame);
       window.removeEventListener('keydown', onKeyDown);
       const restore = restoreRef.current;
+      clearDialogTrigger();
       if (restore?.isConnected !== false) {
         try { restore?.focus?.(); } catch { /* trigger may have disappeared */ }
       }

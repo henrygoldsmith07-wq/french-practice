@@ -105,6 +105,39 @@ test('settingsStore is authoritative for the provider key; the facade only deleg
   assert.equal(globalThis.localStorage.getItem('fp.groqKey'), null, 'clear removes the key, not just masks it');
 });
 
+test('the provider key is learner-owned: members never spend each other\'s secret', async () => {
+  globalThis.localStorage = memoryStorage();
+  const storage = await import(`../src/lib/storage.js?kowner-${Date.now()}`);
+
+  // A shared device with two household members is the leak scenario. The key
+  // is a SECRET, so member B must never fall back to member A's credential.
+  storage.addHouseholdMember('Ada');
+  const [ada] = storage.getHousehold().members;
+  storage.addHouseholdMember('Bo');
+  const bo = storage.getHousehold().members.find((m) => m.id !== ada.id);
+  storage.setApiKey('sk-adas-key');
+
+  const raw = globalThis.localStorage.getItem('fp.groqKey');
+  const namespaced = globalThis.localStorage.getItem(`fp.learner.${ada.id}.fp.groqKey`);
+  assert.ok(raw === null || namespaced === null,
+    'with a household active the key must be namespaced, never left on the shared bare key');
+
+  storage.switchHouseholdMember(bo.id);
+  assert.notEqual(storage.getApiKey(), 'sk-adas-key',
+    'a second member must not inherit another member\'s provider key');
+
+  storage.setApiKey('sk-bos-key');
+  assert.equal(storage.getApiKey(), 'sk-bos-key');
+  storage.switchHouseholdMember(ada.id);
+  assert.equal(storage.getApiKey(), 'sk-adas-key', 'and the first member still has their own');
+
+  // Clear must actually remove the stored value for the active member.
+  storage.clearApiKey();
+  assert.equal(storage.getApiKey(), '', 'clear removes the real namespaced key');
+  assert.equal(globalThis.localStorage.getItem(`fp.learner.${ada.id}.fp.groqKey`), null,
+    'the namespaced key is gone, not just masked');
+});
+
 test('learnerErrorStore and the storage facade agree on the recovery model', async () => {
   globalThis.localStorage = memoryStorage();
   const stamp = `le-${Date.now()}`;
