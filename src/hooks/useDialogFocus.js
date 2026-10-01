@@ -33,9 +33,11 @@ export default function useDialogFocus(containerRef, { active = true, initialRef
     // opening interaction). Fall back to activeElement only when that is a real
     // focusable element - `<body>` is not a valid trigger, and returning focus
     // to it silently strands keyboard users (and is what broke WebKit E2E).
-    const active = document.activeElement;
+    // NOTE: do not name this `active`; the hook's own `active` option is read
+    // above, and shadowing it puts that read in its temporal dead zone.
+    const focusedNow = document.activeElement;
     const remembered = getDialogTrigger();
-    restoreRef.current = remembered || (active && active !== document.body ? active : null);
+    restoreRef.current = remembered || (focusedNow && focusedNow !== document.body ? focusedNow : null);
     const frame = requestAnimationFrame(() => {
       const container = containerRef.current;
       if (!container) return;
