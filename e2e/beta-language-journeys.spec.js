@@ -38,16 +38,25 @@ async function completeOnboardingAs(page, languageCardName, expectedBetaName) {
   const dialog = page.getByRole('dialog', { name: 'Getting started' });
   await expect(dialog).toBeVisible({ timeout: 15_000 });
 
+  // Each step is anchored on its own heading before any Continue is clicked.
+  // Clicking through without anchoring raced the step transition: on slower
+  // engines the next click landed while the previous step was still up, which
+  // surfaced as intermittent timeouts on WebKit only.
+  const step = (heading) => dialog.getByText(heading, { exact: false }).first();
+
   // Step 1 — language: pick the Beta language.
+  await expect(step(/Which language/)).toBeVisible();
   await dialog.getByRole('button', { name: languageCardName }).click();
   await dialog.getByRole('button', { name: /Continue/ }).click();
 
   // Step 2 — level (B1 preselected): the placement promise must be gone.
+  await expect(step(/What's your level|What\u2019s your level/)).toBeVisible();
   await expect(dialog.getByText(/take a placement test later/i)).toHaveCount(0);
   await dialog.getByRole('button', { name: /Continue/ }).click();
 
   // Step 3 — goal: French-authored goals (exam prep, culture) must not be
   // offered to a Beta language.
+  await expect(step(/What do you want to practise/)).toBeVisible();
   await expect(dialog.getByRole('button', { name: /School & exams/i })).toHaveCount(0);
   await expect(dialog.getByRole('button', { name: /Culture & fun/i })).toHaveCount(0);
   await dialog.getByRole('button', { name: /Skip goal for now/i }).click();

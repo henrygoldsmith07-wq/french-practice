@@ -38,10 +38,16 @@ async function freshLearner(page) {
 async function completeOnboardingAs(page, languageCardName) {
   const dialog = page.getByRole('dialog', { name: 'Getting started' });
   await expect(dialog).toBeVisible({ timeout: 15_000 });
+  // Anchor each step on its own heading before clicking, so a Continue never
+  // lands while the previous step is still up (this raced on WebKit).
+  const step = (heading) => dialog.getByText(heading, { exact: false }).first();
+  await expect(step(/Which language/)).toBeVisible();
   await dialog.getByRole('button', { name: languageCardName }).click();
   await dialog.getByRole('button', { name: /Continue/ }).click();
+  await expect(step(/What's your level|What\u2019s your level/)).toBeVisible();
   await expect(dialog.getByText(/take a placement test later/i)).toHaveCount(0);
   await dialog.getByRole('button', { name: /Continue/ }).click();
+  await expect(step(/What do you want to practise/)).toBeVisible();
   await expect(dialog.getByRole('button', { name: /School & exams/i })).toHaveCount(0);
   await dialog.getByRole('button', { name: /Skip goal for now/i }).click();
   await dialog.getByRole('button', { name: /Continue/ }).click();
