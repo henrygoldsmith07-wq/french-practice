@@ -1,0 +1,21 @@
+# Normalise line endings so the working tree matches CI everywhere.
+# Without this, a Windows checkout (core.autocrlf=true) rewrites every
+# source file to CRLF while CI stays LF. Any tool that reasons about
+# source TEXT then disagrees with CI: stripping // comments with a
+# dot-based regex silently stops stripping, because a dot does not match
+# a carriage return. That is a real, reproducible test failure.
+* text=auto eol=lf
+
+# Binary assets must never be line-ending normalised.
+*.png   binary
+*.jpg   binary
+*.jpeg  binary
+*.gif   binary
+*.webp  binary
+*.ico   binary
+*.woff  binary
+*.woff2 binary
+*.mp3   binary
+*.ogg   binary
+*.wav   binary
+*.zip   binary

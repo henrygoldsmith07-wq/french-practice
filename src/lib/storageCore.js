@@ -131,7 +131,11 @@ function readRaw(key, fallback) {
 // never opens a second-member session keeps byte-identical data in place,
 // and export/import keeps working.
 
-const LEARNER_KEY_VALUES = [
+// Exported so the registry test can assert this set against KEYS at RUNTIME.
+// A phantom entry (a `KEYS.foo` that no longer exists) evaluates to
+// `undefined` here and used to leak straight into the routing set, silently
+// un-namespacing that key for every household member.
+export const LEARNER_KEY_VALUES = [
   KEYS.srs, KEYS.notebook, KEYS.grammar, KEYS.mistakeGraph, KEYS.selectionTrial,
   KEYS.sessionHistory, KEYS.sessionHistoryMeta, KEYS.studyEvents, KEYS.reviewEvents,
   KEYS.reviewLog, KEYS.evidenceLedger, KEYS.learnerErrors, KEYS.learningEvidence, KEYS.metrics,

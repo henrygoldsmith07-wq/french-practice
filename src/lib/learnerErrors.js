@@ -19,6 +19,7 @@
 //   · a mistake after a repair reactivates the entry and tallies recurrence
 
 import { evidenceIdentity, encounterKeyOf } from './evidenceIdentity.js';
+import { localDayKey } from './localDay.js';
 
 export const LEARNER_ERROR_CATEGORIES = ['grammar', 'vocabulary', 'listening', 'pronunciation', 'reading', 'speaking', 'writing'];
 
@@ -110,17 +111,22 @@ export const evidenceStrength = (success, entry) => {
   if (/^(weakness-retest|held-out|srs)$/i.test(mode)) return 'delayed';
   if (success.delayed === true) return 'delayed';
   if (success.delayed === false) return 'same-session';
-  // Infer from the entry: a success on a different calendar day than the
-  // last mistake is a delayed recall; same day is (probably) same-session.
+  // Infer from the entry: a success on a different LOCAL calendar day than
+  // the last mistake is a delayed recall; the same local day is (probably)
+  // same-session.
+  //
+  // Local, not UTC. Day identity here must agree with every other "Today"
+  // surface (streaks, XP days, daily content), which all roll over at the
+  // learner's local midnight. A UTC comparison both mislabels a genuinely
+  // delayed recall as same-session and — the damaging direction — labels a
+  // same-session retry as 'delayed' whenever UTC has rolled over but the
+  // learner's day has not. That single misclassification is enough to resolve
+  // a weakness outright (DELAYED_PASSES_TO_RESOLVE === 1) on evidence where
+  // the answer was on screen moments earlier.
   const lastError = entry?.lastErrorAt ? Date.parse(entry.lastErrorAt) : null;
   const at = Date.parse(success.at || success.lastSeen || '') || null;
   if (lastError && at) {
-    const errorDate = new Date(lastError);
-    const successDate = new Date(at);
-    const sameUtcDay = successDate.getUTCFullYear() === errorDate.getUTCFullYear()
-      && successDate.getUTCMonth() === errorDate.getUTCMonth()
-      && successDate.getUTCDate() === errorDate.getUTCDate();
-    return sameUtcDay ? 'same-session' : 'delayed';
+    return localDayKey(lastError) === localDayKey(at) ? 'same-session' : 'delayed';
   }
   return 'unknown';
 };

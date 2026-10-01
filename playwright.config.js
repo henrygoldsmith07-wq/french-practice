@@ -42,11 +42,30 @@ export default defineConfig({
     trace: 'on-first-retry',
     screenshot: 'only-on-failure',
   },
+  // E2E runs against the PRODUCTION BUILD, not the dev server.
+  //
+  // Two reasons, both about testing what actually ships:
+  //   1. `vite dev` serves untransformed ESM with no chunking, so the suite
+  //      never exercised the real lazy-loaded bundle, the minifier, or the
+  //      chunk boundaries the perf budget measures. A build-only regression
+  //      (a cycle that breaks code splitting, a module that only resolves in
+  //      dev) passed CI silently.
+  //   2. The dev server's file watcher is a standing source of flake. Any
+  //      file written while tests run — Playwright's own test-results/ and
+  //      playwright-report/ directories, a formatter, an editor — restarts
+  //      the module graph under the running browser, which surfaced as random
+  //      mid-journey reloads and locator timeouts. vite.config.js carried an
+  //      ignore list to paper over exactly that. Serving a static build has
+  //      no watcher, so the root cause disappears.
+  //
+  // `npm run build` also runs the secret guard and the performance budget, so
+  // an E2E run can no longer be green against a bundle the budget rejects.
   webServer: {
-    command: 'npm run dev -- --host 127.0.0.1 --port 5173 --strictPort',
+    command: 'npm run build && npm run preview -- --host 127.0.0.1 --port 5173 --strictPort',
     url: 'http://127.0.0.1:5173',
     reuseExistingServer: !process.env.CI,
-    timeout: 30_000,
+    // The build dominates startup on a cold runner.
+    timeout: 180_000,
   },
   projects: [
     enabled.has('chromium') && {

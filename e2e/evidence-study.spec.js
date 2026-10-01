@@ -30,7 +30,10 @@ test('enrolment requires explicit consent; participant id + arm persist across r
   expect(await page.evaluate(() => localStorage.getItem('fp.study.state.v1'))).toBeNull();
   // Give consent via the study panel, then enrol through Today.
   await page.getByRole('button', { name: 'Progress', exact: true }).click();
-  await page.getByRole('button', { name: /Analytics/i }).first().click();
+  // Progress -> 'Evidence & trends' (the analytics view). Selected by
+  // data-testid: the card's visible title is product copy and has been
+  // renamed before, which silently broke these specs.
+  await page.getByTestId('progress-section-analytics').click();
   await expect(page.getByText(/Evidence study/i).first()).toBeVisible({ timeout: 10_000 });
   await expect(page.getByTestId('study-status')).toContainText(/Not enrolled/i, { timeout: 10_000 });
   await page.getByRole('button', { name: /Join the study/i }).click();
@@ -49,7 +52,10 @@ test('enrolment requires explicit consent; participant id + arm persist across r
 test('declining consent never enrols and Today keeps working', async ({ page }) => {
   await boot(page);
   await page.getByRole('button', { name: 'Progress', exact: true }).click();
-  await page.getByRole('button', { name: /Analytics/i }).first().click();
+  // Progress -> 'Evidence & trends' (the analytics view). Selected by
+  // data-testid: the card's visible title is product copy and has been
+  // renamed before, which silently broke these specs.
+  await page.getByTestId('progress-section-analytics').click();
   await expect(page.getByText(/Evidence study/i).first()).toBeVisible({ timeout: 10_000 });
   await page.getByRole('button', { name: /Not now/i }).click();
   await expect(page.getByText(/You declined/i).first()).toBeVisible({ timeout: 10_000 });
@@ -66,7 +72,10 @@ test('the dashboard never reveals the arm and gates the comparison', async ({ pa
   test.slow();
   await boot(page);
   await page.getByRole('button', { name: 'Progress', exact: true }).click();
-  await page.getByRole('button', { name: /Analytics/i }).first().click();
+  // Progress -> 'Evidence & trends' (the analytics view). Selected by
+  // data-testid: the card's visible title is product copy and has been
+  // renamed before, which silently broke these specs.
+  await page.getByTestId('progress-section-analytics').click();
   await expect(page.getByText(/Evidence study/i).first()).toBeVisible({ timeout: 10_000 });
   await page.getByRole('button', { name: /Join the study/i }).click();
   await expect(page.getByTestId('study-status')).toBeVisible({ timeout: 10_000 });
@@ -74,7 +83,10 @@ test('the dashboard never reveals the arm and gates the comparison', async ({ pa
   await page.reload();
   // Progress → Analytics shows the study panel.
   await page.getByRole('button', { name: 'Progress', exact: true }).click();
-  await page.getByRole('button', { name: /Analytics/i }).first().click();
+  // Progress -> 'Evidence & trends' (the analytics view). Selected by
+  // data-testid: the card's visible title is product copy and has been
+  // renamed before, which silently broke these specs.
+  await page.getByTestId('progress-section-analytics').click();
   await expect(page.getByText(/Evidence study/i).first()).toBeVisible({ timeout: 10_000 });
   // The arm value must NOT appear anywhere in the panel text.
   const body = await page.evaluate(() => document.body.innerText);
@@ -188,7 +200,10 @@ test('held-out check rides the session on a check day and scores measurement-onl
 test('export bundle carries anonymised study streams', async ({ page }) => {
   await boot(page);
   await page.getByRole('button', { name: 'Progress', exact: true }).click();
-  await page.getByRole('button', { name: /Analytics/i }).first().click();
+  // Progress -> 'Evidence & trends' (the analytics view). Selected by
+  // data-testid: the card's visible title is product copy and has been
+  // renamed before, which silently broke these specs.
+  await page.getByTestId('progress-section-analytics').click();
   await expect(page.getByText(/Evidence study/i).first()).toBeVisible({ timeout: 10_000 });
   await page.getByRole('button', { name: /Join the study/i }).click();
   await expect(page.getByTestId('study-status')).toBeVisible({ timeout: 10_000 });
@@ -209,7 +224,10 @@ test('withdrawal deletes study data and preserves practice history', async ({ pa
   await boot(page);
   await page.evaluate(() => localStorage.setItem('fp.xp', '250'));
   await page.getByRole('button', { name: 'Progress', exact: true }).click();
-  await page.getByRole('button', { name: /Analytics/i }).first().click();
+  // Progress -> 'Evidence & trends' (the analytics view). Selected by
+  // data-testid: the card's visible title is product copy and has been
+  // renamed before, which silently broke these specs.
+  await page.getByTestId('progress-section-analytics').click();
   await expect(page.getByText(/Evidence study/i).first()).toBeVisible({ timeout: 10_000 });
   await page.getByRole('button', { name: /Join the study/i }).click();
   await expect(page.getByTestId('study-status')).toBeVisible({ timeout: 10_000 });

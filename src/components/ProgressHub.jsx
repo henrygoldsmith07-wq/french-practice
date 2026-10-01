@@ -145,9 +145,12 @@ export default function ProgressHub({
         )}
         <div className="grid gap-3.5 sm:grid-cols-2">
           {SECTIONS().map((s) => (
+            // data-testid is the stable automation hook: section titles are
+            // product copy and get renamed, the id never does.
             <button
               key={s.id}
               onClick={() => onView(s.id)}
+              data-testid={`progress-section-${s.id}`}
               className="text-left bg-surface border border-line rounded-[20px] p-[22px] hover:border-ink3 transition flex flex-col gap-2"
             >
               <span className="w-8 h-8 grid place-items-center rounded-full bg-surface2 border border-line text-ink"><s.icon size={16} /></span>

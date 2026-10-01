@@ -27,17 +27,24 @@ test('storageCore owns the canonical key map; storage.js re-exports it unchanged
 test('every learner-routing key exists in KEYS (no phantom keys)', async () => {
   globalThis.localStorage = memoryStorage();
   const core = await import(`../src/lib/storageCore.js?lk-${Date.now()}`);
-  const source = (await import('node:fs')).readFileSync(
-    new URL('../src/lib/storageCore.js', import.meta.url), 'utf8',
-  );
-  // The routing set is a literal list of KEYS.* members in the source.
-  // (Strip // comments first so prose mentions like "KEYS.activeSession" in
-  // a comment can never false-fail the check.)
-  const code = source.split('\n').map((l) => l.replace(/(^|\s)\/\/.*$/, '')).join('\n');
-  const used = [...code.matchAll(/(?<![A-Za-z_])KEYS\.([A-Za-z]+)/g)].map((m) => m[1]);
-  for (const name of used) {
-    assert.ok(core.KEYS[name] !== undefined, `LEARNER_KEY_VALUES references KEYS.${name}, which does not exist`);
+  // Assert the routing set against KEYS at runtime instead of by
+  // regex-scanning the source. The old scan stripped `//` comments with a
+  // `.`-based regex, which silently stops stripping in a CRLF working tree
+  // (Windows checkouts) because `.` does not match `\r` — so the guard
+  // false-failed on prose inside a comment. The invariant that matters is a
+  // property of the VALUES, and that is directly observable.
+  const known = new Set(Object.values(core.KEYS).filter((v) => typeof v === 'string'));
+  for (const key of core.LEARNER_KEY_VALUES) {
+    assert.equal(
+      typeof key, 'string',
+      'LEARNER_KEY_VALUES holds a phantom entry: a KEYS.* member that no longer exists evaluates to undefined',
+    );
+    assert.ok(known.has(key), `LEARNER_KEY_VALUES references ${key}, which is not a value in KEYS`);
   }
+  assert.equal(
+    new Set(core.LEARNER_KEY_VALUES).size, core.LEARNER_KEY_VALUES.length,
+    'LEARNER_KEY_VALUES contains duplicates',
+  );
   // The in-flight session key must be learner-owned.
   assert.equal(core.isLearnerKey(core.KEYS.active), true, 'in-flight session must be namespaced per learner');
 });

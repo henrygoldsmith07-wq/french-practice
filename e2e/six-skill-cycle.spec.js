@@ -200,7 +200,8 @@ test.describe('six-skill production cycle (desktop chromium: fake mic + mock AI)
         await completeScreen.getByRole('button', { name: /^Close$/i }).click();
       }
       await page.getByRole('button', { name: 'Progress', exact: true }).click();
-      await page.getByRole('button', { name: /Analytics/i }).first().click();
+      // Progress -> 'Evidence & trends' (the analytics view), by stable id.
+      await page.getByTestId('progress-section-analytics').click();
       const exportBtn = page.getByRole('button', { name: /Export study bundle/i });
       await expect(exportBtn).toBeVisible({ timeout: 15_000 });
       const download = page.waitForEvent('download');
