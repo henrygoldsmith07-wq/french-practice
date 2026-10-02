@@ -64,8 +64,12 @@ export default defineConfig({
     command: 'npm run build && npm run preview -- --host 127.0.0.1 --port 5173 --strictPort',
     url: 'http://127.0.0.1:5173',
     reuseExistingServer: !process.env.CI,
-    // The build dominates startup on a cold runner.
-    timeout: 180_000,
+    // The build dominates startup on a cold runner. 180s was tight once the
+    // server also has to build: a full `vite build` of the content chunks plus
+    // the secret guard and the perf budget regularly exceeds three minutes on
+    // a loaded or slower machine, and the run then failed at startup with a
+    // misleading "timed out waiting for webServer" rather than a real failure.
+    timeout: 420_000,
   },
   projects: [
     enabled.has('chromium') && {

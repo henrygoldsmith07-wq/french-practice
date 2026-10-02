@@ -7,3 +7,6 @@ dist/
 # Playwright artefacts
 test-results/
 playwright-report/
+
+# Local run logs (CI captures its own; these are ad-hoc transcripts)
+e2e*.log
