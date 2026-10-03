@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import { buildCapabilityMap, progressOverview } from '../lib/capabilityModel';
+import { progressEvidenceStatements } from '../lib/progressEvidence';
 import { weaknessLifecycle, lifecycleCopy, WEAKNESS_LIFECYCLE } from '../lib/weaknessLifecycle';
 import { getLearnerErrors, getSettings, getLearningEvidenceState, getSessions, getMetrics } from '../lib/storage';
 import { hasCapabilityNow } from '../lib/languages';
@@ -45,6 +46,11 @@ export default function YourFrench({ level, onOpenDetails }) {
         })
         .sort((a, b) => STATE_ORDER.indexOf(a.state) - STATE_ORDER.indexOf(b.state));
       const next = nextAction(capabilityMap, weakRows);
+      // Evidence-based statements: what actually happened, in plain language.
+      const evidence = progressEvidenceStatements({
+        learningEvidence: Array.isArray(learningEvidence?.cycles) ? learningEvidence : {},
+        errorEntries,
+      });
       return {
         overview: progressOverview({
           capabilityMap,
@@ -53,13 +59,15 @@ export default function YourFrench({ level, onOpenDetails }) {
           level: level || getSettings().level || null,
           bootstrapping: errorEntries.length === 0 && (learningEvidence?.cycles || []).length === 0,
         }),
+        evidence,
       };
     } catch {
-      return { overview: null };
+      return { overview: null, evidence: { strengths: [], improving: [], weak: [] } };
     }
   }, [level]);
 
   const overview = data.overview;
+  const evidence = data.evidence || { strengths: [], improving: [], weak: [] };
   if (!overview) return null;
   const bootstrapping = overview.bootstrapping;
   const workingLevel = overview.level || level || getSettings().level;
@@ -83,17 +91,25 @@ export default function YourFrench({ level, onOpenDetails }) {
           title="Strong"
           hint={bootstrapping ? 'Once you have practised a bit, what you can reliably do shows up here.' : null}
           items={overview.canDo}
+          statements={evidence.strengths}
           fallback="Nothing confirmed yet — keep practising and this fills in."
         />
         <Block
           title="Improving"
           items={overview.improving}
+          statements={evidence.improving}
           fallback="No skills in motion right now — today's session will start some."
         />
         <div>
           <h3 className="text-[11px] font-bold uppercase tracking-[0.14em] text-ink2">Needs attention</h3>
-          {overview.weak.length ? (
+          {(overview.weak.length || evidence.weak.length) ? (
             <ul className="mt-2 space-y-1.5">
+              {evidence.weak.map((line) => (
+                <li key={line} className="text-sm text-ink2 leading-snug flex items-start gap-2">
+                  <span className="mt-[7px] w-1.5 h-1.5 rounded-full bg-ink3 shrink-0" aria-hidden />
+                  <span>{line}</span>
+                </li>
+              ))}
               {overview.weak.map((w) => (
                 <li key={w.label} className="text-sm text-ink2 leading-snug flex items-start gap-2">
                   <span className="mt-[7px] w-1.5 h-1.5 rounded-full bg-ink3 shrink-0" aria-hidden />
@@ -130,13 +146,19 @@ export default function YourFrench({ level, onOpenDetails }) {
   );
 }
 
-function Block({ title, items, fallback, hint }) {
+function Block({ title, items, statements = [], fallback, hint }) {
   return (
     <div>
       <h3 className="text-[11px] font-bold uppercase tracking-[0.14em] text-ink2">{title}</h3>
-      {hint && !items.length && <p className="mt-2 text-sm text-ink2 leading-snug">{hint}</p>}
-      {items.length ? (
+      {hint && !items.length && !statements.length && <p className="mt-2 text-sm text-ink2 leading-snug">{hint}</p>}
+      {(items.length || statements.length) ? (
         <ul className="mt-2 space-y-1.5">
+          {statements.map((line) => (
+            <li key={line} className="text-sm text-ink2 leading-snug flex items-start gap-2">
+              <span className="mt-[7px] w-1.5 h-1.5 rounded-full bg-success shrink-0" aria-hidden />
+              <span>{line}</span>
+            </li>
+          ))}
           {items.map((item) => (
             <li key={item.id} className="text-sm text-ink2 leading-snug flex items-start gap-2">
               <span className="mt-[7px] w-1.5 h-1.5 rounded-full bg-success shrink-0" aria-hidden />

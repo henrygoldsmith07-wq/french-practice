@@ -24,16 +24,17 @@ export default function TransferPrompt({ correction, contextId, difficulty = 2, 
   const check = () => {
     const value = text.trim();
     if (!value) return;
-    // The transfer step checks that the learner produced SOMETHING in the new
-    // context containing the repaired structure. A rough containment check is
-    // honest here — the AI scorer in the parent verifies quality, and the
-    // learner self-declares independence explicitly below.
+    // The transfer step checks that the learner produced something in the new
+    // context that exercises the TARGET — not a verbatim repeat of the
+    // corrected phrase (that would be memorisation, not transfer).
     const usedStructure = structurePresent(value, challenge.structure);
     const result = evaluateTransfer({
       correct: usedStructure,
       assisted: false,
       hinted: !challenge.requiresIndependence && Boolean(challenge.hint) && text.includes(challenge.structure),
       novelContext: true,
+      attemptText: value,
+      correction,
     });
     setChecked({ usedStructure, result });
     onSubmit?.({ challenge, text: value, result, usedStructure });

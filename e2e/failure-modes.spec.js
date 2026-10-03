@@ -10,6 +10,10 @@ test.describe('AI failure modes degrade gracefully', () => {
     await page.goto('/');
     await page.evaluate(() => {
       localStorage.setItem('fp.settings', JSON.stringify({ mockMode: false, level: 'B1', ttsRate: 1 }));
+      // Return to the studio as an existing learner — the first-run picker
+      // would intercept every click and make this test vacuous (its optional
+      // branch silently skips when the tab is unclickable).
+      localStorage.setItem('fp.onboarded', '1');
       // Simulate quota exhausted
       localStorage.setItem('fp.quota', JSON.stringify({ day: new Date().toISOString().slice(0,10), count: 80, limit: 80 }));
     });
@@ -23,20 +27,24 @@ test.describe('AI failure modes degrade gracefully', () => {
     });
     // App should still render core tabs
     await expect(page.getByRole('button', { name: /Today|Review|Learn/i }).first()).toBeVisible({ timeout: 5000 });
-    // Try to trigger AI (Speaking tab) -> should show friendly error, not crash
-    const speak = page.getByRole('button', { name: /Speak/i });
-    if (await speak.isVisible({ timeout: 2000 }).catch(() => false)) {
-      await speak.click();
-      // If an error appears, it should be friendly
-      const body = await page.locator('body').textContent();
-      // Ensure no raw stack trace
-      expect(body).not.toMatch(/TypeError|ReferenceError|Cannot read/i);
-    }
+    // Try to trigger AI (Speaking tab) -> should show friendly error, not crash.
+    // Not conditional: if the tab cannot be reached the test must FAIL, not
+    // silently skip its own assertions (that is how it passed while broken).
+    const speak = page.getByRole('button', { name: /^Speak$/i });
+    await speak.click({ timeout: 5000 });
+    const body = await page.locator('body').textContent();
+    // Ensure no raw stack trace
+    expect(body).not.toMatch(/TypeError|ReferenceError|Cannot read/i);
   });
 
   test('bad AI response (non-JSON) is handled', async ({ page }) => {
     await page.goto('/');
-    await page.evaluate(() => localStorage.setItem('fp.settings', JSON.stringify({ mockMode: false, level: 'B1', ttsRate: 1 })));
+    await page.evaluate(() => {
+      localStorage.setItem('fp.settings', JSON.stringify({ mockMode: false, level: 'B1', ttsRate: 1 }));
+      // Existing learner, not the first-run picker: the picker intercepts the
+      // tab click and would turn this into a silently-skipped no-op.
+      localStorage.setItem('fp.onboarded', '1');
+    });
     await page.route('**/api/groq/**', async (route) => {
       await route.fulfill({ status: 200, body: 'NOT JSON' });
     });
@@ -44,11 +52,9 @@ test.describe('AI failure modes degrade gracefully', () => {
       await route.fulfill({ status: 200, body: '<<< not json >>>' });
     });
     await page.reload();
-    const speak = page.getByRole('button', { name: /Speak/i });
-    if (await speak.isVisible({ timeout: 2000 }).catch(() => false)) {
-      await speak.click();
-      await expect(page.locator('body')).not.toContainText(/Uncaught|Unhandled/i);
-    }
+    const speak = page.getByRole('button', { name: /^Speak$/i });
+    await speak.click({ timeout: 5000 });
+    await expect(page.locator('body')).not.toContainText(/Uncaught|Unhandled/i);
   });
 
   test('relay timeout shows retry message', async ({ page }) => {

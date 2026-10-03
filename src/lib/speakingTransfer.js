@@ -48,6 +48,15 @@ const MEANING_PATTERNS = [
  * the coach stays quiet rather than nagging.
  */
 export function correctionImpact(correction = {}) {
+  // Structured metadata first: the AI contract now classifies each
+  // correction's impact (validated in aiValidate.js). Only a well-formed
+  // value is trusted; anything else falls through to the heuristics below,
+  // which stay as the defensive path for legacy/malformed model output.
+  const declared = String(correction.impact || '');
+  if (declared === 'meaning' || declared === 'grammar' || declared === 'vocabulary'
+    || declared === 'intelligibility' || declared === 'style') {
+    return declared;
+  }
   const text = `${correction.topic || ''} ${correction.why || ''} ${correction.type || ''}`.toLowerCase();
   if (STYLE_PATTERNS.some((re) => re.test(text))) return 'style';
   for (const { re, kind } of MEANING_PATTERNS) {
@@ -106,13 +115,51 @@ function contentWordChanged(a, b) {
  * stylistic detail go.
  */
 export function shouldCorrectNow(correction = {}) {
+  // The model's LEVEL verdict outranks its impact field: a correction it
+  // labels stylistic_suggestion or acceptable_alternative is valid language
+  // the model is merely preferring over — that is style whatever impact it
+  // claims, and style never interrupts fluent conversation.
+  if (correction.level === 'acceptable_alternative' || correction.level === 'stylistic_suggestion'
+    || correction.level === 'style') return false;
+  const impact = correctionImpact(correction);
+  // Style is not a mistake: it never interrupts, however often it repeats.
+  // The learner's fluency matters more than polishing phrasing.
+  if (impact === 'style') return false;
   // A recurring slip is worth surfacing whatever its category — the same form
   // tripping the learner twice is exactly what the coach exists to fix.
   if (Number(correction.recurrences) > 1) return true;
-  const impact = correctionImpact(correction);
-  if (impact === 'style') return false;
-  if (correction.level === 'acceptable_alternative' || correction.level === 'style') return false;
+  // Conservative on uncertainty: the model's own "not sure" never interrupts,
+  // and its interruptRecommendation is honoured only when it agrees with the
+  // classification — a model asking to interrupt over style is overruled.
+  if (correction.level === 'uncertain' && correction.interruptRecommended !== true) return false;
+  if (correction.interruptRecommended === false) return false;
   return true;
+}
+
+/**
+ * The structured target a correction is really about: the underlying ability
+ * the transfer step must retest in a NEW sentence, not the corrected phrase
+ * itself. Falls back to the textual form when the model supplied no
+ * targetSkill/targetForm (legacy output), which the transfer generator
+ * degrades honestly rather than pretending phrase reuse is transfer.
+ */
+export function correctionTarget(correction = {}) {
+  const impact = correctionImpact(correction);
+  const skill = typeof correction.targetSkill === 'string' && correction.targetSkill.trim()
+    ? correction.targetSkill.trim().slice(0, 80)
+    : null;
+  const form = typeof correction.targetForm === 'string' && correction.targetForm.trim()
+    ? correction.targetForm.trim().slice(0, 160)
+    : null;
+  return {
+    impact,
+    skill,
+    form,
+    // What the learner must be able to do again: the rule when we know it,
+    // otherwise the corrected wording as a stand-in (a weaker target).
+    requirement: form || String(correction.correction || '').trim() || null,
+    structured: Boolean(skill || form),
+  };
 }
 
 /**
@@ -124,9 +171,9 @@ export function shouldCorrectNow(correction = {}) {
  * @param {{originalContext?: string|null, contexts?: Array<{id:string,label:string}>, difficulty?: number}} options
  */
 export function freshContextChallenge(correction = {}, options = {}) {
-  const correction2 = String(correction.correction || '').trim();
-  if (!correction2) return null;
-  const impact = correctionImpact(correction);
+  const target = correctionTarget(correction);
+  const structure = String(correction.correction || '').trim();
+  if (!target.requirement) return null;
   const contexts = Array.isArray(options.contexts) && options.contexts.length
     ? options.contexts
     : DEFAULT_CONTEXTS;
@@ -135,16 +182,32 @@ export function freshContextChallenge(correction = {}, options = {}) {
   // mistake happened in.
   const context = contexts.find((c) => c.id !== originalContext) || contexts[0];
   const difficulty = Math.max(1, Math.min(3, Number(options.difficulty) || 1));
+  // Surface features the learner must change: everything except the target.
+  // A learner who only memorised the corrected phrase cannot satisfy this —
+  // the prompt demands the same rule in a new sentence.
+  const framing = FRAMINGS[hash(target.requirement + context.id) % FRAMINGS.length];
   return {
-    id: `transfer:${hash(correction2 + context.id)}`,
+    id: `transfer:${hash(target.requirement + context.id)}`,
     kind: 'transfer',
-    impact,
+    impact: target.impact,
+    targetSkill: target.skill,
+    targetForm: target.form,
+    structured: target.structured,
     contextId: context.id,
-    prompt: transferPrompt(impact, correction2, context, difficulty),
-    hint: difficulty >= 2 ? null : `Try to work in: «${correction2}»`,
-    successCriteria: 'Your sentence uses the repaired form correctly and means what you intend in this new situation.',
+    prompt: transferPrompt(target, context, difficulty, framing),
+    // No hint at higher difficulty: a hint turns the task into phrase copying.
+    // At lower difficulty the hint names the RULE, never the whole sentence.
+    hint: difficulty >= 2
+      ? null
+      : target.form
+        ? `Remember the rule: ${target.form}.`
+        : `Try to work in: «${structure}»`,
+    successCriteria: 'Your sentence uses the repaired form correctly, in your own words and a new situation.',
     requiresIndependence: difficulty >= 2,
-    structure: correction2,
+    // The corrected wording is kept only as fallback vocabulary for
+    // unstructured corrections; the task checks the target, not repetition.
+    structure: target.requirement,
+    changesRequired: ['subject', 'vocabulary', 'situation', 'framing'],
   };
 }
 
@@ -156,36 +219,94 @@ const DEFAULT_CONTEXTS = [
   { id: 'unexpected', label: 'an unexpected question' },
 ];
 
-function transferPrompt(impact, structure, context, difficulty) {
+// Sentence framings the new attempt must NOT reuse from the original attempt:
+// these make the surface genuinely different while the target stays fixed.
+const FRAMINGS = [
+  'a statement about yourself',
+  'a question to someone else',
+  'a sentence about other people',
+  'a sentence about something that already happened',
+  'a sentence about what you would do',
+  'a sentence explaining something to a friend',
+];
+
+function transferPrompt(target, context, difficulty, framing) {
   const harder = difficulty >= 3 ? ' Answer naturally, without planning first.' : '';
-  switch (impact) {
+  const rule = target.form || target.skill;
+  const framingLine = ` Change the subject, the words and the way you frame it — ${framing}.`;
+  switch (target.impact) {
     case 'meaning':
-      return `Now say something for ${context.label} where you have to get the meaning exactly right — use the form you just fixed («${structure}»).${harder}`;
+      return `In ${context.label}, say something where the meaning only works if you get this right${rule ? ` (keep to: ${rule})` : ''} — but say it in your own words, not the sentence you corrected.${framingLine}${harder}`;
     case 'grammar':
-      return `In ${context.label}, build a new sentence that needs the same structure you just repaired («${structure}»). Change the topic entirely.${harder}`;
+      return `In ${context.label}, build a new sentence that needs the same rule you just repaired${rule ? `: ${rule}` : ''} — about a different subject and a different topic.${framingLine}${harder}`;
     case 'vocabulary':
-      return `Use the word or phrase you just fixed («${structure}») in a completely different sentence — as if it came up in ${context.label}.${harder}`;
+      return `Use the word or phrase you corrected in ${context.label}, but in a new sentence with a different purpose — not the one you just said.${framingLine}${harder}`;
     case 'intelligibility':
-      return `Say one clear sentence for ${context.label} containing «${structure}» — aim for being understood, not speed.${harder}`;
+      return `Say one clear sentence for ${context.label} that uses the same sound${rule ? ` (${rule})` : ''} in a different word — aim for being understood.${framingLine}${harder}`;
     default:
-      return `Work «${structure}» into a natural sentence for ${context.label}.${harder}`;
+      return `In ${context.label}, say something that uses the same rule you repaired${rule ? `: ${rule}` : ''} — in your own words, not the corrected sentence.${framingLine}${harder}`;
   }
+}
+
+/**
+ * Does a transfer attempt actually exercise the target rather than repeat the
+ * corrected phrase? A submission that copies the correction (or the original
+ * mistake) near-verbatim is memorisation, not transfer — it must not earn
+ * transfer evidence. Returns { transferred, reason }.
+ */
+export function assessTransferNovelty(attempt, correction = {}) {
+  const said = normaliseWords(String(attempt || ''));
+  const corrected = normaliseWords(String(correction.correction || ''));
+  const original = normaliseWords(String(correction.original || ''));
+  if (!said) return { transferred: false, reason: 'empty' };
+  if (!corrected) return { transferred: true, reason: 'no-target' };
+  if (said === corrected) return { transferred: false, reason: 'repeated-correction' };
+  if (overlapRatio(corrected, said) >= 0.8) return { transferred: false, reason: 'repeated-correction' };
+  if (original && overlapRatio(original, said) >= 0.8) return { transferred: false, reason: 'repeated-original' };
+  return { transferred: true, reason: 'novel' };
+}
+
+function normaliseWords(text) {
+  return String(text).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+}
+
+function overlapRatio(reference, said) {
+  const refWords = reference.split(' ').filter(Boolean);
+  if (!refWords.length) return 0;
+  const saidSet = new Set(said.split(' ').filter(Boolean));
+  const hits = refWords.filter((w) => saidSet.has(w)).length;
+  return hits / refWords.length;
 }
 
 /**
  * Score a transfer attempt and decide what it proves. One clean pass is real
  * evidence of transfer but NOT of mastery — the delayed retest is still owed.
  *
- * @param {{correct: boolean, assisted?: boolean, hinted?: boolean, novelContext?: boolean}} attempt
+ * Transfer evidence counts only when:
+ *   · the context is genuinely novel,
+ *   · the answer was independent (no hint, no assistance),
+ *   · the underlying target was required (not phrase repetition),
+ *   · the task was not effectively a repetition of the correction.
+ *
+ * @param {{correct: boolean, assisted?: boolean, hinted?: boolean,
+ *          novelContext?: boolean, attemptText?: string,
+ *          correction?: object}} attempt
  */
 export function evaluateTransfer(attempt = {}) {
   const independent = attempt.correct && !attempt.assisted && !attempt.hinted;
+  // Phrase memorisation is not transfer: copying the corrected sentence (or
+  // the original mistake) into the new slot reuses memory, not the skill.
+  const novelty = assessTransferNovelty(attempt.attemptText ?? '', attempt.correction || {});
+  const repeated = novelty.transferred === false && novelty.reason !== 'empty' && novelty.reason !== 'no-target';
   return {
     phase: 'transfer',
     correct: Boolean(attempt.correct),
     independent,
-    // Never claim transfer evidence from a re-answer of the same situation.
-    countsAsTransfer: Boolean(attempt.correct && attempt.novelContext !== false),
+    novelty: novelty.reason,
+    // Never claim transfer evidence from a re-answer of the same situation
+    // or a verbatim repeat of the correction itself.
+    countsAsTransfer: Boolean(attempt.correct && attempt.novelContext !== false && !repeated),
     nextStep: attempt.correct
       ? (independent
         ? 'delayed-retest'
@@ -199,6 +320,11 @@ export function evaluateTransfer(attempt = {}) {
  */
 export function transferResultCopy(result = {}) {
   if (!result.countsAsTransfer) {
+    // Phrase reuse is not the same as a wrong answer: say which it is so the
+    // learner knows whether to rephrase or to repair.
+    if (result.novelty === 'repeated-correction' || result.novelty === 'repeated-original') {
+      return 'That’s the same sentence we just corrected — say it in your own words instead. New subject, new situation.';
+    }
     return 'Not quite — let’s repair it once more, then try again somewhere new.';
   }
   if (result.independent) {

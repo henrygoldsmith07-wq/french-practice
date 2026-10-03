@@ -1,14 +1,11 @@
 import { useMemo } from 'react';
-import { getTodayXp, getSrs, getNotebook, getSettings, getSessions, getHabits, getGrammarProgress, getWeeklyPractice } from '../lib/storage';
+import { getTodayXp, getSettings, getSessions, getWeeklyPractice } from '../lib/storage';
 import { useAllEntries, useDueCount } from '../lib/vocabAsync';
-import { notebookAsEntries, weakEntries } from '../lib/memory';
 import { getScenarios } from '../lib/data';
 import { useScenarios } from '../hooks/useScenarios';
 import { getLanguage, hasCapabilityNow } from '../lib/languages';
 import { ArrowRight, Layers, MessageCircle, Play, Target, Mic, BookOpen, StudioMark, Bookmark } from './icons';
-import { weaknessAnalysis, dailyRecommendations } from '../lib/personalise';
-import { todayBrief, todayOutcome } from '../lib/todayBrief';
-import { SCENARIO_ICONS } from './icons';
+import { todayBrief, progressSummary } from '../lib/todayBrief';
 import Mascot from './Mascot';
 import { CHIP } from '../components/classNames.js';
 
@@ -20,17 +17,13 @@ function suggestScenario(sessions, scenarios = getScenarios()) {
   return unseen || [...scenarios].sort((a, b) => (lastSeen[a.id] ?? -1) - (lastSeen[b.id] ?? -1))[0];
 }
 
-export default function HomeDashboard({ dailyGoal = 30, level, onStartLesson, onNavigate, onOpenFieldNotes, onPickScenario, lastActivity, onResume, prefs, onStartToday }) {
+export default function HomeDashboard({ onStartLesson, onNavigate, onOpenFieldNotes, onPickScenario, lastActivity, onResume, onStartToday }) {
   const settings = getSettings();
   const language = getLanguage(settings.language);
   const todayXp = getTodayXp();
   // The vocab library loads in its own chunk (per-language registries) —
   // stats fill in right after first paint. `null` means still loading.
   const library = useAllEntries();
-  const fullLibrary = useMemo(
-    () => (library ? [...library, ...notebookAsEntries(getNotebook())] : null),
-    [library],
-  );
   // The shared live due count — one due computation for the whole app
   // (App's badge and reminder read the same hook). `null` only while the
   // library chunk loads; the dashboard showed 0 in that window before too.
@@ -39,21 +32,6 @@ export default function HomeDashboard({ dailyGoal = 30, level, onStartLesson, on
   // re-renders the suggestion card when the registry resolves.
   const scenariosReg = useScenarios();
   const suggested = suggestScenario(getSessions(), scenariosReg || []);
-  const todayRecs = useMemo(() => {
-    if (!fullLibrary) return [];
-    try {
-      const srs = getSrs();
-      const habits = getHabits();
-      const grammar = getGrammarProgress();
-      const weak = weakEntries(fullLibrary, srs);
-      const areas = weaknessAnalysis({ habits, grammarProgress: grammar, sessions: getSessions(), weakWordCount: weak.length, dueCount });
-      return dailyRecommendations({ prefs: { learningStyle: 'balanced', lessonLength: 'medium', ...(prefs || {}) }, weaknesses: areas, dueCount, suggestedScenario: suggested }).slice(0, 2);
-    } catch { return []; }
-  }, [fullLibrary, dueCount, suggested, prefs]);
-  const SuggestedIcon = SCENARIO_ICONS[suggested.id] || MessageCircle;
-  const goal = Math.max(1, dailyGoal);
-  const goalPct = Math.min(100, Math.round((todayXp / goal) * 100));
-  const goalDone = todayXp >= goal;
   // Today's session brief — one dominant CTA and at most three reason lines,
   // composed by the same planner the session itself uses.
   const brief = useMemo(() => {
@@ -66,7 +44,15 @@ export default function HomeDashboard({ dailyGoal = 30, level, onStartLesson, on
       return { cta: "Start today's session — 15 min", lines: [], demonstrate: 'You will finish with a quick recall check.', shape: [], minutes: 15, empty: false };
     }
   }, [library, scenariosReg]);
-  const outcome = useMemo(() => { try { return todayOutcome({}); } catch { return null; } }, []);
+  // One concise evidence-based progress summary — demonstrated / improving /
+  // needs-work, derived from real performance. XP is never the headline.
+  const progress = useMemo(() => {
+    try {
+      return progressSummary({});
+    } catch {
+      return { demonstrated: 0, improving: 0, needsWork: 0, next: null, headline: 'Le Studio is still learning what you know.' };
+    }
+  }, []);
   // Weekly rhythm (Habit rule): days practised this week against the target.
   // A missed day never breaks this — the week stays alive until Sunday.
   const weekly = useMemo(() => {
@@ -123,8 +109,22 @@ export default function HomeDashboard({ dailyGoal = 30, level, onStartLesson, on
                   ))}
                 </div>
                 <p className="w-full text-xs text-ink3">{brief.demonstrate}</p>
-                {/* Review and Learn sit behind the one button — quiet, secondary. */}
+                {/* Review and Learn sit behind the one button — quiet,
+                    secondary. Resume stays available but never competes
+                    with today's session for the primary slot. */}
                 <div className="w-full flex items-center justify-center gap-4 text-[13px]">
+                  {lastActivity && onResume && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => onResume(lastActivity)}
+                        className="font-semibold text-ink2 hover:text-ink transition"
+                      >
+                        Resume practice
+                      </button>
+                      <span aria-hidden="true" className="text-line">·</span>
+                    </>
+                  )}
                   <button
                     type="button"
                     onClick={() => onNavigate('review')}
@@ -176,87 +176,36 @@ export default function HomeDashboard({ dailyGoal = 30, level, onStartLesson, on
           )}
         </section>
 
-        {/* At a glance — what happened today leads; XP stays, secondarily. */}
-        <section className="grid grid-cols-2 sm:grid-cols-4 gap-3" aria-label="Today at a glance">
-          <Stat value={outcome ? outcome.split(' · ').length : 0} label="gains today" sub={outcome || 'A session today will fill this in'} />
-          <Stat value={`${weekly.daysThisWeek}/${weekly.target}`} label="days this week" sub={weekly.met ? 'Week met — bonus from here' : 'A missed day doesn’t break this'} />
-          <Stat value={dueCount} label="words due" sub={dueCount ? 'Review queue' : 'All clear'} />
-          <Stat value={level || settings.level || '—'} label="your level" sub="CEFR · adaptive" />
+        {/* Progress — one concise, evidence-based summary. XP and streaks
+            stay secondary and never claim proficiency. */}
+        <section className="bg-surface border border-line rounded-[20px] p-[22px]" aria-labelledby="home-progress-heading">
+          <h3 id="home-progress-heading" className="text-[11px] font-bold uppercase tracking-[0.14em] text-ink2">Where you are</h3>
+          <p className="mt-2 text-[15px] font-semibold text-ink leading-snug">{progress.headline}</p>
+          {progress.next && <p className="mt-1 text-sm text-ink2">Next: {progress.next}.</p>}
+          <p className="mt-2 text-[11px] text-ink3 tabular-nums">
+            {weekly.daysThisWeek}/{weekly.target} days this week{todayXp > 0 ? ` · ${todayXp} XP today` : ''}
+          </p>
         </section>
 
-        {/* Today’s progress — thin bar like the site’s muted cards, but
-            achievement-first: the outcome line is the headline, XP is the
-            secondary count underneath. */}
-        <section className="bg-surface border border-line rounded-[20px] p-[22px]" aria-labelledby="today-progress-heading">
-          <div className="flex items-baseline justify-between gap-4">
-            <div>
-              <h3 id="today-progress-heading" className="text-[11px] font-bold uppercase tracking-[0.14em] text-ink2">Today’s progress</h3>
-              <p className="mt-1 text-sm text-ink2"><span className="font-bold text-ink">{outcome || 'Nothing yet today — one session counts.'}</span></p>
-              <p className="mt-1 text-xs text-ink3 tabular-nums">{todayXp} / {goal} XP · level {level || settings.level}</p>
-            </div>
-            <span className={`text-xs font-semibold px-2.5 py-1 rounded-full border ${goalDone ? 'bg-success-soft border-success text-success' : 'bg-surface2 border-line text-ink3'}`}>{goalPct}%</span>
-          </div>
-          <div className="mt-4 h-2 overflow-hidden rounded-full bg-surface2" role="progressbar" aria-valuenow={Math.min(todayXp, goal)} aria-valuemin={0} aria-valuemax={goal} aria-label={`Daily goal ${todayXp} of ${goal} XP`}>
-            <div className={`h-full rounded-full transition-all duration-500 ${goalDone ? 'bg-success' : 'bg-ink'}`} style={{ width: `${goalPct}%` }} />
-          </div>
-          <p className="mt-2 text-xs text-ink3">{goalDone ? 'Daily goal complete — anything more today is bonus.' : `${goal - todayXp} XP to reach today’s goal.`}</p>
-        </section>
-
-        {onOpenFieldNotes && (
-          <section className="bg-speaksoft border border-speak/30 rounded-[20px] p-[22px] flex flex-col sm:flex-row sm:items-center gap-4" aria-labelledby="field-notes-promo-title">
-            <span className="w-11 h-11 shrink-0 grid place-items-center rounded-2xl bg-surface text-speak border border-speak/20"><Bookmark size={19} /></span>
+        {/* Review — prominent only when something is genuinely due. */}
+        {dueCount > 0 && (
+          <section className="bg-reviewsoft border border-review/30 rounded-[20px] p-[22px] flex flex-col sm:flex-row sm:items-center gap-4" aria-label="Vocabulary review due">
             <div className="flex-1 min-w-0">
-              <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-speak">New · Field Notes</p>
-              <h3 id="field-notes-promo-title" className="mt-1 text-lg font-bold tracking-[-0.02em]">Make today’s {language.name} stick.</h3>
-              <p className="mt-1 text-sm text-ink2 leading-relaxed">Capture a line from a real message, menu or film — then bring it back until it is yours.</p>
+              <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-review">Review</p>
+              <h3 className="mt-1 text-lg font-bold tracking-[-0.02em]">{dueCount} word{dueCount === 1 ? '' : 's'} due</h3>
+              <p className="mt-1 text-sm text-ink2 leading-relaxed">A short review now beats relearning later.</p>
             </div>
-            <button type="button" onClick={onOpenFieldNotes} className="inline-flex items-center justify-center gap-1.5 bg-ink text-bg font-bold rounded-[14px] px-4 py-3 text-sm hover:opacity-90 transition shrink-0">
-              Capture a phrase <ArrowRight size={14} />
+            <button type="button" onClick={() => onNavigate('cards')} className="inline-flex items-center justify-center gap-1.5 bg-ink text-bg font-bold rounded-[14px] px-4 py-3 text-sm hover:opacity-90 transition shrink-0">
+              Review now <ArrowRight size={14} />
             </button>
           </section>
         )}
 
-        {/* The studio, in three calm products — mirrors le-studio-site .products */}
-        <section aria-labelledby="today-studio-heading">
-          <h3 id="today-studio-heading" className="text-center text-[clamp(22px,4vw,30px)] font-bold tracking-[-0.02em] text-ink">The studio, in three</h3>
-          <p className="text-center text-ink2 mt-2 mb-5 text-sm">Speak, review, deepen — pick one, the rest waits.</p>
-          <div className="grid gap-3.5 sm:grid-cols-3">
-            <ProductCard
-              icon={SuggestedIcon}
-              title={suggested.title}
-              kicker="Speak · 5 min"
-              body={`Voice roleplay with per-turn corrections — in ${language.name}, for real situations.`}
-              meta="No account · Voice or text"
-              cta={lastActivity ? 'Resume practice' : 'Start speaking'}
-              onClick={lastActivity ? () => onResume(lastActivity) : () => startConversation(5)}
-            />
-            <ProductCard
-              icon={Layers}
-              title={dueCount > 0 ? `${dueCount} words due` : 'Review vocabulary'}
-              kicker="Review · Spaced"
-              body={dueCount > 0 ? 'A short review now beats relearning later — most-forgotten first.' : `Browse ${library ? `${library.length}+` : 'the'} flashcards whenever you need a refresher.`}
-              meta="FSRS · Receptive/Productive"
-              cta={dueCount > 0 ? 'Review now' : 'Open vocab'}
-              onClick={() => onNavigate('cards')}
-            />
-            <ProductCard
-              icon={Target}
-              title="Deepen the craft"
-              kicker="Learn · At leisure"
-              body={hasCapabilityNow('grammar')
-                ? 'Grammar, dictée, reading and writing — all grouped under Learn when you have time.'
-                : 'Dictée, conversation and the AI tutor — all grouped under Learn when you have time.'}
-              meta={hasCapabilityNow('grammar') ? '60 topics · 4 skills' : '4 skills'}
-              cta="Explore Learn"
-              onClick={() => onNavigate('grammar')}
-            />
-          </div>
-        </section>
-
-        {/* Explore when you have time — muted, secondary, like le-studio-site .grid */}
+        {/* Everything else lives under Explore — useful, never competing
+            with Today for the learner's attention. */}
         <section aria-labelledby="today-explore-heading" className="pb-2">
           <h3 id="today-explore-heading" className="text-center text-[clamp(20px,3vw,26px)] font-bold tracking-[-0.02em]">Explore when you have time</h3>
-          <p className="text-center text-ink2 mt-1 text-sm">Useful next steps, kept out of today’s decision.</p>
+          <p className="text-center text-ink2 mt-1 text-sm">Everything else, kept out of today’s decision.</p>
           <div className="grid gap-3.5 sm:grid-cols-2 lg:grid-cols-4 mt-5">
             {/* Capability-gated: French-authored surfaces (reading library,
                 learning path) appear for French only — a beta language gets
@@ -297,23 +246,19 @@ export default function HomeDashboard({ dailyGoal = 30, level, onStartLesson, on
               desc={`Capture real ${language.name}, then reuse it.`}
               onClick={onOpenFieldNotes}
             />
+            <MiniCard
+              icon={Layers}
+              title="Vocabulary"
+              desc={dueCount > 0 ? `Review ${dueCount} due, or browse the deck.` : 'Browse the deck whenever you need it.'}
+              onClick={() => onNavigate('cards')}
+            />
+            <MiniCard
+              icon={Target}
+              title="Grammar & skills"
+              desc={hasCapabilityNow('grammar') ? '60 topics, reading and writing.' : 'Dictée, conversation and the AI tutor.'}
+              onClick={() => onNavigate('learn')}
+            />
           </div>
-          {todayRecs.length>0 && (
-            <div className="mt-6 grid gap-2 sm:grid-cols-2">
-              <p className="sm:col-span-2 text-center text-xs text-ink3">Today picks for you — they're already in Today's session</p>
-              {todayRecs.map(r=>(
-                <button
-                  key={r.type}
-                  type="button"
-                  onClick={onStartToday}
-                  className="bg-surface border border-line rounded-xl px-4 py-3 flex items-center justify-between hover:border-ink3 transition text-left"
-                >
-                  <span className="text-sm font-semibold">{r.title}</span>
-                  <span className="text-xs text-ink3 inline-flex items-center gap-1">{r.subtitle} <ArrowRight size={12} /></span>
-                </button>
-              ))}
-            </div>
-          )}
           <div className="mt-6 flex flex-wrap justify-center gap-2">
             <span className={CHIP}>Installable PWA</span>
             <span className={CHIP}>Works offline</span>
@@ -322,33 +267,6 @@ export default function HomeDashboard({ dailyGoal = 30, level, onStartLesson, on
           </div>
         </section>
       </div>
-    </div>
-  );
-}
-
-function Stat({ value, label, sub }) {
-  return (
-    <div className="bg-surface border border-line rounded-2xl px-4 py-4 text-center">
-      <b className="block text-[26px] font-extrabold tracking-[-0.02em] leading-none tabular-nums">{value}</b>
-      <span className="block text-xs text-ink3 mt-1">{label}</span>
-      <span className="block text-[11px] text-ink3 mt-1">{sub}</span>
-    </div>
-  );
-}
-
-function ProductCard({ icon: Icon, kicker, title, body, meta, cta, onClick }) {
-  return (
-    <div className="bg-surface border border-line rounded-[20px] p-[22px] flex flex-col gap-2.5">
-      <span className="inline-flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.12em] text-ink2">
-        <span className="w-7 h-7 grid place-items-center rounded-full bg-surface2 border border-line text-ink"><Icon size={13} /></span>
-        {kicker}
-      </span>
-      <h4 className="text-[18px] font-bold tracking-[-0.02em] leading-tight">{title}</h4>
-      <p className="text-sm text-ink2 flex-1 leading-relaxed">{body}</p>
-      <p className="text-xs text-ink3 font-semibold">{meta}</p>
-      <button type="button" onClick={onClick} className="mt-1 inline-flex items-center justify-center bg-ink text-bg font-bold rounded-[14px] px-4 py-3 text-sm hover:opacity-90 transition">
-        {cta}
-      </button>
     </div>
   );
 }

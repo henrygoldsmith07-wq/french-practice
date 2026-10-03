@@ -5,6 +5,7 @@ import { ArrowRight, Book, Lightbulb } from './icons';
 import { explainMistake, friendlyError, generateExercises } from '../lib/groq';
 import { saveToNotebook } from '../lib/storage';
 import { getGrammarTopic } from '../lib/grammar';
+import { rankCorrections, COACH_BUDGET } from '../lib/speakingCoach';
 import { SECTION_LABEL_SM } from '../components/classNames.js';
 
 // The Arena's correction-side UI cluster: the learner's turn bubble with its
@@ -136,9 +137,17 @@ const LEVEL_LABEL = {
 
 export function TieredCorrections({ detailed }) {
   const [showUncertain, setShowUncertain] = useState(false);
-  const strong = detailed.filter((c) => STRONG_LEVELS.has(c.level));
-  const soft = detailed.filter((c) => SOFT_LEVELS.has(c.level));
-  const unsure = detailed.filter((c) => c.level === 'uncertain');
+  const [showAllStrong, setShowAllStrong] = useState(false);
+  // Coach budget: the conversation keeps flowing. The strongest, most
+  // important corrections lead; anything beyond the budget collapses behind
+  // "more" rather than filling the screen. Style drops out entirely — it is
+  // ranked away below, so the learner never reads corrections they cannot act on.
+  const ranked = rankCorrections(detailed || []);
+  const seen = new Set(ranked.map((r) => r.correction));
+  const strong = ranked.slice(0, showAllStrong ? ranked.length : COACH_BUDGET.perTurn);
+  const overflow = showAllStrong ? [] : ranked.slice(COACH_BUDGET.perTurn);
+  const soft = detailed.filter((c) => SOFT_LEVELS.has(c.level) && !seen.has(c));
+  const unsure = detailed.filter((c) => c.level === 'uncertain' && !seen.has(c));
   const Row = ({ c, tone }) => (
     <li className="space-y-0.5">
       <p className="text-[13px] leading-relaxed">
@@ -155,7 +164,12 @@ export function TieredCorrections({ detailed }) {
   return (
     <div className="space-y-2">
       {strong.length > 0 && (
-        <ul className="space-y-2">{strong.map((c, i) => <Row key={`s${i}`} c={c} tone="strong" />)}</ul>
+        <ul className="space-y-2">{strong.map((r, i) => <Row key={`s${i}`} c={r.correction} tone="strong" />)}</ul>
+      )}
+      {overflow.length > 0 && (
+        <button onClick={() => setShowAllStrong(true)} className="text-[11px] text-ink3 hover:text-ink2 min-h-8">
+          Show {overflow.length} more correction{overflow.length === 1 ? '' : 's'}
+        </button>
       )}
       {soft.length > 0 && (
         <div>

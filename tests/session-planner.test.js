@@ -221,4 +221,102 @@ describe('buildSessionPlan', () => {
       assert.ok(!all.toLowerCase().includes(bad), `brief leaks "${bad}"`);
     }
   });
+
+  it('every planned segment carries inspectable reasons', () => {
+    const plan = buildSessionPlan({
+      minutes: 18,
+      state: {
+        weaknesses: [weakness({ recurrenceCount: 2 })], srsDue: 4,
+        evidenceDue: [{ type: 'delayed', target: { skill: 'grammar' } }],
+        hasListeningContent: true, hasScenario: true,
+      },
+    });
+    for (const seg of plan.segments) {
+      assert.ok(seg.explain, `segment ${seg.kind} lacks its explanation`);
+      assert.equal(typeof seg.explain.score, 'number');
+      assert.ok(Array.isArray(seg.explain.reasons));
+      assert.ok(Array.isArray(seg.explain.penalties));
+      assert.ok(seg.explain.reasons.length > 0 || seg.explain.penalties.length > 0,
+        `segment ${seg.kind} has no stated reason at all`);
+    }
+    // The reasons read as plain language, never raw factor keys.
+    const repair = plan.segments.find((s) => s.kind === 'repair');
+    if (repair) {
+      assert.ok(repair.explain.reasons.some((r) => r.includes('recurred') || r.includes('open weakness')),
+        JSON.stringify(repair.explain.reasons));
+    }
+  });
+
+  it('a due delayed retest outranks low-value novelty', () => {
+    const cands = scoreCandidates({
+      weaknesses: [],
+      dueRetests: [{ id: 'mg-1', concept: 'past-tense', type: 'tense', recurrence: 1 }],
+      easyWinEligible: true,
+      hasListeningContent: true,
+      hasScenario: false,
+    });
+    const review = cands.find((c) => c.kind === 'review');
+    const warmup = cands.find((c) => c.kind === 'warmup');
+    assert.ok(review && warmup, 'both candidates exist');
+    assert.ok(review.score > warmup.score,
+      `a due retest (${review.score}) must outrank an easy win (${warmup.score})`);
+  });
+
+  it('productive skills are not starved by receptive work', () => {
+    const state = {
+      weaknesses: [weakness()], srsDue: 12,
+      hasListeningContent: true, hasScenario: true,
+      speakingMinutes7d: 5,
+    };
+    const { chosen } = applySessionConstraints(scoreCandidates(state), state);
+    const types = chosen.map((c) => activityTypeOf(c.kind));
+    assert.ok(types.includes('speaking'), 'a starved productive skill still appears');
+    assert.ok(types.includes('recall') || types.includes('repair'), 'receptive work still happens');
+  });
+
+  it('speaking and listening minimums hold even when weaknesses dominate', () => {
+    const manyWeak = [1, 2, 3, 4, 5].map((n) => weakness({ id: `g:${n}`, key: `k${n}`, label: `w${n}`, errorCount: 5 }));
+    const { chosen } = applySessionConstraints(scoreCandidates({
+      weaknesses: manyWeak,
+      speakingMinutes7d: 0,
+      listeningMinutes7d: 0,
+      hasListeningContent: true,
+      hasScenario: true,
+    }), { weaknesses: manyWeak, hasListeningContent: true, hasScenario: true, listeningMinutes7d: 0 });
+    assert.ok(chosen.some((c) => c.kind === 'speak'), 'speaking floor holds under weakness pressure');
+    assert.ok(chosen.some((c) => c.kind === 'input' || c.kind === 'warmup'), 'listening floor holds');
+  });
+
+  it('degraded/offline environments still generate a useful session', () => {
+    // No scenario, no listening content, no AI: the plan must still contain
+    // real work (recall/repair) rather than collapsing to nothing.
+    const plan = buildSessionPlan({
+      minutes: 10,
+      state: {
+        weaknesses: [weakness()], srsDue: 3,
+        hasScenario: false, hasListeningContent: false,
+      },
+    });
+    assert.ok(plan.segments.length >= 1, 'a degraded plan still has segments');
+    assert.ok(plan.segments.every((s) => ['repair', 'retrieve', 'review', 'transfer'].includes(s.kind)),
+      `degraded plan scheduled an unavailable modality: ${plan.segments.map((s) => s.kind)}`);
+    assert.ok(plan.minutes > 0);
+  });
+
+  it('a recent repeated activity gets a diversity penalty', () => {
+    const cands = scoreCandidates({
+      weaknesses: [weakness()],
+      recentPlans: [
+        { kind: 'repair', target: 'grammar:adjective-agreement' },
+        { kind: 'retrieve', target: 'retrieve' },
+        { kind: 'retrieve', target: 'retrieve' },
+      ],
+      srsDue: 6,
+      hasListeningContent: false,
+      hasScenario: false,
+    });
+    const retrieve = cands.find((c) => c.kind === 'retrieve');
+    assert.ok(retrieve.factors[SCORE_FACTORS.repetitionPenalty] < 0,
+      'recently repeated activity is penalised');
+  });
 });

@@ -21,6 +21,18 @@ export const CORRECTION_LEVELS = Object.freeze([
   'uncertain',
 ]);
 
+// Structured correction metadata: the model is asked to classify each
+// correction, and this module validates what it claims. Values outside the
+// contract are dropped (never trusted blindly), leaving the textual
+// heuristics in speakingTransfer.js to classify defensively.
+export const CORRECTION_IMPACTS = Object.freeze([
+  'meaning', 'grammar', 'vocabulary', 'intelligibility', 'style',
+]);
+
+// Which impacts may interrupt fluent conversation. Style never does;
+// uncertain classifications are treated conservatively (no interrupt).
+export const INTERRUPTING_IMPACTS = Object.freeze(['meaning', 'grammar', 'vocabulary', 'intelligibility']);
+
 const isStr = (v) => typeof v === 'string';
 const finite01to100 = (v) => Number.isFinite(Number(v)) && Number(v) >= 0 && Number(v) <= 100;
 
@@ -81,16 +93,38 @@ export function validateWritingFeedback(json) {
 /**
  * Normalise a corrections_detailed array: keep well-formed entries, map bad
  * levels to 'uncertain', cap length. Never throws.
+ *
+ * Carries the structured correction contract when the model provides it:
+ *   { impact, targetSkill, targetForm, severity, confidence,
+ *     interruptRecommended }
+ * Every value is validated here — an out-of-contract value is dropped, not
+ * coerced to something plausible. Absent fields stay absent so the heuristics
+ * in speakingTransfer.js remain the defensive fallback.
  */
 export function normalizeCorrectionsDetailed(list, cap = 6) {
   if (!Array.isArray(list)) return [];
   return list
     .filter((c) => c && isStr(c.original) && isStr(c.correction) && c.original.trim() && c.correction.trim())
     .slice(0, cap)
-    .map((c) => ({
-      original: c.original.slice(0, 200),
-      correction: c.correction.slice(0, 200),
-      level: CORRECTION_LEVELS.includes(c.level) ? c.level : 'uncertain',
-      note: isStr(c.note) ? c.note.slice(0, 300) : '',
-    }));
+    .map((c) => {
+      const out = {
+        original: c.original.slice(0, 200),
+        correction: c.correction.slice(0, 200),
+        level: CORRECTION_LEVELS.includes(c.level) ? c.level : 'uncertain',
+        note: isStr(c.note) ? c.note.slice(0, 300) : '',
+      };
+      // Structured metadata, only when well-formed.
+      if (isStr(c.impact) && CORRECTION_IMPACTS.includes(c.impact)) out.impact = c.impact;
+      if (isStr(c.targetSkill) && c.targetSkill.trim()) out.targetSkill = c.targetSkill.trim().slice(0, 80);
+      if (isStr(c.targetForm) && c.targetForm.trim()) out.targetForm = c.targetForm.trim().slice(0, 160);
+      if (isStr(c.explanation) && c.explanation.trim()) out.explanation = c.explanation.trim().slice(0, 300);
+      if (Number.isFinite(Number(c.severity)) && Number(c.severity) >= 1 && Number(c.severity) <= 5) {
+        out.severity = Math.round(Number(c.severity));
+      }
+      if (Number.isFinite(Number(c.confidence)) && Number(c.confidence) >= 0 && Number(c.confidence) <= 1) {
+        out.confidence = Math.round(Number(c.confidence) * 100) / 100;
+      }
+      if (typeof c.interruptRecommended === 'boolean') out.interruptRecommended = c.interruptRecommended;
+      return out;
+    });
 }

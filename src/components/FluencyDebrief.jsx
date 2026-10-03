@@ -1,10 +1,15 @@
 import { SpeakButton } from './ui';
+import { sessionOutlook } from '../lib/speakingCoach';
 
 // Fluency-mode debrief — shown with the session report after a no-interruption
 // conversation. Only the 2–3 highest-value corrections surface here; the full
 // transcript stays available in the report's own sections. Every correction
 // has already been written into the mistake graph + notebook, so these retype
 // and reappear in future review on the same schedule as Coach-mode mistakes.
+//
+// The debrief answers the product's five questions: what was communicated
+// successfully, 1–3 recurring problems, useful phrases, one pronunciation
+// note where relevant, and one specific next action.
 
 const TYPE_LABEL = {
   grammar: 'Grammar', vocabulary: 'Vocabulary', tense: 'Tense',
@@ -59,6 +64,19 @@ export default function FluencyDebrief({ review, pending }) {
           </ul>
         </div>
       )}
+      {(() => {
+        // What improved, and the one thing to do next — derived from this
+        // session, not invented. The delayed follow-up is scheduled already:
+        // every correction above is in the mistake graph's spaced retest queue.
+        const outlook = sessionOutlook({ interruptions: corrections.map((c) => ({ correction: c, concept: c.topic })), carriedWell });
+        return (
+          <div className="pt-1 border-t border-line space-y-1">
+            <h4 className="text-[10px] font-bold uppercase tracking-wider text-ink3">Next</h4>
+            <p className="text-xs text-ink2 leading-snug">{outlook.nextAction}</p>
+            <p className="text-[11px] text-ink3">This comes back in a day or two — that’s when we know it stuck.</p>
+          </div>
+        );
+      })()}
       <p className="text-[10px] text-ink3">
         These join your mistake graph — they'll come back as retypes and delayed review.
       </p>

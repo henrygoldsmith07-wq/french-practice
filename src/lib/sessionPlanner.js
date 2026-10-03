@@ -45,14 +45,55 @@ export const SCORE_FACTORS = Object.freeze({
 
 const round2 = (n) => Math.round(n * 100) / 100;
 
+// Human-readable factor explanations — the internal/dev inspection surface.
+// Learners only ever see the concise copy in segmentExplain.js; this is what
+// makes a planner decision auditable ("why THIS segment, today?").
+const FACTOR_REASON = {
+  [SCORE_FACTORS.recurrence]: 'has recurred after improving',
+  [SCORE_FACTORS.activeWeakness]: 'is an open weakness in recent work',
+  [SCORE_FACTORS.dueRetest]: 'a delayed retest is due on it',
+  [SCORE_FACTORS.dueVocabulary]: 'vocabulary is due for recall',
+  [SCORE_FACTORS.independenceGap]: 'has only been used correctly with help so far',
+  [SCORE_FACTORS.skillImbalance]: 'the skill has fallen behind the others',
+  [SCORE_FACTORS.goalAlignment]: 'matches what the learner said they want',
+  [SCORE_FACTORS.transferDue]: 'is ready to be tested in a new situation',
+  [SCORE_FACTORS.delayedDue]: 'is due for a check after the delay',
+  [SCORE_FACTORS.easyWin]: 'easy material for fluency and confidence',
+  [SCORE_FACTORS.fluencyBoost]: 'a confidence-building win is due',
+  [SCORE_FACTORS.listeningStarved]: 'listening practice has been quiet lately',
+  [SCORE_FACTORS.speakingStarved]: 'speaking time has been low lately',
+};
+const FACTOR_PENALTY = {
+  [SCORE_FACTORS.repetitionPenalty]: 'the same mode or target was used recently',
+};
+
 /**
  * One candidate segment. `kind` is a SESSION_ARC slot; `target` names what it
  * practises (a weakness id/concept, a skill, or 'general').
+ *
+ * Every candidate carries its full reasoning: `factors` (the raw scoring
+ * model), and `reasons` / `penalties` (the same in plain language) so a
+ * planner decision can be inspected and validated without guessing.
  */
 function candidate(kind, target, factors) {
   const entries = Object.entries(factors).filter(([, v]) => Number.isFinite(v) && v !== 0);
   const score = round2(entries.reduce((sum, [, v]) => sum + v, 0));
-  return { kind, target, score, factors: Object.fromEntries(entries.map(([k, v]) => [k, round2(v)])) };
+  const reasons = [];
+  const penalties = [];
+  for (const [k, v] of entries) {
+    const text = v < 0 ? FACTOR_PENALTY[k] : FACTOR_REASON[k];
+    if (!text) continue;
+    const line = v < 0 ? text : `${target || kind} ${text}`;
+    (v < 0 ? penalties : reasons).push(line);
+  }
+  return {
+    kind,
+    target,
+    score,
+    factors: Object.fromEntries(entries.map(([k, v]) => [k, round2(v)])),
+    reasons,
+    penalties,
+  };
 }
 
 /**
@@ -298,6 +339,14 @@ export function buildSessionPlan(input = {}) {
     minutes: budget[c.kind] || 2,
     target: c.target,
     factors: c.factors,
+    // The full reasoning, kept with the plan for dev inspection; the learner
+    // only ever sees `why` below.
+    explain: {
+      candidate: `${c.kind}${c.target ? `:${c.target}` : ''}`,
+      score: c.score,
+      reasons: c.reasons,
+      penalties: c.penalties,
+    },
     why: segmentWhy(c, state),
   }));
 

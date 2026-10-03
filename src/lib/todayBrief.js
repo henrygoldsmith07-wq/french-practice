@@ -8,6 +8,7 @@
 import { buildSessionPlan } from './sessionPlanner.js';
 import { plannerState } from './plannerState.js';
 import { weaknessLifecycle, WEAKNESS_LIFECYCLE } from './weaknessLifecycle.js';
+import { buildCapabilityMap } from './capabilityModel.js';
 import { getLearnerErrors, getSettings, getStudyEvents } from './storage.js';
 
 const SEGMENT_SHORT = {
@@ -123,4 +124,49 @@ export function todayOutcome(options = {}) {
   if (demonstrated) parts.push(`${demonstrated} demonstrated`);
   if (reviews) parts.push(`${reviews} review${reviews === 1 ? '' : 's'} completed`);
   return parts.length ? parts.join(' · ') : null;
+}
+
+/**
+ * The Home screen's one concise evidence-based progress summary: what the
+ * learner has actually demonstrated, what is improving, what still needs
+ * work. Derived from real performance (learner-error model + learning
+ * evidence) — never from XP, streaks or coins.
+ *
+ * @param {{ now?: number }} options
+ * @returns {{ demonstrated: number, improving: number, needsWork: number,
+ *            next: string|null, headline: string }}
+ */
+export function progressSummary(options = {}) {
+  const now = options.now || Date.now();
+  const errorEntries = getLearnerErrors({ limit: 40 });
+  let improving = 0;
+  let needsWork = 0;
+  let nextLabel = null;
+  for (const entry of errorEntries) {
+    const life = weaknessLifecycle(entry, { now });
+    if (!life) continue;
+    if (life.state === WEAKNESS_LIFECYCLE.IMPROVING || life.state === WEAKNESS_LIFECYCLE.TRANSFER_CHECK
+      || life.state === WEAKNESS_LIFECYCLE.DELAYED_CONFIRMATION) improving += 1;
+    else if (life.state === WEAKNESS_LIFECYCLE.RECURRED || life.state === WEAKNESS_LIFECYCLE.CONFIRMED) {
+      needsWork += 1;
+      if (!nextLabel) nextLabel = String(entry.label || entry.key);
+    }
+  }
+  // Demonstrated skills come from the capability model's independent
+  // evidence — the same source Progress shows.
+  let demonstrated = 0;
+  try {
+    demonstrated = buildCapabilityMap({ errorEntries }).demonstrated.length;
+  } catch { /* capability model is additive; the summary still works */ }
+  const parts = [];
+  if (demonstrated) parts.push(`${demonstrated} skill${demonstrated === 1 ? '' : 's'} demonstrated`);
+  if (improving) parts.push(`${improving} improving`);
+  if (needsWork) parts.push(`${needsWork} need${needsWork === 1 ? 's' : ''} work`);
+  return {
+    demonstrated,
+    improving,
+    needsWork,
+    next: nextLabel ? `Use ${nextLabel.toLowerCase()} in a new situation` : null,
+    headline: parts.length ? parts.join(' · ') : 'Le Studio is still learning what you know.',
+  };
 }

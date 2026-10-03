@@ -469,9 +469,6 @@ export default function App() {
           <Suspense fallback={<ScreenLoader />}>
           {tab === 'today' && (
             <HomeDashboard
-              dailyGoal={settings.dailyGoal}
-              level={settings.level}
-              prefs={prefs}
               onStartLesson={startLesson}
               onNavigate={setTab}
               onOpenFieldNotes={() => { setTab('learn'); setLearnView('field-notes'); }}

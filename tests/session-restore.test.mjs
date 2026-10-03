@@ -75,6 +75,17 @@ async function renderProbe(onState) {
 }
 
 const settle = () => new Promise((r) => setTimeout(r, 25));
+// Wait for the hook's own readiness signal instead of racing a fixed sleep:
+// scenario-registry hydration is a chunk load, which under load (parallel
+// test files, CI) routinely outlived the old 25 ms settle and made this suite
+// fail on the restored-scenario assertion. Each tick is its own act so the
+// render that flips `restoring` actually lands while we wait.
+async function waitForHydration(getState, { maxMs = 8000 } = {}) {
+  for (let waited = 0; waited < maxMs && getState()?.restoring !== false; waited += 25) {
+    await act(async () => { await new Promise((r) => setTimeout(r, 25)); });
+  }
+  return getState();
+}
 
 // 1. A saved session with a known scenario restores scenario + transcript.
 {
@@ -83,7 +94,7 @@ const settle = () => new Promise((r) => setTimeout(r, 25));
   localStorage.setItem(ACTIVE, JSON.stringify({ scenarioId: 'libre', history: [TURN] }));
   let latest = null;
   const { root, container } = await renderProbe((s) => { latest = s; });
-  await act(async () => { await settle(); });
+  await waitForHydration(() => latest);
   assert.equal(latest.scenario?.id, 'libre', 'restored scenario is the saved one');
   assert.equal(latest.history.length, 1, 'restored transcript intact');
   assert.equal(latest.restoring, false, 'hydration finished');
@@ -99,7 +110,7 @@ const settle = () => new Promise((r) => setTimeout(r, 25));
   localStorage.clear();
   let latest = null;
   const { root, container } = await renderProbe((s) => { latest = s; });
-  await act(async () => { await settle(); });
+  await waitForHydration(() => latest);
   assert.ok(latest.scenario?.id, 'a default scenario lands');
   assert.equal(latest.history.length, 0);
   assert.equal(localStorage.getItem(ACTIVE), null, 'no phantom session is written');
@@ -114,7 +125,7 @@ const settle = () => new Promise((r) => setTimeout(r, 25));
   localStorage.setItem(ACTIVE, JSON.stringify({ scenarioId: 'deleted-long-ago', history: [TURN] }));
   let latest = null;
   const { root, container } = await renderProbe((s) => { latest = s; });
-  await act(async () => { await settle(); });
+  await waitForHydration(() => latest);
   assert.equal(latest.history.length, 0, 'orphan transcript is not pinned to another scenario');
   assert.equal(localStorage.getItem(ACTIVE), null, 'stale slot cleared on purpose');
   await act(async () => { root.unmount(); });
@@ -127,7 +138,7 @@ const settle = () => new Promise((r) => setTimeout(r, 25));
   localStorage.setItem(ACTIVE, '{"scenarioId": 12, "history": "oops"');
   let latest = null;
   const { root, container } = await renderProbe((s) => { latest = s; });
-  await act(async () => { await settle(); });
+  await waitForHydration(() => latest);
   assert.ok(latest.scenario?.id, 'app still boots onto a scenario');
   assert.equal(latest.history.length, 0);
   await act(async () => { root.unmount(); });
@@ -141,8 +152,9 @@ const settle = () => new Promise((r) => setTimeout(r, 25));
   localStorage.setItem(ACTIVE, JSON.stringify({ scenarioId: 'libre', history: [TURN] }));
   let latest = null;
   const { root, container } = await renderProbe((s) => { latest = s; });
+  await waitForHydration(() => latest);
+  await act(async () => { latest.switchLanguage('de'); });
   await act(async () => { await settle(); });
-  await act(async () => { latest.switchLanguage('de'); await settle(); });
   assert.equal(latest.history.length, 0, 'switch clears the transcript');
   assert.equal(localStorage.getItem(ACTIVE), null, 'switch clears the slot');
   assert.ok(latest.scenario?.id.startsWith('de-'), `German scenario restored (got ${latest.scenario?.id})`);
@@ -155,9 +167,10 @@ const settle = () => new Promise((r) => setTimeout(r, 25));
   localStorage.clear();
   let latest = null;
   const { root, container } = await renderProbe((s) => { latest = s; });
-  await act(async () => { await settle(); });
+  await waitForHydration(() => latest);
   const scenarioId = latest.scenario.id;
-  await act(async () => { latest.setHistory([TURN]); await settle(); });
+  await act(async () => { latest.setHistory([TURN]); });
+  await act(async () => { await settle(); });
   const slot = JSON.parse(localStorage.getItem(ACTIVE));
   assert.equal(slot.scenarioId, scenarioId, 'live turns persist under the active scenario');
   assert.equal(slot.history.length, 1);
