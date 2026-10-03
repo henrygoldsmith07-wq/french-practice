@@ -27,9 +27,16 @@ export default function ConjugationTrainer({ onXp, focus = null, onDone = null, 
   const [prompt, setPrompt] = useState(() => (focus ? makePrompt(focusedPool(focus), { personIndex: focus.personIndex ?? null }) : makePrompt(poolForLevel('B1'))));
   // Focused mode may be one producer inside Today's fallback chain. An
   // unpromptable target is producer unavailability, not learner completion:
-  // let the parent walk to its next fallback when it supplied one.
+  // let the parent walk to its next fallback when it supplied one. Fire ONCE
+  // per focused shape — the parent's focus object is rebuilt every render,
+  // and a repeated report would walk the chain past a runnable link.
+  const reportedRef = useRef(null);
   useEffect(() => {
-    if (focus && !pool) (onUnavailable || onDone)?.();
+    if (!focus) return;
+    const key = `${focus.verb || ''}:${focus.tense || ''}:${focus.personIndex ?? ''}`;
+    if (pool || reportedRef.current === key) return;
+    reportedRef.current = key;
+    (onUnavailable || onDone)?.();
   }, [focus, pool, onDone, onUnavailable]);
   const [input, setInput] = useState('');
   const [result, setResult] = useState(null); // { status, answer, xp }

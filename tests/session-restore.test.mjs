@@ -90,7 +90,7 @@ const settle = () => new Promise((r) => setTimeout(r, 25));
   const slot = JSON.parse(localStorage.getItem(ACTIVE));
   assert.equal(slot.scenarioId, 'libre', 'slot still attributes the transcript to its scenario');
   assert.equal(slot.history.length, 1, 'the valid session was never cleared');
-  root.unmount();
+  await act(async () => { root.unmount(); });
   container.remove();
 }
 
@@ -103,7 +103,7 @@ const settle = () => new Promise((r) => setTimeout(r, 25));
   assert.ok(latest.scenario?.id, 'a default scenario lands');
   assert.equal(latest.history.length, 0);
   assert.equal(localStorage.getItem(ACTIVE), null, 'no phantom session is written');
-  root.unmount();
+  await act(async () => { root.unmount(); });
   container.remove();
 }
 
@@ -117,7 +117,7 @@ const settle = () => new Promise((r) => setTimeout(r, 25));
   await act(async () => { await settle(); });
   assert.equal(latest.history.length, 0, 'orphan transcript is not pinned to another scenario');
   assert.equal(localStorage.getItem(ACTIVE), null, 'stale slot cleared on purpose');
-  root.unmount();
+  await act(async () => { root.unmount(); });
   container.remove();
 }
 
@@ -130,7 +130,7 @@ const settle = () => new Promise((r) => setTimeout(r, 25));
   await act(async () => { await settle(); });
   assert.ok(latest.scenario?.id, 'app still boots onto a scenario');
   assert.equal(latest.history.length, 0);
-  root.unmount();
+  await act(async () => { root.unmount(); });
   container.remove();
 }
 
@@ -146,7 +146,7 @@ const settle = () => new Promise((r) => setTimeout(r, 25));
   assert.equal(latest.history.length, 0, 'switch clears the transcript');
   assert.equal(localStorage.getItem(ACTIVE), null, 'switch clears the slot');
   assert.ok(latest.scenario?.id.startsWith('de-'), `German scenario restored (got ${latest.scenario?.id})`);
-  root.unmount();
+  await act(async () => { root.unmount(); });
   container.remove();
 }
 
@@ -161,7 +161,7 @@ const settle = () => new Promise((r) => setTimeout(r, 25));
   const slot = JSON.parse(localStorage.getItem(ACTIVE));
   assert.equal(slot.scenarioId, scenarioId, 'live turns persist under the active scenario');
   assert.equal(slot.history.length, 1);
-  root.unmount();
+  await act(async () => { root.unmount(); });
   container.remove();
 }
 

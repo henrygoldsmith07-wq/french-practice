@@ -1,7 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { takeawayPhrase } from '../lib/takeaway';
 import { recordRetest } from '../lib/mistakeGraph';
-import { nextFallback } from '../lib/todayCapabilities';
 import { buildTodayPlan } from '../lib/todayPlan';
 // Study glue is measurement infrastructure: it loads WITH the session (the
 // lazy ChatArena/HeldOutCheck chunks pull the same module), never with the
@@ -553,23 +552,86 @@ function WhyPanel({ explain, recovery }) {
 }
 
 // Targeted drill with a runtime fallback chain. The payload arrives with the
-// full ordered chain from the capability resolver; if the AI drill returns
-// nothing (offline, quota, error), the runner walks to the next link instead
-// of showing "unavailable" — the session always stays complete.
+// full ordered chain from the capability resolver; if a link fails at runtime
+// (AI drill returns nothing, the trainer has no data for the target form, a
+// queue empties), the runner advances to the next runnable link instead of
+// showing "unavailable" — the session always stays complete.
+//
+// Runtime contract:
+//   1. a segment producer may fail;
+//   2. failure never ends the session;
+//   3. advance DETERMINISTICALLY to the next link (by position, not kind —
+//      a chain may contain the same kind twice);
+//   4. keep advancing while further links fail;
+//   5. the completion handler fires exactly once, and only when a runnable
+//      activity actually finished or every link is genuinely exhausted;
+//   6. no transient "unavailable" dead-end UI.
 export function DrillChainRunner({ payload, level, apiKey, mockMode, ttsRate, onXp, onDone }) {
-  const [current, setCurrent] = useState(payload);
-  const kind = current?.kind || payload?.kind;
+  const chain = Array.isArray(payload?.chain) && payload.chain.length
+    ? payload.chain
+    : [payload];
+  const [index, setIndex] = useState(0);
+  const current = chain[Math.min(index, chain.length - 1)];
+
+  // Completion is single-consumer: a child's onDone, an unavailability race
+  // and a parent unmount can all arrive in the same tick. One guard, one call.
+  const finishedRef = useRef(false);
+  const [finished, setFinished] = useState(false);
+  const indexRef = useRef(index);
+  indexRef.current = index;
+  const finish = useCallback(() => {
+    if (finishedRef.current) return;
+    finishedRef.current = true;
+    setFinished(true);
+    onDone?.();
+  }, [onDone]);
+  // Advance to the next link, or finish when the chain is exhausted. Idempotent
+  // per link: a stale child callback from an older link cannot skip ahead.
+  const advanceFrom = useCallback((from) => {
+    if (finishedRef.current) return;
+    if (from !== indexRef.current) return; // stale producer callback
+    if (from + 1 < chain.length) setIndex(from + 1);
+    else finish();
+  }, [chain.length, finish]);
+  // Reported unavailability for THIS link only. The child re-renders with a
+  // fresh callback identity every time the parent renders, so a plain
+  // `advanceFrom(indexRef.current)` could advance twice from one link.
+  const [unavailableFor, setUnavailableFor] = useState(-1);
+  const unavailable = useCallback(() => {
+    const from = indexRef.current;
+    if (unavailableFor === from) return;
+    setUnavailableFor(from);
+    advanceFrom(from);
+  }, [advanceFrom, unavailableFor]);
+
+  // A payload with no chain at all is an exhausted chain: complete honestly.
+  useEffect(() => {
+    if (!current) finish();
+  }, [current, finish]);
+
+  // A link that cannot run at all (no exercises to drill, nothing to play)
+  // is producer unavailability decided BEFORE render — never a fake "0/0
+  // done" screen or a "nothing to drill" dead-end. Runtime failures
+  // self-report through `unavailable`; this covers the statically
+  // unrunnable ones so the chain keeps walking.
+  const runnable = current ? linkRunnable(current) : true;
+  useEffect(() => {
+    if (current && !runnable) unavailable();
+  }, [current, runnable, unavailable]);
+
+  // Nothing to show only while the session moves on: a finished chain and an
+  // unrunnable link render NO panel at all — the segment advances on the same
+  // tick, so a learner never sits on "preparing the next drill…" forever.
+  if (!current || finished || !runnable) return null;
+  const kind = current.kind;
 
   if (kind === 'conj-drill') {
     return (
       <TrainerDrill
-        focus={{ ...current, personIndex: current.personIndex ?? payload.personIndex ?? null }}
+        focus={{ ...current, personIndex: current.personIndex ?? payload?.personIndex ?? null }}
         onXp={onXp}
-        onDone={onDone}
-        onUnavailable={() => {
-          const next = nextFallback(payload.chain, 'conj-drill');
-          if (next) setCurrent(next); else onDone();
-        }}
+        onDone={finish}
+        onUnavailable={unavailable}
       />
     );
   }
@@ -577,15 +639,15 @@ export function DrillChainRunner({ payload, level, apiKey, mockMode, ttsRate, on
     // sessionMode: the segment ends when the repair lands — a clean pass
     // repairs the gap (recordLearnerSuccess), 'Done' hands back to the session.
     return (
-      <SessionDrillShell title="Dictée — train your ear" onDone={onDone}>
-        <Dictation ttsRate={ttsRate} onXp={onXp} sessionMode onDone={onDone} />
+      <SessionDrillShell title="Dictée — train your ear" onDone={finish}>
+        <Dictation ttsRate={ttsRate} onXp={onXp} sessionMode onDone={finish} />
       </SessionDrillShell>
     );
   }
   if (kind === 'accent-drill') {
     return (
-      <SessionDrillShell title="Accent drill — retype with the accents" onDone={onDone}>
-        <AccentDrill onXp={onXp} sessionMode onDone={onDone} />
+      <SessionDrillShell title="Accent drill — retype with the accents" onDone={finish}>
+        <AccentDrill onXp={onXp} sessionMode onDone={finish} />
       </SessionDrillShell>
     );
   }
@@ -595,23 +657,24 @@ export function DrillChainRunner({ payload, level, apiKey, mockMode, ttsRate, on
         exercises={current.exercises}
         topicTitle={current.title}
         onXp={onXp}
-        onDone={onDone}
+        onDone={finish}
       />
     );
   }
   if (kind === 'retype') {
-    return <NotebookRetype onXp={onXp} onCleared={onDone} />;
+    return <NotebookRetype onXp={onXp} onCleared={finish} />;
   }
   if (kind === 'srs-retrieval') {
-    return <RecallRunner cardCap={current.cardCap || 5} onDone={onDone} onXp={onXp} />;
+    return <RecallRunner cardCap={current.cardCap || 5} onDone={finish} onXp={onXp} />;
   }
   if (kind === 'listen') {
-    return <ListenFallback track={current.track} onDone={onDone} />;
+    return <ListenFallback track={current.track} onDone={finish} onUnavailable={unavailable} />;
   }
   if (kind === 'review') {
-    return <DelayedReview count={current.count} onXp={onXp} onDone={onDone} />;
+    return <DelayedReview count={current.count} onXp={onXp} onDone={finish} />;
   }
-  // Default: the AI targeted drill (first link of the chain).
+  // Default: the AI targeted drill — generated at runtime, so it can fail or
+  // come back empty; either way the chain walks on instead of dead-ending.
   return (
     <AiDrillRunner
       concept={current.concept}
@@ -619,17 +682,32 @@ export function DrillChainRunner({ payload, level, apiKey, mockMode, ttsRate, on
       apiKey={apiKey}
       mockMode={mockMode}
       onXp={onXp}
-      onDone={onDone}
-      onEmpty={() => {
-        const next = nextFallback(payload.chain, 'ai-drill');
-        if (next) setCurrent(next); else onDone();
-      }}
+      onDone={finish}
+      onEmpty={unavailable}
     />
   );
 }
 
 function FallbackBridge() {
   return <div className="h-full grid place-items-center px-4"><p className="text-sm text-ink2">Preparing the next drill…</p></div>;
+}
+
+// Can this link run at all? Statically-decidable unavailability only — a link
+// that must ask the network or the learner self-reports at runtime instead.
+// Returning false walks the chain on instead of rendering a dead-end panel.
+function linkRunnable(link) {
+  switch (link?.kind) {
+    case 'authored-drill':
+      return Array.isArray(link.exercises) && link.exercises.length > 0;
+    case 'retype':
+    case 'srs-retrieval':
+    case 'review':
+      // Empty queues are legitimate completions (the child reports "cleared"),
+      // not unavailability: there was nothing to repair, and that is progress.
+      return true;
+    default:
+      return true;
+  }
 }
 
 // Chrome for the session-embedded focused drills (dictée, accents): the
@@ -764,8 +842,9 @@ function AuthoredDrill({ exercises, topicTitle, onXp, onDone }) {
   );
 }
 
-// Listen fallback inside the drill chain.
-function ListenFallback({ track, onDone }) {
+// Listen fallback inside the drill chain. A missing/unresolvable track is
+// producer unavailability: the chain walks on instead of dead-ending.
+function ListenFallback({ track, onDone, onUnavailable }) {
   const tracks = useListeningTracks();
   const resolved = resolveListeningTrack(tracks, track?.id);
   const firedRef = useRef(false);
@@ -773,8 +852,8 @@ function ListenFallback({ track, onDone }) {
   useEffect(() => {
     if (resolved.status !== 'missing' || firedRef.current) return;
     firedRef.current = true;
-    onDone();
-  }, [resolved.status, onDone]);
+    (onUnavailable || onDone)?.();
+  }, [resolved.status, onDone, onUnavailable]);
 
   if (resolved.status === 'loading') {
     return <div className="h-full grid place-items-center"><p className="text-sm text-ink2">Loading listening…</p></div>;

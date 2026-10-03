@@ -513,10 +513,191 @@ for (const order of ORDERS) {
         onXp: () => {},
         onDone: () => { completed += 1; },
       }));
-      await new Promise((r) => setTimeout(r, 80));
     });
+    // The trainer is a lazy chunk and the chain advances through effects:
+    // poll the rendered state instead of racing it with a fixed sleep (the
+    // sleep was exactly how this looked green locally and red in CI).
+    await waitForCompletion(() => container.textContent.includes('Fallback grammar drill'));
     assert.ok(container.textContent.includes('Fallback grammar drill'), 'next runnable fallback replaces the unavailable trainer');
     assert.equal(completed, 0, 'producer unavailability must not complete the whole segment');
+  } finally {
+    await close({ root, container });
+  }
+}
+
+// ---- 11b. every failed link walks on; exhausted chain completes once ------
+
+{
+  // Two unrunnable links in sequence (invalid trainer, then an authored drill
+  // with no exercises) must walk on deterministically. This chain ends on a
+  // RUNNABLE SRS link, so it must render that activity and NOT complete —
+  // completion is for a finished activity or a genuinely exhausted chain.
+  let completed = 0;
+  const payload = {
+    kind: 'conj-drill',
+    verb: 'not-a-real-verb',
+    tense: 'present',
+    chain: [
+      { kind: 'conj-drill', verb: 'not-a-real-verb', tense: 'present' },
+      { kind: 'authored-drill', title: 'Empty drill', exercises: [] },
+      { kind: 'srs-retrieval', cardCap: 5 },
+    ],
+  };
+  const container = document.createElement('div');
+  document.body.appendChild(container);
+  const root = createRoot(container);
+  try {
+    await act(async () => {
+      root.render(React.createElement(DrillChainRunner, {
+        payload,
+        level: 'B1',
+        apiKey: '',
+        mockMode: true,
+        ttsRate: 1,
+        onXp: () => {},
+        onDone: () => { completed += 1; },
+      }));
+    });
+    await waitForCompletion(() => /Tap to reveal|Due/.test(container.textContent), { maxMs: 6000 });
+    assert.ok(/Tap to reveal|Due/.test(container.textContent),
+      'a later runnable link (SRS) replaces the two failed ones');
+    assert.equal(completed, 0, 'a runnable fallback must not complete the segment');
+    assert.ok(!/Nothing to drill|Preparing the next drill/.test(container.textContent),
+      'no transient unavailable dead-end UI');
+  } finally {
+    await close({ root, container });
+    assert.equal(completed, 0, 'unmount mid-activity cannot fake a completion');
+  }
+}
+
+// ---- 11d. a genuinely exhausted chain completes exactly once --------------
+
+{
+  // Every link unrunnable: invalid trainer, empty authored drill, then an AI
+  // drill that cannot fetch (no key, not mock). Only then is completion the
+  // honest outcome — exactly once, even across a double-advance race.
+  let completed = 0;
+  const payload = {
+    kind: 'conj-drill',
+    verb: 'not-a-real-verb',
+    tense: 'present',
+    chain: [
+      { kind: 'conj-drill', verb: 'not-a-real-verb', tense: 'present' },
+      { kind: 'authored-drill', title: 'Empty drill', exercises: [] },
+      { kind: 'ai-drill', concept: 'passe-compose' },
+    ],
+  };
+  const container = document.createElement('div');
+  document.body.appendChild(container);
+  const root = createRoot(container);
+  try {
+    await act(async () => {
+      root.render(React.createElement(DrillChainRunner, {
+        payload,
+        level: 'B1',
+        apiKey: '',
+        mockMode: false,
+        ttsRate: 1,
+        onXp: () => {},
+        onDone: () => { completed += 1; },
+      }));
+    });
+    await waitForCompletion(() => completed > 0, { maxMs: 8000 });
+    assert.equal(completed, 1, 'exhausted chain completes exactly once');
+    assert.ok(!/Nothing to drill|Preparing the next drill/.test(container.textContent),
+      'no transient unavailable dead-end UI');
+  } finally {
+    await close({ root, container });
+    assert.equal(completed, 1, 'unmount after completion cannot double-fire');
+  }
+}
+
+// ---- 11e. failed AI drill walks to the offline authored fallback ----------
+
+{
+  // A real AI failure (no key, not mock) inside the chain must land on the
+  // authored drill — the offline fallback — and must not complete the
+  // segment by itself.
+  let completed = 0;
+  const payload = {
+    kind: 'ai-drill',
+    concept: 'passe-compose',
+    chain: [
+      { kind: 'ai-drill', concept: 'passe-compose' },
+      {
+        kind: 'authored-drill',
+        title: 'Offline authored drill',
+        exercises: [{ q: 'Choose one', options: ['A', 'B'], answer: 0, why: 'Because A is correct.' }],
+      },
+    ],
+  };
+  const container = document.createElement('div');
+  document.body.appendChild(container);
+  const root = createRoot(container);
+  try {
+    await act(async () => {
+      root.render(React.createElement(DrillChainRunner, {
+        payload,
+        level: 'B1',
+        apiKey: '',
+        mockMode: false,
+        ttsRate: 1,
+        onXp: () => {},
+        onDone: () => { completed += 1; },
+      }));
+    });
+    await waitForCompletion(() => container.textContent.includes('Offline authored drill'), { maxMs: 8000 });
+    assert.ok(container.textContent.includes('Offline authored drill'),
+      'a failed AI drill falls back to the offline authored drill');
+    assert.equal(completed, 0, 'the fallback activity, not the failure, completes the segment');
+    assert.ok(!/Nothing to drill|Preparing the next drill/.test(container.textContent),
+      'no transient unavailable dead-end UI');
+  } finally {
+    await close({ root, container });
+  }
+}
+
+// ---- 11c. a runnable activity completes the segment once -----------------
+
+{
+  // The AI drill (mock) runs to completion: "Done drilling" must complete
+  // exactly once even when clicked twice.
+  let completed = 0;
+  const payload = {
+    kind: 'ai-drill',
+    concept: 'passe-compose',
+    chain: [{ kind: 'ai-drill', concept: 'passe-compose' }],
+  };
+  const container = document.createElement('div');
+  document.body.appendChild(container);
+  const root = createRoot(container);
+  try {
+    await act(async () => {
+      root.render(React.createElement(DrillChainRunner, {
+        payload,
+        level: 'B1',
+        apiKey: '',
+        mockMode: true,
+        ttsRate: 1,
+        onXp: () => {},
+        onDone: () => { completed += 1; },
+      }));
+    });
+    const buttonText = (b) => b.textContent.trim();
+    await waitForCompletion(() => [...container.querySelectorAll('button')].some((b) => /Next question|Finish|Done drilling/.test(buttonText(b))));
+    for (let round = 0; round < 12 && ![...container.querySelectorAll('button')].some((b) => buttonText(b).startsWith('Done drilling')); round += 1) {
+      const option = [...container.querySelectorAll('button')].find((b) => !/^(Next question|Finish|Done drilling)/.test(buttonText(b)));
+      if (option) await act(async () => { option.click(); });
+      await waitForCompletion(() => [...container.querySelectorAll('button')].some((b) => /^(Next question|Finish)/.test(buttonText(b))));
+      const next = [...container.querySelectorAll('button')].find((b) => /^(Next question|Finish)/.test(buttonText(b)));
+      if (next) await act(async () => { next.click(); });
+    }
+    await waitForCompletion(() => [...container.querySelectorAll('button')].some((b) => buttonText(b).startsWith('Done drilling')));
+    const done = [...container.querySelectorAll('button')].find((b) => buttonText(b).startsWith('Done drilling'));
+    assert.ok(done, 'a runnable activity renders its completion action');
+    await act(async () => { done.click(); done.click(); });
+    await waitForCompletion(() => completed > 0);
+    assert.equal(completed, 1, 'no duplicate completion callbacks');
   } finally {
     await close({ root, container });
   }
