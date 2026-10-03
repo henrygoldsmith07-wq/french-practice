@@ -196,12 +196,13 @@ export function MistakeActions({ turn, apiKey, mockMode, level, onXp }) {
   const runDrill = async () => {
     setBusy(true);
     try {
-      const { exercises } = await generateExercises(apiKey, {
+      // generateExercises returns a plain exercise ARRAY, not a wrapper.
+      const exercises = await generateExercises(apiKey, {
         topic: topicTitle || strong?.correction || evaluation.corrections?.slice(0, 80) || 'sentence correction',
         level,
         mock: mockMode,
       });
-      setDrill(exercises || []);
+      setDrill(Array.isArray(exercises) ? exercises : []);
     } catch {
       setDrill([]); // generator unavailable — show nothing rather than break
     }

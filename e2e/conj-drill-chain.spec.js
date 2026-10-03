@@ -47,7 +47,7 @@ const TRAINER_GAP_SEED = () => {
 
 test('a trainer gap owns the drill segment and renders the focused trainer', async ({ page }) => {
   await seedLocalStorage(page, TRAINER_GAP_SEED);
-  await page.getByRole('button', { name: 'Speak today' }).click();
+  await page.getByRole('button', { name: /Start today's session/ }).click();
   await expect(page.getByText(/Aujourd'hui/i).first()).toBeVisible({ timeout: 10_000 });
 
   // Advance to the drill segment: complete the mandatory speak turn, then

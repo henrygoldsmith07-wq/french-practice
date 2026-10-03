@@ -206,7 +206,7 @@ export default function LivingLanguage({ onOpenGrammar, onOpenSpeaking }) {
 
 function StructureCard({ entry, onLog, onSlip, onOpenGrammar }) {
   const statusClass = STATUS_STYLE[entry.status] || STATUS_STYLE['Not started'];
-  const lastEvidence = entry.lastAt ? `Last evidence ${relativeDate(entry.lastAt)}` : 'No transfer evidence yet';
+  const lastEvidence = entry.lastAt ? `Last used ${relativeDate(entry.lastAt)}` : 'We haven’t seen you use this independently in a new situation yet.';
 
   return (
     <article className="bg-surface border border-line rounded-2xl p-4 space-y-3">

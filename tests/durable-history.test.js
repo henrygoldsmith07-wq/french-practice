@@ -42,13 +42,15 @@ test('each review stores a rich event and feeds vocabulary gaps into the learner
   assert.equal(event.correct, false);
   assert.equal(event.elapsedMs, 1200);
 
-  let gap = storage.getLearnerErrors({ includeResolved: true, limit: 10 }).find((entry) => entry.key === 'item:bonjour');
+  // A productive-mode review keys the gap as its own productive card, so a
+  // word you recognise but cannot produce stays visibly distinct.
+  let gap = storage.getLearnerErrors({ includeResolved: true, limit: 10 }).find((entry) => entry.key === 'bonjour::productive');
   assert.equal(gap.category, 'vocabulary');
   assert.equal(gap.errorCount, 1);
 
   storage.rateCard('bonjour', 'good', { mode: 'productive', skill: 'vocabulary', itemLabel: 'bonjour' });
   storage.rateCard('bonjour', 'good', { mode: 'productive', skill: 'vocabulary', itemLabel: 'bonjour' });
-  gap = storage.getLearnerErrors({ includeResolved: true, limit: 10 }).find((entry) => entry.key === 'item:bonjour');
+  gap = storage.getLearnerErrors({ includeResolved: true, limit: 10 }).find((entry) => entry.key === 'bonjour::productive');
   assert.equal(gap.status, 'resolved');
   assert.equal(gap.successCount, 2);
   assert.equal(storage.getStudyEvents().filter((event) => event.type === 'review').length, 3);

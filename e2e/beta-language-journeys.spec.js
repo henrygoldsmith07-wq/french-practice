@@ -92,7 +92,7 @@ test.describe('German Beta journey', () => {
     // Today — the session header carries the ACTIVE language name, never
     // hardcoded French.
     await openTab(page, 'Today');
-    await page.getByRole('button', { name: /Speak today/ }).click();
+    await page.getByRole('button', { name: /Start today's session/ }).click();
     const todayDialog = page.getByRole('dialog', { name: /Today's German/ });
     await expect(todayDialog).toBeVisible({ timeout: 15_000 });
     // The plan built for German: no French-authored segment may appear.
@@ -188,7 +188,7 @@ test.describe('Spanish Beta journey', () => {
 
     // Today speaks Spanish now.
     await openTab(page, 'Today');
-    await page.getByRole('button', { name: /Speak today/ }).click();
+    await page.getByRole('button', { name: /Start today's session/ }).click();
     await expect(page.getByRole('dialog', { name: /Today's Spanish/ })).toBeVisible({ timeout: 15_000 });
     await assertNoFrenchSurfaces(page);
     await page.keyboard.press('Escape');
@@ -241,7 +241,7 @@ test.describe('French full-feature return', () => {
     // Today carries the French brand again.
     await page.keyboard.press('Escape');
     await openTab(page, 'Today');
-    await page.getByRole('button', { name: /Speak today/ }).click();
+    await page.getByRole('button', { name: /Start today's session/ }).click();
     await expect(page.getByRole('dialog', { name: /Today's French/ })).toBeVisible({ timeout: 15_000 });
   });
 });

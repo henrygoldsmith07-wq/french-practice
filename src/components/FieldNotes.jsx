@@ -14,6 +14,7 @@ import {
   removeFieldNote,
   saveFieldNote,
 } from '../lib/storage';
+import { generateFieldNoteActivities, activityLabel } from '../lib/fieldNotesActivities';
 import { ArrowRight, Bookmark, Check, Clock, Copy, Mic, Plus, Sparkles, Trash, X } from './icons';
 import { SpeakButton } from './ui';
 
@@ -324,6 +325,12 @@ export default function FieldNotes({ onXp, onActivity, onOpenSpeaking }) {
 
 function Spotlight({ note, stage, revealed, setRevealed, variant, setVariant, copied, copyPhrase, onPractise, onOpenSpeaking }) {
   const isRecall = note.stage > 0 && !revealed;
+  // Practice variety: the activity shape rotates with the note's stage so a
+  // revisited phrase never feels like the same card again. Deterministic per
+  // note — recognition, recall, completion, speaking, pronunciation and
+  // fresh-context usage all get their turn.
+  const activities = generateFieldNoteActivities(note);
+  const activity = activities[note.stage % Math.max(1, activities.length)] || null;
   return (
     <section className="bg-surface border border-line rounded-2xl p-5 space-y-4" aria-labelledby="field-note-spotlight-title">
       <div className="flex flex-wrap items-start gap-3">
@@ -331,10 +338,15 @@ function Spotlight({ note, stage, revealed, setRevealed, variant, setVariant, co
         <div className="flex-1 min-w-0">
           <div className="flex flex-wrap items-center gap-2">
             <p className="text-[10px] uppercase tracking-wider font-bold text-speak">Next useful rep</p>
-            <span className="px-2 py-0.5 rounded-full border border-line text-[10px] font-semibold text-ink3">{stage.label}</span>
+            <span className="px-2 py-0.5 rounded-full border border-line text-[10px] font-semibold text-ink3">{activity ? activityLabel(activity.type) : stage.label}</span>
             {isFieldNoteDue(note) && <span className="px-2 py-0.5 rounded-full bg-reviewsoft text-review text-[10px] font-bold">Due now</span>}
           </div>
-          <h3 id="field-note-spotlight-title" className="text-lg font-bold tracking-tight mt-1">{stage.prompt}</h3>
+          <h3 id="field-note-spotlight-title" className="text-lg font-bold tracking-tight mt-1">
+            {activity && activity.type !== 'recognition' && activity.type !== 'recall' ? activity.prompt : stage.prompt}
+          </h3>
+          {activity && (activity.type === 'speaking' || activity.type === 'fresh-context') && (
+            <p className="text-xs text-speak mt-1 leading-relaxed">{activity.prompt}</p>
+          )}
           <p className="text-xs text-ink3 mt-1">{contextLabel(note.context)}{note.source ? ` · ${note.source}` : ''}</p>
         </div>
         <button type="button" onClick={copyPhrase} aria-label="Copy French line" className="w-9 h-9 grid place-items-center rounded-full text-ink3 hover:bg-surface2 hover:text-ink" title="Copy French line">

@@ -38,13 +38,19 @@ export default function useDialogFocus(containerRef, { active = true, initialRef
     const focusedNow = document.activeElement;
     const remembered = getDialogTrigger();
     restoreRef.current = remembered || (focusedNow && focusedNow !== document.body ? focusedNow : null);
-    const frame = requestAnimationFrame(() => {
+    // rAF is the browser's focus timing, but jsdom (and other non-browser
+    // hosts) do not define it — fall back to a macrotask so focus restoration
+    // works identically everywhere and never crashes a render host.
+    const frame = typeof requestAnimationFrame === 'function'
+      ? requestAnimationFrame(focusFirst)
+      : setTimeout(focusFirst, 0);
+    function focusFirst() {
       const container = containerRef.current;
       if (!container) return;
       const preferred = initialRef?.current;
       const first = focusablesWithin(container)[0];
       (preferred && container.contains(preferred) ? preferred : first || container)?.focus?.();
-    });
+    }
 
     const onKeyDown = (event) => {
       if (event.key !== 'Tab') return;
@@ -72,7 +78,8 @@ export default function useDialogFocus(containerRef, { active = true, initialRef
 
     window.addEventListener('keydown', onKeyDown);
     return () => {
-      cancelAnimationFrame(frame);
+      if (typeof cancelAnimationFrame === 'function') cancelAnimationFrame(frame);
+      else clearTimeout(frame);
       window.removeEventListener('keydown', onKeyDown);
       const restore = restoreRef.current;
       clearDialogTrigger();

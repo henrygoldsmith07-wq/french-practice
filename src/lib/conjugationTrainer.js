@@ -179,7 +179,10 @@ export const tenseLabel = (id) => (TENSES.find((t) => t.id === id) || {}).label 
  * session drill to lead with the EXACT cell the learner missed.
  */
 export function makePrompt(pool, { avoid = null, pick = Math.random, personIndex = null } = {}) {
-  if (!pool.length) return null;
+  // A focused drill can name a verb/tense the trainer has no data for; that is
+  // producer unavailability (the caller walks to its next fallback), never a
+  // reason to throw mid-session.
+  if (!pool || !pool.length) return null;
   const pinned = Number.isInteger(personIndex) && personIndex >= 0 && personIndex <= 5 ? personIndex : null;
   let combo = null;
   for (let i = 0; i < 8 && !combo; i++) {

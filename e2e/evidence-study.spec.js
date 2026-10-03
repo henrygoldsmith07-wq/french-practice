@@ -23,7 +23,7 @@ async function boot(page) {
 test('enrolment requires explicit consent; participant id + arm persist across reload', async ({ page }) => {
   await boot(page);
   // NO consent yet: opening Today must create nothing.
-  await page.getByRole('button', { name: 'Speak today' }).click();
+  await page.getByRole('button', { name: /Start today's session/ }).click();
   await expect(page.getByText(/Aujourd'hui/i).first()).toBeVisible({ timeout: 10_000 });
   await page.getByRole('button', { name: "End today's session" }).click();
   await page.reload();
@@ -63,7 +63,7 @@ test('declining consent never enrols and Today keeps working', async ({ page }) 
   // Today works fine without the study (close the Analytics overlay first).
   await page.getByRole('button', { name: /Close analytics/i }).click();
   await page.getByRole('button', { name: 'Today', exact: true }).click();
-  await page.getByRole('button', { name: 'Speak today' }).click();
+  await page.getByRole('button', { name: /Start today's session/ }).click();
   await expect(page.getByText(/Aujourd'hui/i).first()).toBeVisible({ timeout: 10_000 });
   expect(await page.evaluate(() => localStorage.getItem('fp.study.state.v1'))).toBeNull();
 });
@@ -125,7 +125,7 @@ test('held-out check rides the session on a check day and scores measurement-onl
     }));
     localStorage.setItem('fp.study.consent.v1', JSON.stringify({ decision: 'accepted', at: new Date().toISOString(), version: 1 }));
   });
-  await page.getByRole('button', { name: 'Speak today' }).click();
+  await page.getByRole('button', { name: /Start today's session/ }).click();
   const overlay = page.locator('[aria-label="Today\'s French"]');
   await expect(overlay).toBeVisible({ timeout: 20_000 });
   // Walk to the check: complete the speak segment with a mock turn, then
@@ -190,7 +190,7 @@ test('held-out check rides the session on a check day and scores measurement-onl
   // Measurement-only: nothing entered the mistake graph.
   expect(stored.graph).toHaveLength(0);
   // Same-day reopen must NOT create a second check (dedupe by id).
-  await page.getByRole('button', { name: 'Speak today' }).click();
+  await page.getByRole('button', { name: /Start today's session/ }).click();
   await expect(overlay).toBeVisible({ timeout: 10_000 });
   await page.getByRole('button', { name: "End today's session" }).click().catch(() => {});
   const reopened = await page.evaluate(() => JSON.parse(localStorage.getItem('fp.study.checks.v1') || '[]'));

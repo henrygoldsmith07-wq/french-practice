@@ -41,7 +41,7 @@ test('rateCard stamps a fresh encounter per presentation and dedupes a re-rate',
   storage.rateCard('maison', 'good', { mode: 'receptive', itemLabel: 'la maison', source: 'flashcard' });
 
   const model = storage.getLearnerErrorModel();
-  const entry = model.entries.find((e) => e.id === 'vocabulary:item:maison');
+  const entry = model.entries.find((e) => e.id === 'vocabulary:maison');
   assert.ok(entry, 'the gap entry exists');
   const evidence = entry.evidence.filter((item) => item.source === 'per-review-event');
   assert.ok(evidence.length >= 2, 'both clean recalls recorded evidence');
@@ -58,7 +58,7 @@ test('rateCard stamps a fresh encounter per presentation and dedupes a re-rate',
   // dedupe it instead of minting a second independent pass.
   storage.rateCard('maison', 'good', { mode: 'receptive', source: 'flashcard', encounterId: 'fixed-encounter' });
   storage.rateCard('maison', 'good', { mode: 'receptive', source: 'flashcard', encounterId: 'fixed-encounter' });
-  const again = storage.getLearnerErrorModel().entries.find((e) => e.id === 'vocabulary:item:maison')
+  const again = storage.getLearnerErrorModel().entries.find((e) => e.id === 'vocabulary:maison')
     .evidence.filter((item) => item.source === 'per-review-event' && item.score === 100 && item.encounterId === 'fixed-encounter');
   assert.equal(again.length, 2, 'both re-answers of the same presentation persisted');
   assert.equal(new Set(again.map((i) => i.encounterId)).size, 1, 'same presentation ⇒ same encounter id');
@@ -68,7 +68,7 @@ test('rateCard lapse provenance: mistakes carry identity too', async () => {
   const storage = await freshStorage();
   storage.rateCard('chien', 'again', { mode: 'receptive', itemLabel: 'le chien', source: 'vocab-quiz' });
   const model = storage.getLearnerErrorModel();
-  const entry = model.entries.find((e) => e.id === 'vocabulary:item:chien');
+  const entry = model.entries.find((e) => e.id === 'vocabulary:chien');
   assert.ok(entry, 'a lapse creates the gap entry');
   const mistake = entry.evidence[entry.evidence.length - 1];
   assert.ok(mistake.sessionId && mistake.encounterId, 'the mistake evidence carries provenance');

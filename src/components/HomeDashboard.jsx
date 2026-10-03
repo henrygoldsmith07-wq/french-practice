@@ -7,6 +7,7 @@ import { useScenarios } from '../hooks/useScenarios';
 import { getLanguage, hasCapabilityNow } from '../lib/languages';
 import { ArrowRight, Layers, MessageCircle, Play, Target, Mic, BookOpen, StudioMark, Bookmark } from './icons';
 import { weaknessAnalysis, dailyRecommendations } from '../lib/personalise';
+import { todayBrief, todayOutcome } from '../lib/todayBrief';
 import { SCENARIO_ICONS } from './icons';
 import Mascot from './Mascot';
 import { CHIP } from '../components/classNames.js';
@@ -19,7 +20,7 @@ function suggestScenario(sessions, scenarios = getScenarios()) {
   return unseen || [...scenarios].sort((a, b) => (lastSeen[a.id] ?? -1) - (lastSeen[b.id] ?? -1))[0];
 }
 
-export default function HomeDashboard({ dailyGoal = 30, level, onStartLesson, onNavigate, onOpenFieldNotes, onPickScenario, lastActivity, onResume, prefs, onStartToday, todayPlan }) {
+export default function HomeDashboard({ dailyGoal = 30, level, onStartLesson, onNavigate, onOpenFieldNotes, onPickScenario, lastActivity, onResume, prefs, onStartToday }) {
   const settings = getSettings();
   const language = getLanguage(settings.language);
   const todayXp = getTodayXp();
@@ -53,6 +54,19 @@ export default function HomeDashboard({ dailyGoal = 30, level, onStartLesson, on
   const goal = Math.max(1, dailyGoal);
   const goalPct = Math.min(100, Math.round((todayXp / goal) * 100));
   const goalDone = todayXp >= goal;
+  // Today's session brief — one dominant CTA and at most three reason lines,
+  // composed by the same planner the session itself uses.
+  const brief = useMemo(() => {
+    try {
+      return todayBrief({
+        entries: library || [],
+        hasScenario: Boolean(scenariosReg && scenariosReg.length),
+      });
+    } catch {
+      return { cta: "Start today's session — 15 min", lines: [], demonstrate: 'You will finish with a quick recall check.', shape: [], minutes: 15, empty: false };
+    }
+  }, [library, scenariosReg]);
+  const outcome = useMemo(() => { try { return todayOutcome({}); } catch { return null; } }, []);
   // Weekly rhythm (Habit rule): days practised this week against the target.
   // A missed day never breaks this — the week stays alive until Sunday.
   const weekly = useMemo(() => {
@@ -71,7 +85,8 @@ export default function HomeDashboard({ dailyGoal = 30, level, onStartLesson, on
   return (
     <div className="h-full overflow-y-auto nice-scroll">
       <div className="max-w-[1020px] mx-auto px-[22px] py-6 space-y-10">
-        {/* Hero — mirrors le-studio-site .hero: centered, calm, no clutter */}
+        {/* Hero — one dominant CTA: today's composed session. The brief
+            explains what it contains and why, in plain language. */}
         <section className="text-center pt-4 pb-2" aria-labelledby="today-hero-title">
           <Mascot mood="sing" size={56} className="mx-auto text-ink opacity-90" aria-hidden="true" />
           <p className="mt-1 text-xs font-semibold text-ink2 tracking-wide" lang={language.id}>{greeting}</p>
@@ -84,29 +99,30 @@ export default function HomeDashboard({ dailyGoal = 30, level, onStartLesson, on
             {lastActivity ? (
               <>Pick up<br />where you left off.</>
             ) : (
-              <>Calm tools.<br /><span className="text-ink2">Honest practice.</span></>
+              <>Today's <span lang={language.id}>{language.name}</span>,<br /><span className="text-ink2">already planned.</span></>
             )}
           </h2>
-          <p className="mx-auto mt-4 max-w-[640px] text-[clamp(15px,2.4vw,19px)] leading-relaxed text-ink2">
-            {lastActivity
-              ? lastActivity.label
-              : <>Have a 5-minute <span lang={language.id} className="font-semibold text-ink">{language.name}</span> conversation now. Speak naturally, get one useful correction, leave with a phrase worth remembering.</>}
-          </p>
-          <div className="mt-7 flex flex-wrap items-center justify-center gap-3">
-            {onStartToday ? (
-              <>
+          {onStartToday ? (
+            <>
+              <p className="mx-auto mt-4 max-w-[640px] text-[clamp(15px,2.4vw,19px)] leading-relaxed text-ink2">
+                {brief.lines.length > 0
+                  ? brief.lines.join(' · ')
+                  : 'One short session, chosen from where you are right now.'}
+              </p>
+              <div className="mt-7 flex flex-wrap items-center justify-center gap-3">
                 <button
                   type="button"
                   onClick={onStartToday}
                   className="inline-flex items-center gap-2 bg-ink text-bg font-bold rounded-[14px] px-[26px] py-[13px] text-[15px] hover:opacity-85 hover:-translate-y-px transition"
                 >
-                  <Play size={16} /> Speak today
+                  <Play size={16} /> {brief.cta}
                 </button>
                 <div className="w-full flex flex-wrap items-center justify-center gap-1.5 -mt-1" aria-label="Today's session shape">
-                  {(todayPlan || ['Listen', 'Speak', 'Repair', 'Recall']).map((seg) => (
+                  {brief.shape.map((seg) => (
                     <span key={seg} className="px-2 py-0.5 rounded-full bg-surface border border-line text-[10px] font-semibold text-ink2">{seg}</span>
                   ))}
                 </div>
+                <p className="w-full text-xs text-ink3">{brief.demonstrate}</p>
                 {/* Review and Learn sit behind the one button — quiet, secondary. */}
                 <div className="w-full flex items-center justify-center gap-4 text-[13px]">
                   <button
@@ -125,9 +141,16 @@ export default function HomeDashboard({ dailyGoal = 30, level, onStartLesson, on
                     Learn
                   </button>
                 </div>
-              </>
-            ) : (
-              <>
+              </div>
+            </>
+          ) : (
+            <>
+              <p className="mx-auto mt-4 max-w-[640px] text-[clamp(15px,2.4vw,19px)] leading-relaxed text-ink2">
+                {lastActivity
+                  ? lastActivity.label
+                  : <>Have a 5-minute <span lang={language.id} className="font-semibold text-ink">{language.name}</span> conversation now. Speak naturally, get one useful correction, leave with a phrase worth remembering.</>}
+              </p>
+              <div className="mt-7 flex flex-wrap items-center justify-center gap-3">
                 <button
                   type="button"
                   onClick={lastActivity ? () => onResume(lastActivity) : () => startConversation(5)}
@@ -143,9 +166,9 @@ export default function HomeDashboard({ dailyGoal = 30, level, onStartLesson, on
                 >
                   {lastActivity ? 'Start something new' : `Try ${suggested.title}`} <ArrowRight size={16} />
                 </button>
-              </>
-            )}
-          </div>
+              </div>
+            </>
+          )}
           {lastActivity ? (
             <p className="mt-3 text-xs text-ink3">Or browse another scenario — your last session is still ready in Speak.</p>
           ) : (
@@ -153,20 +176,23 @@ export default function HomeDashboard({ dailyGoal = 30, level, onStartLesson, on
           )}
         </section>
 
-        {/* Stats — same calm grid as le-studio-site .stats */}
+        {/* At a glance — what happened today leads; XP stays, secondarily. */}
         <section className="grid grid-cols-2 sm:grid-cols-4 gap-3" aria-label="Today at a glance">
-          <Stat value={todayXp} label="XP today" sub={`${goal - todayXp > 0 && !goalDone ? `${goal - todayXp} to goal` : goalDone ? 'Goal reached' : '—'}`} />
+          <Stat value={outcome ? outcome.split(' · ').length : 0} label="gains today" sub={outcome || 'A session today will fill this in'} />
           <Stat value={`${weekly.daysThisWeek}/${weekly.target}`} label="days this week" sub={weekly.met ? 'Week met — bonus from here' : 'A missed day doesn’t break this'} />
           <Stat value={dueCount} label="words due" sub={dueCount ? 'Review queue' : 'All clear'} />
           <Stat value={level || settings.level || '—'} label="your level" sub="CEFR · adaptive" />
         </section>
 
-        {/* Today’s progress — thin bar like the site’s muted cards, but functional */}
+        {/* Today’s progress — thin bar like the site’s muted cards, but
+            achievement-first: the outcome line is the headline, XP is the
+            secondary count underneath. */}
         <section className="bg-surface border border-line rounded-[20px] p-[22px]" aria-labelledby="today-progress-heading">
           <div className="flex items-baseline justify-between gap-4">
             <div>
               <h3 id="today-progress-heading" className="text-[11px] font-bold uppercase tracking-[0.14em] text-ink2">Today’s progress</h3>
-              <p className="mt-1 text-sm text-ink2"><span className="font-bold text-ink tabular-nums">{todayXp}</span> / {goal} XP · level {level || settings.level}</p>
+              <p className="mt-1 text-sm text-ink2"><span className="font-bold text-ink">{outcome || 'Nothing yet today — one session counts.'}</span></p>
+              <p className="mt-1 text-xs text-ink3 tabular-nums">{todayXp} / {goal} XP · level {level || settings.level}</p>
             </div>
             <span className={`text-xs font-semibold px-2.5 py-1 rounded-full border ${goalDone ? 'bg-success-soft border-success text-success' : 'bg-surface2 border-line text-ink3'}`}>{goalPct}%</span>
           </div>

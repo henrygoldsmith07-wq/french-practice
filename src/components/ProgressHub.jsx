@@ -1,5 +1,5 @@
 import { lazy, Suspense } from 'react';
-import { getLearningEvidenceOverview, getSettings } from '../lib/storage';
+import { getSettings } from '../lib/storage';
 import { BarChart, Map, Clock, Target, Layers } from './icons';
 import { ChevronRight } from './icons';
 import { featureAvailableNow, hasCapabilityNow } from '../lib/languages';
@@ -11,6 +11,8 @@ const LazyFocus = lazy(() => import('./Focus'));
 const LazyLearningPath = lazy(() => import('./LearningPath'));
 const LazyProficiency = lazy(() => import('./Proficiency'));
 const LazyLivingLanguage = lazy(() => import('./LivingLanguage'));
+const LazyYourFrench = lazy(() => import('./YourFrench'));
+const LazyWeeklyReview = lazy(() => import('./WeeklyReviewCard'));
 
 function ScreenLoader() {
   return (
@@ -51,9 +53,6 @@ export default function ProgressHub({
   onOpenGrammar,
   onOpenSpeaking,
 }) {
-  const frenchEvidence = hasCapabilityNow('learning-path')
-    ? safeEvidenceOverview()
-    : null;
   if (view === 'stats') {
     return (
       <div className="h-full flex flex-col min-h-0">
@@ -136,13 +135,21 @@ export default function ProgressHub({
               in the hub the learner is standing in. */}
           <p className="text-ink2 mt-1.5 text-sm max-w-xl mx-auto">
             {hasCapabilityNow('learning-path')
-              ? 'Start with what your French evidence says: current ability, weaknesses, recovery and the next useful action.'
-              : 'Start with what your language evidence says: current ability, weaknesses, recovery and the next useful action.'}
+              ? 'What your French can do now, what is getting better, and what to practise next.'
+              : 'What your language can do now, what is getting better, and what to practise next.'}
           </p>
         </div>
-        {frenchEvidence && frenchEvidence.cycles.length > 0 && (
-          <EvidenceNow overview={frenchEvidence} onOpen={() => onView('analytics')} />
-        )}
+        {/* The default answer to the four learner questions. Detailed
+            evidence and analytics stay one tap away (progressive disclosure). */}
+        <Suspense fallback={<ScreenLoader />}>
+          <LazyYourFrench
+            level={null}
+            onOpenDetails={() => onView('analytics')}
+          />
+        </Suspense>
+        <Suspense fallback={null}>
+          <LazyWeeklyReview />
+        </Suspense>
         <div className="grid gap-3.5 sm:grid-cols-2">
           {SECTIONS().map((s) => (
             // data-testid is the stable automation hook: section titles are
@@ -179,58 +186,6 @@ export default function ProgressHub({
           </div>
         )}
       </div>
-    </div>
-  );
-}
-
-function safeEvidenceOverview() {
-  try { return getLearningEvidenceOverview(); } catch { return null; }
-}
-
-function EvidenceNow({ overview, onOpen }) {
-  const active = (overview.byStatus['active-weakness']?.length || 0) + (overview.byStatus.recurred?.length || 0);
-  const improving = overview.byStatus.improving?.length || 0;
-  const confirm = overview.byStatus['needs-confirmation']?.length || 0;
-  const demonstrated = overview.byStatus.demonstrated?.length || 0;
-  const next = overview.nextAction;
-  const nextLabel = next?.type === 'transfer'
-    ? `Use ${next.target?.label || 'a repaired weakness'} in a new situation`
-    : next?.type === 'delayed'
-      ? `Check ${next.target?.label || 'recent learning'} again after the delay`
-      : next?.target?.label
-        ? `Repair ${next.target.label}`
-        : 'Keep collecting independent evidence';
-  return (
-    <section className="bg-surface border border-line rounded-[20px] p-5 space-y-3" aria-label="Current learning evidence">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <p className="text-[11px] font-bold uppercase tracking-wider text-ink3">Right now</p>
-          <h3 className="text-lg font-bold mt-0.5">What the evidence says</h3>
-        </div>
-        <button onClick={onOpen} className="text-xs font-semibold text-ink inline-flex items-center gap-1">
-          Details <ChevronRight size={12} />
-        </button>
-      </div>
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-        <EvidenceCount label="Weaknesses" value={active} />
-        <EvidenceCount label="Improving" value={improving} />
-        <EvidenceCount label="Confirm" value={confirm} />
-        <EvidenceCount label="Demonstrated" value={demonstrated} />
-      </div>
-      <div className="bg-surface2 rounded-xl px-3.5 py-3">
-        <p className="text-[10px] font-bold uppercase tracking-wider text-ink3">Next best action</p>
-        <p className="text-sm font-semibold mt-0.5">{nextLabel}</p>
-        {overview.due.length > 0 && <p className="text-[11px] text-ink2 mt-1">{overview.due.length} evidence check{overview.due.length === 1 ? '' : 's'} due.</p>}
-      </div>
-    </section>
-  );
-}
-
-function EvidenceCount({ label, value }) {
-  return (
-    <div className="bg-surface2 rounded-xl px-3 py-2.5">
-      <p className="text-xl font-bold tabular-nums">{value}</p>
-      <p className="text-[10px] text-ink3">{label}</p>
     </div>
   );
 }

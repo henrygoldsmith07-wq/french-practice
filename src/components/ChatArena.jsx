@@ -34,9 +34,32 @@ const PAUSE_FILLER = {
 };
 import ScenarioPicker from './ScenarioPicker';
 import { Avatar, AiBubble, UserBubble, RedoCompare, STRONG_LEVELS } from './ArenaCorrections';
+import TransferPrompt from './TransferPrompt';
 import { markOutcomeRecurrence } from '../lib/studyFlow';
 
 const CURVEBALL_TURN = 3; // the surprise lands on the learner's 3rd turn
+
+// The correction the fresh-context transfer step should re-use: the strongest
+// one from the turn the learner just redid, so the challenge demands exactly
+// the structure that was repaired.
+function pickTransferCorrection(turn) {
+  const detailed = turn?.evaluation?.corrections_detailed || [];
+  const strong = detailed.find((c) => STRONG_LEVELS.has(c.level)) || detailed[0];
+  if (strong) {
+    return {
+      original: String(strong.original || ''),
+      correction: String(strong.correction || ''),
+      why: String(strong.note || ''),
+      topic: turn?.evaluation?.grammar_topic || null,
+    };
+  }
+  return {
+    original: String(turn?.userText || ''),
+    correction: String(turn?.redo?.retryText || turn?.userText || ''),
+    why: '',
+    topic: turn?.evaluation?.grammar_topic || null,
+  };
+}
 
 // Conversation modes:
 //   coach    — per-turn corrections, hints, redo (the classic Arena loop)
@@ -530,6 +553,30 @@ export default function ChatArena({ apiKey, mockMode, ttsRate, level, onTtsRate,
             )}
             <AiBubble text={turn.evaluation.reply} translation={turn.evaluation.translation} ttsRate={ttsRate} />
             {turn.redo && <RedoCompare redo={turn.redo} before={turn.evaluation.scores} idx={i} />}
+            {turn.redo && turn.redo.verdict !== 'worse' && !turn.transferDone && (
+              <TransferPrompt
+                correction={pickTransferCorrection(turn)}
+                contextId={scenario.id}
+                difficulty={2}
+                onSubmit={({ result, usedStructure }) => {
+                  // One clean pass in a new context is transfer evidence —
+                  // recorded through the weakness memory so the delayed
+                  // retest is scheduled. Never mastery on its own.
+                  if (usedStructure && turn.evaluation?.grammar_topic) {
+                    recordWeaknessRepair(turn.evaluation.grammar_topic, {
+                      scenarioId: scenario.id,
+                      sessionId: turn.sessionId || currentSessionId(),
+                      encounterId: `transfer:${turn.encounterId || i}`,
+                      activityId: `${scenario.id}:transfer`,
+                      passed: result.independent,
+                    });
+                  }
+                  onTurn?.({ transfer: { correct: usedStructure, independent: result.independent } });
+                  setHistory((h) => h.map((t, j) => (j === i ? { ...t, transferDone: true } : t)));
+                }}
+                onSkip={() => setHistory((h) => h.map((t, j) => (j === i ? { ...t, transferDone: true } : t)))}
+              />
+            )}
           </div>
         ))}
         {phase === 'thinking' && (

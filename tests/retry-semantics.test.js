@@ -133,7 +133,7 @@ test('RecallRunner contract: a synchronous double-tap records exactly one rating
 
   // And the evidence trail holds exactly ONE success event for that
   // encounter — the double-tap cannot fabricate a second independent one.
-  const entry = storage.getLearnerErrorModel().entries.find((e) => e.id === 'vocabulary:item:chien');
+  const entry = storage.getLearnerErrorModel().entries.find((e) => e.id === 'vocabulary:chien');
   assert.ok(entry, 'the lapse entry exists');
   const cleanEvents = entry.evidence.filter((item) => item.source === 'per-review-event' && item.score === 100 && item.encounterId === encounterId);
   assert.equal(cleanEvents.length, 1, 'one presentation, one rating, one evidence event');
@@ -151,7 +151,7 @@ test('two distinct encounters of the same card remain independent evidence', asy
   storage.rateCard('chat', 'good', { mode: 'receptive', itemLabel: 'le chat', source: 'today-recall', encounterId: enc1 });
   storage.rateCard('chat', 'good', { mode: 'receptive', itemLabel: 'le chat', source: 'today-recall', encounterId: enc2 });
 
-  const entry = storage.getLearnerErrorModel().entries.find((e) => e.id === 'vocabulary:item:chat');
+  const entry = storage.getLearnerErrorModel().entries.find((e) => e.id === 'vocabulary:chat');
   const cleanEvents = entry.evidence.filter((item) => item.source === 'per-review-event' && item.score === 100);
   const enc1Hits = cleanEvents.filter((s) => s.encounterId === enc1).length;
   const enc2Hits = cleanEvents.filter((s) => s.encounterId === enc2).length;

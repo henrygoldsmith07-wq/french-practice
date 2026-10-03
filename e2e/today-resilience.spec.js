@@ -51,7 +51,7 @@ test('offline Today session stays complete: authored drill replaces the AI drill
   await seedLocalStorage(page, MISTAKE_SEED);
   // Mock off + no key = no AI capability; the authored library drill must
   // appear instead of an "unavailable" screen.
-  await page.getByRole('button', { name: 'Speak today' }).click();
+  await page.getByRole('button', { name: /Start today's session/ }).click();
   await expect(page.getByText(/Aujourd'hui/i).first()).toBeVisible({ timeout: 10_000 });
   // Either the authored drill rendered questions, or the chain walked on to
   // retype/SRS — but never an unavailable hole.
@@ -134,7 +134,7 @@ test('Today delivery is recorded on the selection trial after a run', async ({ p
       retests: [], mastery: 10, status: 'active', schemaVersion: 1, engineVersion: 3,
     }]));
   });
-  await page.getByRole('button', { name: 'Speak today' }).click();
+  await page.getByRole('button', { name: /Start today's session/ }).click();
   await expect(page.getByText(/Aujourd'hui/i).first()).toBeVisible({ timeout: 10_000 });
   // The speak segment cannot be skipped by design: complete one mock turn,
   // then end the conversation so the session advances.

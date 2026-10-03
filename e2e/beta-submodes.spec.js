@@ -299,7 +299,7 @@ async function completeTodayFor(page, languageCardName, langAttr) {
   await completeOnboardingAs(page, languageCardName);
 
   await openTab(page, 'Today');
-  await page.getByRole('button', { name: /Speak today/ }).click();
+  await page.getByRole('button', { name: /Start today's session/ }).click();
   const todayDialog = page.getByRole('dialog', { name: new RegExp(`Today's ${languageCardName.source.replace(/\s*·\s*Beta/, '')}`, 'i') });
   await expect(todayDialog).toBeVisible({ timeout: 20_000 });
 

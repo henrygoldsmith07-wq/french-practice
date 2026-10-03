@@ -190,7 +190,7 @@ test('the one-time legacy migration survives the extraction (legacy sources stil
   const storage = await import(`../src/lib/storage.js?${stamp}`);
   const model = storage.getLearnerErrorModel();
   assert.ok(model.entries.some((e) => e.id === 'grammar:word_order'), 'legacy grammar errors migrate');
-  assert.ok(model.entries.some((e) => e.id === 'vocabulary:item:bonjour'), 'legacy review lapses migrate');
+  assert.ok(model.entries.some((e) => e.id === 'vocabulary:bonjour'), 'legacy review lapses migrate to the consolidated card key');
   // Second read must be the stored model, not a re-migration.
   assert.equal(storage.getLearnerErrorModel().entries.length, model.entries.length);
 });

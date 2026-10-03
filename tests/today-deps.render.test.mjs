@@ -74,6 +74,17 @@ async function resolveAll(d, names) {
     });
   }
 }
+// Wait for a one-shot completion (onDone/onCleared) with React flushing
+// between ticks. Each tick is its own act so the render that schedules the
+// completion timer actually lands during the loop — a sleep inside ONE act
+// defers that render until the block exits, and the timer then fires after
+// the wait has already ended. Never a bare fixed sleep for a callback.
+async function waitForCompletion(check, { maxMs = 8000 } = {}) {
+  for (let waited = 0; waited < maxMs && !check(); waited += 25) {
+    await act(async () => { await new Promise((r) => setTimeout(r, 25)); });
+  }
+  return check();
+}
 async function renderToday(depsImpl) {
   const container = document.createElement('div');
   document.body.appendChild(container);
@@ -271,10 +282,10 @@ for (const order of ORDERS) {
 
     const good = [...container.querySelectorAll('button')].find((b) => b.textContent === 'Good');
     assert.ok(good, 'recall ratings are available after reveal');
-    await act(async () => {
-      good.click();
-      await new Promise((r) => setTimeout(r, 700));
-    });
+    await act(async () => { good.click(); });
+    // The advance (250 ms) → completion (300 ms) chain spans two renders; the
+    // helper lets each land before checking. A bare sleep raced the timer.
+    await waitForCompletion(() => completed > 0);
 
     assert.equal(completed, 1, 'the recall segment advances exactly once after the last card');
   } finally {
@@ -299,6 +310,7 @@ for (const order of ORDERS) {
       }));
       await new Promise((r) => setTimeout(r, 25));
     });
+    await waitForCompletion(() => completed > 0);
     assert.equal(completed, 1, 'an empty delayed-review queue skips exactly once');
   } finally {
     await close({ root, container });
@@ -346,10 +358,8 @@ for (const order of ORDERS) {
 
     const remembered = [...container.querySelectorAll('button')].find((b) => b.textContent === 'I said it right');
     assert.ok(remembered, 'the learner can self-mark delayed recall');
-    await act(async () => {
-      remembered.click();
-      await new Promise((r) => setTimeout(r, 500));
-    });
+    await act(async () => { remembered.click(); });
+    await waitForCompletion(() => completed > 0);
     assert.equal(completed, 1, 'completed delayed review advances exactly once');
   } finally {
     await close({ root, container });
@@ -392,6 +402,7 @@ for (const order of ORDERS) {
       }));
       await new Promise((r) => setTimeout(r, 20));
     });
+    await waitForCompletion(() => completed > 0);
     assert.equal(completed, 1, 'empty retype completion is one-shot, not callback-identity driven');
   } finally {
     await close({ root, container });
@@ -559,7 +570,7 @@ for (const order of ORDERS) {
       await new Promise((r) => setTimeout(r, 20));
     });
 
-    assert.ok(container.textContent.includes('Check 2/2'), 'double tap advances exactly one item');
+    assert.ok(/check\s*2\/2/i.test(container.textContent), 'double tap advances exactly one item');
     assert.ok(container.textContent.includes('Cat'), 'the second assessment item is not skipped');
     assert.equal(completed, 0, 'check cannot finish from the duplicated first-item tap');
   } finally {
@@ -832,7 +843,20 @@ for (const order of ORDERS) {
       }));
       await new Promise((r) => setTimeout(r, 80));
     });
-    const done = [...container.querySelectorAll('button')].find((b) => b.textContent === 'Done drilling');
+    // Quiz's "Done drilling" footer is its RESULTS screen: play through the
+    // mock drill (three questions) before asserting on it. The drill builds
+    // through a lazy chunk, so every wait is on the rendered state.
+    const buttonText = (b) => b.textContent.trim();
+    await waitForCompletion(() => [...container.querySelectorAll('button')].some((b) => /Next question|Finish|Done drilling/.test(buttonText(b))));
+    for (let round = 0; round < 12 && ![...container.querySelectorAll('button')].some((b) => buttonText(b).startsWith('Done drilling')); round += 1) {
+      const option = [...container.querySelectorAll('button')].find((b) => !/^(Next question|Finish|Done drilling)/.test(buttonText(b)));
+      if (option) await act(async () => { option.click(); });
+      await waitForCompletion(() => [...container.querySelectorAll('button')].some((b) => /^(Next question|Finish)/.test(buttonText(b))));
+      const next = [...container.querySelectorAll('button')].find((b) => /^(Next question|Finish)/.test(buttonText(b)));
+      if (next) await act(async () => { next.click(); });
+    }
+    await waitForCompletion(() => [...container.querySelectorAll('button')].some((b) => buttonText(b).startsWith('Done drilling')));
+    const done = [...container.querySelectorAll('button')].find((b) => buttonText(b).startsWith('Done drilling'));
     assert.ok(done, 'mock AI drill renders its completion action');
     await act(async () => {
       done.click();

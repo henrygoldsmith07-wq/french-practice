@@ -74,7 +74,9 @@ function migrateLearnerErrors() {
     if (event.rating !== 'again' && event.correct !== false) continue;
     model = applyLearnerError(model, {
       category: 'vocabulary',
-      key: `item:${event.itemId}`,
+      // Same card key as logReview writes today, so migrated legacy misses
+      // merge into the live gap instead of duplicating it.
+      key: event.mode === 'productive' ? `${event.itemId}::productive` : event.itemId,
       label: event.itemLabel || event.itemId,
       mode: event.mode || 'cards',
       source: 'legacy-review-events',

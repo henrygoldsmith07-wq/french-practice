@@ -52,7 +52,7 @@ async function seedStudy(page, pid, day, extra = {}) {
 }
 
 async function walkToCheck(page) {
-  await page.getByRole('button', { name: 'Speak today' }).click();
+  await page.getByRole('button', { name: /Start today's session/ }).click();
   await expect(page.locator('[aria-label="Today\'s French"]')).toBeVisible({ timeout: 20_000 });
   const input = page.getByRole('textbox', { name: /Typed reply/i });
   await expect(input).toBeVisible({ timeout: 20_000 });

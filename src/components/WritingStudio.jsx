@@ -9,10 +9,35 @@ import { addErrorNotebook } from '../lib/errorNotebook';
 import { explainCorrection } from '../lib/writing';
 import { Markdown, Spinner } from './ui';
 import { Check, RefreshCw } from './icons';
+import WritingRepairLoop from './WritingRepairLoop';
 
 // Free writing (quick correction) and Essay studio (structured feedback):
 // prompt → write → AI review with corrections, strengths, suggestions and
 // scores. Word count guides length; XP scales with the overall score.
+
+// The AI's corrections arrive as free text lines ("original → corrected").
+// Parse them into the structured shape the repair loop prioritises. Any line
+// that is not a clear correction pair is skipped — never guessed at.
+function parseCorrections(correctionsText) {
+  return String(correctionsText || '')
+    .split(/\n+/)
+    .map((line) => line.trim())
+    .map((line) => {
+      const m = line.match(/^(.+?)\s*[→\-–]\s*(.+)$/);
+      if (!m) return null;
+      const original = m[1].replace(/^[^a-zA-ZÀ-ÿ]+/, '').trim();
+      const corrected = m[2].replace(/\s*[—\-–(].*$/, '').trim();
+      if (!original || !corrected || original === corrected) return null;
+      return {
+        original,
+        correction: corrected,
+        why: explainCorrection(m[1], m[2]),
+        recurrences: 0,
+      };
+    })
+    .filter(Boolean)
+    .slice(0, 10);
+}
 
 export default function WritingStudio({ depth, apiKey, mockMode, level, onXp, onActivity }) {
   const essay = depth === 'essay';
@@ -182,6 +207,27 @@ export default function WritingStudio({ depth, apiKey, mockMode, level, onXp, on
               </div>
             )}
           </div>
+
+          <WritingRepairLoop
+            corrections={parseCorrections(review.corrections)}
+            onRecorded={({ task, typed }) => {
+              // The learner typed the repair themselves: it becomes a retype
+              // task that returns later in a different context.
+              try {
+                addErrorNotebook({ original: task.original, corrected: typed, why: task.why });
+              } catch { /* notebook bookkeeping must never break feedback */ }
+            }}
+            onRepaired={(ids, rewriteText) => {
+              onActivity?.({
+                type: 'writing-repair',
+                repaired: ids.length,
+                mode: essay ? 'essay' : 'free-writing',
+                encounterId: encounterRef.current,
+                activityId: `${essay ? 'essay-studio' : 'free-writing'}:repair`,
+              });
+              if (rewriteText) setRevised(true);
+            }}
+          />
 
           <div>
             <h4 className="text-[11px] font-bold uppercase tracking-wider text-ink2 mb-1.5">Your text</h4>

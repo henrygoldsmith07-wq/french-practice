@@ -725,33 +725,6 @@ export function recordGrammarError(topicId, { mode = 'conversation', score = nul
   return all[topicId];
 }
 
-export function recordVocabularyOutcome(cardKey, outcome, { mode = 'receptive', score = null, label = null, source = 'srs', sessionId = null, encounterId = null, activityId = null } = {}) {
-  const entry = getLearnerErrors({ limit: 240 }).find((e) => e.id === `vocabulary:${cardKey}`);
-  if (!entry && outcome !== 'error') return null;
-  if (outcome === 'error') {
-    return recordLearnerError({
-      category: 'vocabulary',
-      key: cardKey,
-      label: label || cardKey,
-      mode,
-      score,
-      source,
-    });
-  }
-  return recordLearnerSuccess({
-    category: 'vocabulary',
-    key: cardKey,
-    mode,
-    score,
-    source,
-    // Evidence identity: distinct encounters accumulate toward resolution;
-    // re-answering the same presentation never does (see learnerErrors.js).
-    sessionId,
-    encounterId,
-    activityId: activityId || cardKey,
-  });
-}
-
 export function getLearnerErrorModel() {
   return _storeGetLearnerErrorModel();
 }
@@ -1773,21 +1746,11 @@ export function rateCard(cardId, rating, opts={}) {
       source: opts.source || 'srs',
       ...identity,
     });
-    // The vocabulary loop's producer AND consumer, in one place: a lapse is
-    // a mistake (enters the learner-error model); a later clean recall of a
-    // card that has an active gap is its success evidence. The success call
-    // is a no-op for cards without a gap, so ordinary reviews never create
-    // entries — and resolving still requires two independent clean passes,
-    // never one lucky answer.
-    recordVocabularyOutcome(key, rating === 'again' ? 'error' : 'success', {
-      mode,
-      score: rating === 'again' ? 0 : null,
-      label: opts.itemLabel || cardId,
-      source: 'srs',
-      // Evidence identity: the caller's encounter for this one presentation
-      // (or a fresh one when the caller doesn't track presentations).
-      ...identity,
-    });
+    // The review outcome is recorded ONCE — in logReview below, which owns the
+    // `item:<card>` key shape and per-presentation provenance the evidence
+    // tests pin. Recording it here too minted a SECOND weakness for the same
+    // lapse under a different key, so one forgotten word inflated into two
+    // entries in Today's weakness list and the Progress screen.
     return next;
   }
   const prev = srs[key] || { interval: 0, reps: 0, lapses: 0, ease: DEFAULT_EASE };
@@ -1883,16 +1846,23 @@ function logReview({ cardId, rating, elapsedMs, skill, intervalDays, mode, itemL
   });
   const learnerError = {
     category: 'vocabulary',
-    key: `item:${event.itemId}`,
+    // ONE gap per FSRS card, keyed by the card's own key (bare id for
+    // receptive, `id::productive` for productive) so recognition and
+    // production stay distinct weaknesses. A parallel `item:` writer here
+    // used to record the same lapse twice — one forgotten word inflated into
+    // two entries — so this is now the single owner.
+    key: event.mode === 'productive' ? `${event.itemId}::productive` : event.itemId,
     label: itemLabel || event.itemId,
     mode: 'cards',
-    // An SRS review is a spaced, independent recall of material the learner
-    // last saw days ago — exactly the delayed evidence the recovery loop
-    // treats as the strong signal (one clean delayed pass resolves).
-    delayed: true,
     score: event.correct ? 100 : 0,
     source: 'per-review-event',
     detail: event.correct ? 'Successful recall.' : 'Card marked again.',
+    // NO blanket `delayed: true` here: evidenceStrength decides from the
+    // clock (a review on a later local day than the miss is a delayed recall;
+    // the same day is not). Claiming "delayed" for every review resolved a
+    // weakness from a single lucky answer minutes after the lapse — the one
+    // thing the evidence rules forbid. A genuinely spaced review still
+    // resolves in one pass, because its day really is later.
     // Provenance of the presentation that produced this review. Session id
     // anchors it to this app visit; the encounter id dedupes re-answers of
     // the same presentation so a lucky double-tap cannot mint independence.

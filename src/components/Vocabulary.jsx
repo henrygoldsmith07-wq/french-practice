@@ -14,6 +14,7 @@ import VocabQuiz from './VocabQuiz';
 import Memory from './Memory';
 import Mascot from './Mascot';
 import { weakEntries, notebookAsEntries, reviewOrder, dueEntries, frontierTier, isEntryDue, NEW_CARD_CAP } from '../lib/memory';
+import { knowledgeProfile, knowledgeLabel, nextVocabMode } from '../lib/vocabKnowledge';
 import { fsrsRetention, isProductiveUnlocked } from '../lib/fsrs';
 import { SpeakButton } from './ui';
 import { ChevronLeft, ChevronRight, Layers, Book, Plus, Trash, BarChart, Clock, Search, Target } from './icons';
@@ -463,6 +464,22 @@ function Deck({ packId, onBack, srs, onRated, onSavedChange, apiKey, mockMode, o
         {retention!=null && (
           <p className="text-[11px] text-ink3 text-center">Predicted recall: {Math.round(retention*100)}% · {cardMode} · {cardSrs.D!=null ? `D${cardSrs.D} S${cardSrs.S}d` : `ease ${cardSrs.ease}`}</p>
         )}
+        {(() => {
+          // Productive vs receptive vs listening: how well this word is known
+          // in each direction. Listening says "unknown" honestly when no
+          // listening evidence exists — it is never guessed.
+          try {
+            const profile = knowledgeProfile(srs, entry.id);
+            const mode = nextVocabMode(profile);
+            return (
+              <p className="text-[11px] text-ink2 text-center leading-relaxed">
+                {knowledgeLabel(profile)}
+                {mode === 'production' && <span className="block text-[10px] text-ink3 mt-0.5">You recognise this one — practising using it next.</span>}
+                {mode === 'listening' && <span className="block text-[10px] text-ink3 mt-0.5">Worth hearing in context next.</span>}
+              </p>
+            );
+          } catch { return null; }
+        })()}
         {cardMode==='productive' && !productiveReady && (
           <p className="text-[11px] text-ink3 text-center">Produce mode unlocks after 2 good receptive reviews.</p>
         )}
