@@ -33,7 +33,7 @@ jobs:
         run: npm run lint:content
       - name: Lint code (no-undef + React hooks)
         run: npm run lint:code
-      - name: Lint tests (correctness: no-undef, no-dupe-keys, constant expressions)
+      - name: "Lint tests (no-undef, no-dupe-keys, constant expressions)"
         run: npm run lint:tests -- --quiet
       - name: Unit tests
         run: npm test
@@ -45,7 +45,7 @@ jobs:
       # the ESLint step above (no-undef, react-hooks rules).
       # Turning on `checkJs` for src/lib is the real upgrade and needs JSDoc
       # annotations across the pure modules first — tracked, not pretended.
-      - name: Type check (tsconfig sanity — JS is covered by ESLint)
+      - name: "Type check (tsconfig sanity - JS is covered by ESLint)"
         run: npm run type-check
       - name: Build
         run: npm run build
