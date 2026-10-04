@@ -93,6 +93,14 @@ export function canonicaliseModel(model) {
 export function assistanceTier(success) {
   if (success.assisted === true) return 'assisted';
   if (success.hinted === true) return 'scaffolded';
+  // Producers label support with `assistance` (TrackPlayer: 'scaffolded' when
+  // the transcript was revealed), which is the same vocabulary the evidence
+  // pipeline reads in learningEvidence.assistanceOf. Reading only `assisted`
+  // here silently downgraded every such pass to 'none' — i.e. an answer the
+  // learner could read off the screen was scored as independent.
+  const declared = String(success.assistance || '').toLowerCase();
+  if (declared === 'assisted') return 'assisted';
+  if (declared === 'scaffolded') return 'scaffolded';
   const mode = String(success.mode || '');
   // Modes that are structurally scaffolded: the answer was on screen, or the
   // producer cannot know how much of the answer the learner generated.

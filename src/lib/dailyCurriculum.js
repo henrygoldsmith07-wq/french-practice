@@ -1,5 +1,5 @@
 import { localDayKey } from './localDay.js';
-import { followUpCopy } from './followUp.js';
+import { followUpCopy, proofFor } from './followUp.js';
 
 // Daily curriculum — answers "what is the most valuable French practice for
 // this learner TODAY?" and can explain why.
@@ -270,6 +270,10 @@ export function buildDailyCurriculum(input = {}) {
       minutes: minutesFor('followup'),
       payload: { task: effFollowUp },
       why: followUpCopy(effFollowUp),
+      // What a clean pass would actually prove, attached to the plan for
+      // inspection (the research export and the Progress audit read it). It is
+      // deliberately NOT learner-facing: the segment's own copy stays plain.
+      proof: proofFor(effFollowUp),
     });
   }
 

@@ -26,6 +26,7 @@ import { localDayIndex } from './localDay.js';
 export const FOLLOW_UP_KINDS = Object.freeze({
   AUTHORED: 'authored-transfer',
   PRODUCTION: 'production-transfer',
+  LISTENING: 'listening-transfer',
 });
 
 const asText = (value) => String(value || '').trim();
@@ -125,10 +126,52 @@ export function followUpTask(due, options = {}) {
     };
   }
 
-  // Listening, pronunciation, speaking and reading have no offline check that
-  // can honestly be GRADED against this target yet. Playing another track is
-  // exposure, not evidence: without a comprehension result tied to this
-  // weakness it would be a repeat dressed as a new situation.
+  // ── Listening: a graded check on a recording the learner has not heard ───
+  // Listening CAN be checked honestly and offline: every authored track ships
+  // its own comprehension questions, so the verdict comes from what the learner
+  // understood, not from the fact that audio played. The only rule that matters
+  // is freshness — the track must be one this session has not already put on
+  // and one the learner has never scored, otherwise it is a replay.
+  if (skill === 'listening') {
+    const heard = new Set(Array.isArray(options.heardTrackIds) ? options.heardTrackIds : []);
+    const pool = (Array.isArray(options.tracks) ? options.tracks : []).filter((t) => (
+      t && t.id
+      && t.id !== options.sessionTrackId
+      && !heard.has(t.id)
+      // A track with no questions cannot be graded, so it cannot be evidence.
+      && Array.isArray(t.questions) && t.questions.length > 0
+    ));
+    if (!pool.length) return null;
+    const track = rotate(pool, dayIndex)[0];
+    return {
+      kind: FOLLOW_UP_KINDS.LISTENING,
+      type,
+      targetId,
+      skill,
+      key,
+      label: track.title || label,
+      track,
+      // Unheard audio with unseen questions: this is the one task whose
+      // material is genuinely held out from the learner.
+      heldOut: true,
+      encounterId: `followup:${track.id}:${type}:${dayIndex}`,
+      prompt: 'Something you have not heard before — same ear work.',
+      // A clean pass means full comprehension of unseen audio. Anything less is
+      // not proof of transfer, and a revealed transcript makes it assisted.
+      passAt: 100,
+    };
+  }
+
+  // Pronunciation, speaking and reading still have no offline check that can be
+  // honestly GRADED against this target.
+  //
+  // Pronunciation is spoken, and the only honest scorer (Pronunciation.jsx
+  // read-aloud) needs a microphone and an ASR path — when those are absent
+  // the check would silently vanish, and the model must not promise a check it
+  // may never run. Speaking already has its own transfer step: the ChatArena
+  // "use it somewhere new" challenge, whose verified result records transfer
+  // evidence directly (see learnerErrorStore's `transferVerified`). Reading
+  // needs a comprehension item pool keyed to the weak skill.
   //
   // Returning null is the point. It is what tells the session to promise
   // nothing today instead of manufacturing a pass — and it is the honest
@@ -175,6 +218,8 @@ export function proofFor(task) {
         : 'a delayed recall of the same rule, unassisted, after a gap';
     case FOLLOW_UP_KINDS.PRODUCTION:
       return 'using the word unprompted in a new sentence shows it is reachable in production, not only in recognition';
+    case FOLLOW_UP_KINDS.LISTENING:
+      return 'understanding a recording the learner has never heard shows the ear holds up on new material, not just the practised one';
     default:
       return 'practice only; no claim is made from this check';
   }
@@ -192,7 +237,29 @@ export function followUpCopy(task) {
       return task.type === 'delayed'
         ? 'You fixed this word a while back — use it again, on your own.'
         : 'Use this word in a new sentence — nothing to pick from.';
+    case FOLLOW_UP_KINDS.LISTENING:
+      return task.type === 'delayed'
+        ? 'You got this one before. Here is something else entirely.'
+        : 'Listen to something new, then answer on what you understood.';
     default:
       return 'A check you owe yourself.';
   }
+}
+
+/**
+ * The verdict for a graded listening result.
+ *
+ * Full comprehension of unseen audio is the bar, because a listening weakness
+ * is precisely "the ear gives out on material it has not met". Partial
+ * comprehension is recorded, honestly, as a miss.
+ *
+ * @param {object} task the listening task
+ * @param {{score?: number, transcriptRevealed?: boolean, replayCount?: number}} result
+ */
+export function gradeListening(task, result = {}) {
+  const score = Math.max(0, Math.min(100, Math.round(Number(result.score) || 0)));
+  // Reading along is support, not comprehension — it can extend "improving"
+  // but must never count as an independent transfer.
+  const assisted = result.transcriptRevealed === true || Number(result.replayCount) > 2;
+  return { correct: !assisted && score >= (task?.passAt ?? 100), score, assisted };
 }

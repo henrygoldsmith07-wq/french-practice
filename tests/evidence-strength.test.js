@@ -104,6 +104,22 @@ test('assistanceTier classifies structurally scaffolded modes without flags', ()
   assert.equal(assistanceTier({}), 'none');
 });
 
+test('assistanceTier reads the `assistance` label producers actually send', () => {
+  // TrackPlayer labels a transcript-revealed comprehension pass
+  // `assistance: 'scaffolded'`, and learningEvidence.assistanceOf already
+  // understands that vocabulary. The classifier read only `assisted`/`hinted`,
+  // so such a pass was stored as assistance 'none' — i.e. an answer the learner
+  // could read off the screen counted as independent.
+  assert.equal(assistanceTier({ assistance: 'scaffolded' }), 'scaffolded');
+  assert.equal(assistanceTier({ assistance: 'assisted' }), 'assisted');
+  assert.equal(assistanceTier({ assistance: 'none' }), 'none');
+  // The legacy flags still win where they disagree with a stale label.
+  assert.equal(assistanceTier({ assisted: true, assistance: 'none' }), 'assisted');
+  assert.equal(assistanceTier({ hinted: true, assistance: 'none' }), 'scaffolded');
+  // An unrecognised label must not invent support that was never declared.
+  assert.equal(assistanceTier({ assistance: 'probably-fine' }), 'none');
+});
+
 test('legacy success evidence without assistance fields keeps its exact old semantics', () => {
   const model = recordLearnerSuccess(seededModel(), {
     category: 'grammar', key: 'passe-compose', mode: 'weakness-retest', score: 88,

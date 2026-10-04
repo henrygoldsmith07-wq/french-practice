@@ -7,11 +7,11 @@
 //   2. a pass is recorded as transfer (or delayed) evidence for that exact
 //      weakness, and a miss goes back as a dated mistake;
 //   3. when no honest check can be built, the model says so (null) instead of
-//      manufacturing a pass.
+//      manufacturing a pass; and where one can (listening), it is graded.
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
-  followUpTask, gradeProduction, proofFor, followUpCopy, FOLLOW_UP_KINDS,
+  followUpTask, gradeProduction, gradeListening, proofFor, followUpCopy, FOLLOW_UP_KINDS,
 } from '../src/lib/followUp.js';
 import { buildDailyCurriculum } from '../src/lib/dailyCurriculum.js';
 import { ensureGrammarTopics, grammarTopicsReady } from '../src/lib/todayCapabilities.js';
@@ -80,8 +80,8 @@ test('a spoken-only grammar key keeps its ::productive suffix out of the word', 
   assert.equal(task.word, 'manger');
 });
 
-test('no honest offline check → null for pronunciation, speaking, reading, listening', async () => {
-  for (const skill of ['pronunciation', 'speaking', 'reading', 'listening']) {
+test('no honest offline check → null for pronunciation, speaking, reading', async () => {
+  for (const skill of ['pronunciation', 'speaking', 'reading']) {
     const task = followUpTask(
       { type: 'transfer', target: { id: `${skill}:x`, skill, key: 'x', label: 'x' } },
       { dayIndex: 0 },
@@ -90,6 +90,76 @@ test('no honest offline check → null for pronunciation, speaking, reading, lis
   }
   assert.equal(proofFor(null), 'no honest check could be built for this weakness today');
   assert.match(followUpCopy(null), /still needs a check/);
+});
+
+// ── listening: a graded check on unseen audio ───────────────────────────────
+
+const track = (id) => ({
+  id,
+  title: `Track ${id}`,
+  cefr: 'B1',
+  questions: [{ q: 'Is the rent inclusive of bills?', options: ['No', 'Yes'], answer: 1 }],
+});
+
+const LISTENING_DUE = {
+  type: 'transfer',
+  target: { id: 'listening:track:dl-colocation', skill: 'listening', key: 'track:dl-colocation', label: 'Rent and bills' },
+};
+
+test('a listening follow-up takes a recording the learner has never scored', () => {
+  const task = followUpTask(LISTENING_DUE, {
+    tracks: [track('a'), track('b'), track('c')],
+    heardTrackIds: ['a'],
+    dayIndex: 0,
+  });
+  assert.ok(task, 'a task is built');
+  assert.equal(task.kind, FOLLOW_UP_KINDS.LISTENING);
+  assert.ok(['b', 'c'].includes(task.track.id), 'never the recording already heard');
+  assert.equal(task.heldOut, true, 'unheard audio with unseen questions');
+});
+
+test('a listening follow-up never returns the recording this session already plays', () => {
+  const task = followUpTask(LISTENING_DUE, {
+    tracks: [track('today'), track('other')],
+    sessionTrackId: 'today',
+    dayIndex: 0,
+  });
+  assert.equal(task.track.id, 'other');
+});
+
+test('every track already heard → null, because a replay is not a check', () => {
+  const task = followUpTask(LISTENING_DUE, {
+    tracks: [track('a'), track('b')],
+    heardTrackIds: ['a', 'b'],
+    dayIndex: 0,
+  });
+  assert.equal(task, null, 'silence rather than repeating known audio');
+});
+
+test('a track with no questions cannot be evidence, so it is never offered', () => {
+  const task = followUpTask(LISTENING_DUE, {
+    tracks: [{ id: 'bare', title: 'Bare', questions: [] }, track('real')],
+    dayIndex: 0,
+  });
+  assert.equal(task.track.id, 'real', 'an ungradable track is skipped');
+  assert.equal(followUpTask(LISTENING_DUE, { tracks: [{ id: 'bare', title: 'Bare', questions: [] }], dayIndex: 0 }), null);
+});
+
+test('the listening bar is full comprehension of unseen audio', () => {
+  const task = followUpTask(LISTENING_DUE, { tracks: [track('a')], dayIndex: 0 });
+  assert.equal(gradeListening(task, { score: 100 }).correct, true);
+  assert.equal(gradeListening(task, { score: 67 }).correct, false, 'partial comprehension is a real miss');
+  // Reading along is support: it cannot be an independent transfer.
+  const assisted = gradeListening(task, { score: 100, transcriptRevealed: true });
+  assert.equal(assisted.assisted, true);
+  assert.equal(assisted.correct, false, 'a supported pass never demonstrates');
+  assert.equal(gradeListening(task, { score: 100, replayCount: 4 }).assisted, true, 'replaying repeatedly is support');
+});
+
+test('the listening check states what a pass proves', () => {
+  const task = followUpTask(LISTENING_DUE, { tracks: [track('a')], dayIndex: 0 });
+  assert.match(proofFor(task), /never heard/);
+  assert.match(followUpCopy(task), /something new/);
 });
 
 // ── grading production ──────────────────────────────────────────────────────
@@ -127,6 +197,10 @@ test('a runnable follow-up becomes a real session segment with minutes', async (
   assert.ok(seg, 'the owed check is scheduled');
   assert.ok(seg.minutes > 0, 'it gets time');
   assert.equal(seg.payload.task.targetId, 'grammar:passe-compose');
+  // The plan states what a clean pass would prove, so the claim is inspectable
+  // rather than only implied by the segment's existence.
+  assert.ok(seg.proof && seg.proof.length > 10, `proof is attached: ${seg.proof}`);
+  assert.notEqual(seg.proof, seg.why, 'the plain-language copy and the proof claim stay distinct');
 });
 
 test('the balanced (control) arm never schedules a learner-specific follow-up', async () => {
