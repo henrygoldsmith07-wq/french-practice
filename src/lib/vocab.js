@@ -6,7 +6,7 @@
 import { FLASHCARDS } from './data.js';
 import { EXTRA_VOCAB_PACKS } from './vocab-extra.js';
 import { CORE_VOCAB_PACKS } from './vocab-core.js';
-import { FREQUENCY_PACKS } from './vocab-frequency.js';
+import { FREQUENCY_PACKS, getFrequencyPacksFor } from './vocab-frequency.js';
 import { contentLang } from './content/active.js';
 import { CURRICULUM_PACKS_LOWER } from './content/curriculum-vocab-core.js';
 import { CURRICULUM_PACKS_UPPER } from './content/curriculum-vocab-upper.js';
@@ -322,8 +322,12 @@ const FR_VOCAB_PACKS = [
   },
   ...EXTRA_VOCAB_PACKS,
   ...CORE_VOCAB_PACKS,
-  // The full frequency dictionary, chunked into frequency-ranked decks.
-  ...FREQUENCY_PACKS,
+  // The full frequency dictionary now loads from a TSV data asset (see
+  // vocab-frequency.js) so it stays out of executable JS. It is NOT spread
+  // here: that would bake an empty array into the pack list before the asset
+  // resolves. The frequency decks append to this array once the asset lands,
+  // and the accessors below read the array each call — the same
+  // publish-then-serve contract the DE/ES registries use.
 ];
 
 // German and Spanish get the same treatment: their themed packs followed by
@@ -334,22 +338,25 @@ const FR_VOCAB_PACKS = [
 // the level-banded spine, so a learner following the path meets them first.
 export const CURRICULUM_PACKS = [...CURRICULUM_PACKS_LOWER, ...CURRICULUM_PACKS_UPPER];
 
+// Typed packs, then the frequency decks as they arrive from the asset. Built
+// per call so a resolved asset shows up in the sync view without re-import.
 const FR_ALL_PACKS = [...CURRICULUM_PACKS, ...FR_VOCAB_PACKS];
+const frPacks = () => [...FR_ALL_PACKS, ...FREQUENCY_PACKS];
 
-// The active language's packs. French is fully synchronous (composed
-// eagerly). DE/ES return their packs once the registry has resolved — which
-// the App prefetch does at boot — and [] in the brief cold-start window
-// before that. Async callers should prefer getVocabPacksAsync/allEntriesAsync.
+// The active language's packs. DE/ES return their packs once the registry has
+// resolved — which the App prefetch does at boot — and [] in the brief
+// cold-start window before that. Async callers should prefer
+// getVocabPacksAsync/allEntriesAsync.
 export const getVocabPacks = () => {
   const lang = contentLang();
-  if (lang === 'fr') return FR_ALL_PACKS;
+  if (lang === 'fr') return frPacks();
   return resolvedPacks.get(lang) || [];
 };
 
-/** The active language's packs, resolving lazily for DE/ES. */
+/** The active language's packs, resolving lazily for all languages. */
 export function getVocabPacksAsync() {
   const lang = contentLang();
-  if (lang === 'fr') return Promise.resolve(FR_ALL_PACKS);
+  if (lang === 'fr') return getFrequencyPacksFor('fr').then(() => frPacks());
   return getRegisteredPacks(lang);
 }
 
