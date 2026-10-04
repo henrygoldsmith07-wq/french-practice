@@ -10,8 +10,20 @@ import { learningCycleSummary } from './learningEvidence.js';
 
 const DAY = 86400000;
 
+// Every calendar day in this module must be a LOCAL day.
+//
+// The window bounds come from localDayKey(), but the timestamps being filtered
+// (session.date, event.at, entry.lastErrorAt) are persisted as UTC ISO strings
+// by storage.js. Slicing the first 10 characters of a UTC string yields the UTC
+// date, so an evening session east of Greenwich ran past UTC midnight, was
+// stamped a day ahead of the window, and was dropped: a learner who had just
+// practised for ten minutes was told they had not practised this week.
+//
+// One day identity for the whole app (localDay.js), applied to every input
+// shape. Invalid input yields null, which fails the window comparison and so
+// excludes the row rather than corrupting the bounds.
 function isoDay(value) {
-  return typeof value === 'string' ? value.slice(0, 10) : localDayKey(value);
+  return localDayKey(value instanceof Date ? value : new Date(value));
 }
 
 function inWindow(at, since, until) {

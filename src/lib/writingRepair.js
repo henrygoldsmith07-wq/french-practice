@@ -112,11 +112,17 @@ export function isMeaningAffecting(original = '', corrected = '') {
   const aVerbs = A.filter((w) => /(er|ir|re|ait|ais|é|ée|és|ées|ont|ent|ions)$/i.test(w));
   const bVerbs = B.filter((w) => /(er|ir|re|ait|ais|é|ée|és|ées|ont|ent|ions)$/i.test(w));
   if (aVerbs.join(' ') !== bVerbs.join(' ') && aVerbs.length && bVerbs.length) return true;
-  // Content-word swap.
+  // Content-word swap. NO upper bound: swapping one content word ("chat" →
+  // "chien") changes what the sentence means, and swapping four changes it
+  // more, not less. An upper limit here meant the more a learner diverged the
+  // LESS meaning-affecting it was reported — "un petit café noir" → "une
+  // grande maison verte", where every content word changed, was classified as
+  // a style tweak. This is the first sort key of selectImportantErrors, so it
+  // decided which corrections the learner saw first.
   const aContent = A.filter((w) => !STOPWORDS.has(w));
   const bContent = B.filter((w) => !STOPWORDS.has(w));
   const swapped = bContent.filter((w) => !aContent.includes(w));
-  return swapped.length >= 1 && swapped.length <= 2;
+  return swapped.length >= 1;
 }
 
 const MEANING_ORDER = {

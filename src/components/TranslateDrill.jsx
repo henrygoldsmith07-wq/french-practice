@@ -3,6 +3,7 @@ import { activeLanguage, langName } from '../lib/i18n';
 import { allEntries } from '../lib/vocab';
 import { recordSkillScore } from '../lib/storage';
 import { SpeakButton } from './ui';
+import { useTimeout } from '../hooks/useTimeout';
 import { Play, RefreshCw, Check, X } from './icons';
 import { EMPTY_CARD } from '../components/classNames.js';
 
@@ -36,6 +37,8 @@ export default function TranslateDrill({ onXp }) {
   );
   const [game, setGame] = useState(null);
   const inputRef = useRef(null);
+  // Cleared on unmount, so leaving mid-round cannot refocus a dead ref.
+  const scheduleFocus = useTimeout(() => inputRef.current?.focus(), 50);
 
   const draw = (used) => {
     let i;
@@ -66,7 +69,7 @@ export default function TranslateDrill({ onXp }) {
     }
     const idx = draw(game.used);
     setGame({ n: game.n + 1, idx, used: [...game.used, idx], toFr: !game.toFr, input: '', checked: false, correct: game.correct });
-    setTimeout(() => inputRef.current?.focus(), 50);
+    scheduleFocus();
   };
 
   if (!game) {

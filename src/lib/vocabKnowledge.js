@@ -47,9 +47,11 @@ export function knowledgeProfile(srs = {}, entryId, options = {}) {
   return {
     id: entryId,
     recognition: bandFor(receptive, now),
-    production: productive
-      ? bandFor(productive, now)
-      : { band: isProductiveUnlocked(srs, entryId) ? 'unknown' : 'unknown', retention: null },
+    // No productive card yet, so there is nothing to report: the band is
+    // `unknown` either way. (The two branches once read the same string, so
+    // the conditional said nothing — `productiveUnlocked` below is the field
+    // that actually tells the UI whether production is reachable.)
+    production: productive ? bandFor(productive, now) : { band: 'unknown', retention: null },
     listening,
     productiveUnlocked: isProductiveUnlocked(srs, entryId),
   };

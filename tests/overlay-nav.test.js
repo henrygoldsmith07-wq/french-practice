@@ -48,3 +48,30 @@ test('every declared overlay type opens and closes symmetrically', () => {
     assert.equal(close(state), null, `${type} closes`);
   }
 });
+
+test('re-opening the overlay that is already open returns the SAME state object', () => {
+  // This is load-bearing, not an optimisation. useReducer only skips a
+  // re-render when the returned state is Object.is-equal to the current one,
+  // so a fresh `{ type }` literal on every open made App re-render every time
+  // any caller dispatched `open` — including a caller inside an effect keyed
+  // on an inline callback, which is an unbounded loop ending in "Maximum
+  // update depth exceeded". ChatArena's session timer did exactly that.
+  const first = open(null, 'dashboard');
+  const second = open(first, 'dashboard');
+  assert.equal(second, first, 'identical open is a no-op, not a new object');
+  assert.equal(open(second, 'dashboard'), first, 'and it stays stable on repeat');
+});
+
+test('a real payload change still re-opens (idempotence is not blanket caching)', () => {
+  const a = open(null, 'reference', { tool: 'conjugation' });
+  const b = open(a, 'reference', { tool: 'vocabulary' });
+  assert.notEqual(b, a, 'different payload is a genuine state change');
+  assert.equal(overlayPayload(b, 'tool'), 'vocabulary');
+  const widened = open(a, 'reference', { tool: 'conjugation', extra: true });
+  assert.notEqual(widened, a, 'an added payload key is a change too');
+  assert.equal(open(a, 'reference', { tool: 'conjugation' }), a, 'an identical payload is not');
+});
+
+test('closing when nothing is open stays null rather than allocating', () => {
+  assert.equal(close(null), null, 'close is idempotent too');
+});

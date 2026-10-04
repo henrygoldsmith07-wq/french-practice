@@ -38,6 +38,15 @@ export function ScoreBadge({ value, size = 'md' }) {
 export function Modal({ open, onClose, children, wide = false, label }) {
   const panelRef = useRef(null);
   const restoreRef = useRef(null);
+  // Every call site passes an inline arrow, so `onClose` is a new identity on
+  // each parent render. Keying this effect on it tore the dialog down and
+  // rebuilt it on every parent render — the cleanup handed focus BACK to the
+  // opener (out of the `aria-modal` panel) and the body immediately yanked it
+  // to the first focusable, so toggling any switch in Settings reset a
+  // keyboard user's position to the top. Only `open` may restart the trap;
+  // the handler is read through a ref (the pattern Profile.jsx already uses).
+  const onCloseRef = useRef(onClose);
+  useEffect(() => { onCloseRef.current = onClose; }, [onClose]);
 
   useEffect(() => {
     if (!open) return undefined;
@@ -51,7 +60,7 @@ export function Modal({ open, onClose, children, wide = false, label }) {
       (first || panel).focus();
     });
     const onKey = (e) => {
-      if (e.key === 'Escape') { onClose(); return; }
+      if (e.key === 'Escape') { onCloseRef.current?.(); return; }
       const panel = panelRef.current;
       if (e.key !== 'Tab' || !panel) return;
       const focusables = panel.querySelectorAll(
@@ -74,7 +83,7 @@ export function Modal({ open, onClose, children, wide = false, label }) {
         try { restoreRef.current?.focus?.(); } catch { /* element gone */ }
       }
     };
-  }, [open, onClose]);
+  }, [open]);
 
   if (!open) return null;
   return (
@@ -150,6 +159,12 @@ export function SpeakButton({ text, rate = 1, slow = false, label }) {
       setSpeaking(false);
       return;
     }
+    // Clear any previous utterance's fallback BEFORE arming a new one. The ref
+    // only ever held the latest id, so tapping Listen on one bubble and then
+    // another left the first 30 s timer running: it fired mid-playback and
+    // flipped `speaking` back to false, desynchronising the button from audio
+    // that was still speaking.
+    clearTimeout(timeout.current);
     setSpeaking(true);
     speak(text, { rate: slow ? Math.min(rate, 0.75) : rate, onEnd: () => setSpeaking(false) });
     // Safety: onend is unreliable on some mobile browsers

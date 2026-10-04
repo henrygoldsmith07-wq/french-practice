@@ -37,7 +37,10 @@ describe('grammar library', () => {
   });
 
   it('looks up topics and daily tip', () => {
-    assert.equal(getGrammarTopic('present')?.title.includes('présent') || getGrammarTopic('present')?.id, 'present' && true);
+    // Was `…?.title.includes('présent') || …?.id, 'present' && true`: the `||`
+    // swallowed the interesting half and `'present' && true` is just `true`, so
+    // any existing topic object passed. Assert the title directly.
+    assert.match(getGrammarTopic('present').title, /présent/);
     assert.ok(getGrammarTopic('present'));
     const tip = grammarTopicOfDay(new Date(2026, 6, 30));
     assert.ok(tip?.id);

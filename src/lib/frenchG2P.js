@@ -76,8 +76,14 @@ export function analyzeFrenchText(sentence) {
     .toLowerCase()
     .replace(/[^a-zà-ÿ'’\s-]/g, ' ')
     .split(/\s+/)
-    .filter((w) => w && !['au', 'aux', 'et'].includes(w) || true)
-    .filter(Boolean);
+    // Drop empty tokens and the function words that carry no phonology of their
+    // own. The `|| true` that used to sit at the end of this predicate made it
+    // unconditionally true (operator precedence: `(w && !excluded) || true`),
+    // so au/aux/et were never excluded and were counted as syllables and
+    // liaison opportunities, skewing the rhythm/liaison/silent-endings scores
+    // in phonologicalScore.js.
+    .filter(Boolean)
+    .filter((w) => !['au', 'aux', 'et'].includes(w));
   const perWord = [];
   let nasals = 0, yCount = 0, uCount = 0, rCount = 0, silentEndings = 0;
   let syllables = 0;

@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react';
 import { recordSkillScore } from '../lib/storage';
+import { useTimeout } from '../hooks/useTimeout';
 import { RefreshCw, Check, X, Play } from './icons';
 import { EMPTY_CARD } from '../components/classNames.js';
 
@@ -26,6 +27,8 @@ const strip = (s) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/œ/g, '
 export default function AccentDrill({ onXp, sessionMode, onDone }) {
   const [game, setGame] = useState(null);
   const inputRef = useRef(null);
+  // Cleared on unmount, so leaving mid-round cannot refocus a dead ref.
+  const scheduleFocus = useTimeout(() => inputRef.current?.focus(), 50);
 
   const draw = (used) => {
     let i;
@@ -62,7 +65,7 @@ export default function AccentDrill({ onXp, sessionMode, onDone }) {
     }
     const idx = draw(game.used);
     setGame({ n: game.n + 1, wordIdx: idx, used: [...game.used, idx], input: '', checked: false, correct: game.correct });
-    setTimeout(() => inputRef.current?.focus(), 50);
+    scheduleFocus();
   };
 
   if (!game) {

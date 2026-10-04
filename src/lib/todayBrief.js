@@ -9,6 +9,7 @@ import { buildSessionPlan } from './sessionPlanner.js';
 import { plannerState } from './plannerState.js';
 import { weaknessLifecycle, WEAKNESS_LIFECYCLE } from './weaknessLifecycle.js';
 import { buildCapabilityMap } from './capabilityModel.js';
+import { localDayKey } from './localDay.js';
 import { getLearnerErrors, getSettings, getStudyEvents } from './storage.js';
 
 const SEGMENT_SHORT = {
@@ -99,9 +100,13 @@ function skillShortLabel(state) {
  */
 export function todayOutcome(options = {}) {
   const now = options.now || Date.now();
-  const today = new Date(now).toISOString().slice(0, 10);
+  // LOCAL day, from the one helper the app uses — not `toISOString()`, which
+  // slices the UTC date. An evening session east of Greenwich is stored on the
+  // next UTC day, so the UTC reading disagreed with the streak/XP surfaces
+  // about which day it was. This is the same drift weeklyReview.js had.
+  const today = localDayKey(now);
   const events = (options.events || getStudyEvents()).filter((e) => (
-    typeof e?.at === 'string' && e.at.slice(0, 10) === today
+    typeof e?.at === 'string' && localDayKey(e.at) === today
   ));
   const practised = new Set();
   let improved = 0;

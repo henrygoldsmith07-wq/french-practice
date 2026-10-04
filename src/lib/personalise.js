@@ -146,7 +146,7 @@ export function dailyRecommendations({ prefs, weaknesses, dueCount, suggestedSce
   const weights = STYLE_WEIGHTS[prefs.learningStyle] || STYLE_WEIGHTS.balanced;
   const weakBoost = {};
   (weaknesses || []).forEach((w, i) => {
-    const type = w.action.type === 'arena' ? 'arena' : w.action.type;
+    const type = w.action.type;
     weakBoost[type] = (weakBoost[type] || 0) + ((weaknesses || []).length - i);
   });
   const offered = (type) => (offer ? offer.includes(type) : hasCapabilityNow(TYPE_CAPABILITY[type]));

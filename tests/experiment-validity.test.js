@@ -1,15 +1,9 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { memoryStorage as memoryStorageDouble } from './helpers/memory-storage.js';
 
-function memoryStorage() {
-  const values = new Map();
-  return {
-    getItem: (key) => values.get(key) ?? null,
-    setItem: (key, value) => values.set(key, String(value)),
-    removeItem: (key) => values.delete(key),
-    key: (i) => [...values.keys()][i] ?? null,
-    get length() { return values.size; },
-  };
+function memoryStorage(seed) {
+  return memoryStorageDouble(seed);
 }
 
 async function fresh() {
@@ -139,12 +133,12 @@ test('pooled delivery stats come from the pooled dataset and count sessions sepa
   const { aggregation } = f;
   const mk = (pid, arm) => ({
     format: 'le-studio.validation-study', version: 2, stores: {},
-    study: { participantId: pid, arm, protocolVersion: 1, enrolledAt: '2026-09-01T09:00:00Z', status: 'active', protocolVersion: 1 },
+    study: { participantId: pid, arm, protocolVersion: 1, enrolledAt: '2026-09-01T09:00:00Z', status: 'active' },
     studyOutcomes: mkRows(pid, arm, 5),
     studyChecks: [],
   });
   const pool = aggregation.poolStudyData({
-    localStudy: { participantId: 'participant-local', arm: 'adaptive', protocolVersion: 1, enrolledAt: '2026-09-01T09:00:00Z', status: 'active', protocolVersion: 1 },
+    localStudy: { participantId: 'participant-local', arm: 'adaptive', protocolVersion: 1, enrolledAt: '2026-09-01T09:00:00Z', status: 'active' },
     localOutcomes: mkRows('participant-local', 'adaptive', 5),
     imports: [mk('participant-i1', 'balanced'), mk('participant-i2', 'balanced')],
   });

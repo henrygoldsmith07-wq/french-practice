@@ -278,8 +278,18 @@ export function recordRetest(graph, { id, at, correct, context = null, immediate
   m.delayedFamilies = [...new Set([...priorDelayedFamilies, fam])];
 
   // No recurrence or wrong retest after the newest delayed success.
-  const recurredAfter = m.lastSeenAt && Date.parse(m.lastSeenAt) > nowMs ? false : Boolean(
-    m.lastSeenAt && Date.parse(m.lastSeenAt) > Date.parse(m.lastDelayedAt || 0)
+  //
+  // The recurrence baseline must be the PREVIOUS qualifying delayed retest —
+  // `lastDelayed`, captured before this call overwrote `m.lastDelayedAt`. The
+  // old expression compared `lastSeenAt` against `m.lastDelayedAt`, which three
+  // lines above was just set to `now`, so both arms of its ternary evaluated
+  // `lastSeenAt > nowMs`: the guard was provably false for every input and the
+  // documented "no recurrence after the newest delayed evidence" rule never
+  // fired. A learner who regressed between two delayed successes was retired to
+  // full mastery anyway.
+  const priorDelayedMs = lastDelayed ? Date.parse(lastDelayed.at) : 0;
+  const recurredAfter = Boolean(
+    priorDelayedMs && m.lastSeenAt && Date.parse(m.lastSeenAt) > priorDelayedMs
   );
   const wrongAfter = m.retests.some(
     (r) => !r.correct && Date.parse(r.at) > Date.parse(m.lastDelayedAt || 0)

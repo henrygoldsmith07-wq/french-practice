@@ -46,18 +46,30 @@ export default function HomeDashboard({ onStartLesson, onNavigate, onOpenFieldNo
   }, [library, scenariosReg]);
   // One concise evidence-based progress summary — demonstrated / improving /
   // needs-work, derived from real performance. XP is never the headline.
+  //
+  // Keyed on `lastActivity.at`, not `[]`. Home stays MOUNTED while a Today
+  // session runs as an overlay on top of it, so a mount-frozen memo left the
+  // "Where you are" headline and the days-this-week count showing pre-session
+  // values — while `todayXp`, read fresh on the same card, had already
+  // updated. `lastActivity.at` is written by every practice event, so it is
+  // the honest signal that persisted evidence has moved.
+  const evidenceTick = lastActivity?.at || null;
   const progress = useMemo(() => {
+    // Explicit refresh signal, read in the body so the dependency is real:
+    // this memo reads persisted storage, which is not a React dependency.
+    void evidenceTick;
     try {
       return progressSummary({});
     } catch {
       return { demonstrated: 0, improving: 0, needsWork: 0, next: null, headline: 'Le Studio is still learning what you know.' };
     }
-  }, []);
+  }, [evidenceTick]);
   // Weekly rhythm (Habit rule): days practised this week against the target.
   // A missed day never breaks this — the week stays alive until Sunday.
   const weekly = useMemo(() => {
+    void evidenceTick;
     try { return getWeeklyPractice(); } catch { return { daysThisWeek: 0, target: 3, met: false, current: 0, best: 0 }; }
-  }, []);
+  }, [evidenceTick]);
   // Greeting copy is per-language (French is not the only studio language).
   const hour = new Date().getHours();
   const greeting = hour < 12 ? language.greetings.morning : hour < 18 ? language.greetings.afternoon : language.greetings.evening;

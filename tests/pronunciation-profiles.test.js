@@ -16,14 +16,10 @@ import {
   weakestPhonemes, nextMinimalPair,
 } from '../src/lib/phonemeProfile.js';
 import { analyzePhonology, analyzeTargetText } from '../src/lib/phonologicalScore.js';
+import { memoryStorage as memoryStorageDouble } from './helpers/memory-storage.js';
 
-function memoryStorage() {
-  const values = new Map();
-  return {
-    getItem: (key) => values.get(key) ?? null,
-    setItem: (key, value) => values.set(key, String(value)),
-    removeItem: (key) => values.delete(key),
-  };
+function memoryStorage(seed) {
+  return memoryStorageDouble(seed);
 }
 
 // Fresh profile/score module graph per test. NOTE: content/active.js is a

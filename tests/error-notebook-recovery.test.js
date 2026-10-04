@@ -1,15 +1,9 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { memoryStorage as memoryStorageDouble } from './helpers/memory-storage.js';
 
-function memoryStorage() {
-  const values = new Map();
-  return {
-    getItem: (key) => values.get(key) ?? null,
-    setItem: (key, value) => values.set(key, String(value)),
-    removeItem: (key) => values.delete(key),
-    key: (i) => [...values.keys()][i] ?? null,
-    get length() { return values.size; },
-  };
+function memoryStorage(seed) {
+  return memoryStorageDouble(seed);
 }
 
 async function freshNotebook() {

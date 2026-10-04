@@ -7,14 +7,10 @@
 //   · domain stores agree with the facade on keys, shapes and caps
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { memoryStorage as memoryStorageDouble } from './helpers/memory-storage.js';
 
-function memoryStorage() {
-  const values = new Map();
-  return {
-    getItem: (key) => values.get(key) ?? null,
-    setItem: (key, value) => values.set(key, String(value)),
-    removeItem: (key) => values.delete(key),
-  };
+function memoryStorage(seed) {
+  return memoryStorageDouble(seed);
 }
 
 test('storageCore owns the canonical key map; storage.js re-exports it unchanged', async () => {
