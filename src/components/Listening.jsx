@@ -203,7 +203,7 @@ function Shell({ title, onBack, children }) {
   );
 }
 
-export function TrackPlayer({ track, baseRate, level = 'B1', onXp, onActivity, onDone }) {
+export function TrackPlayer({ track, baseRate, level = 'B1', onXp, onActivity, onDone, onQuizComplete, footer }) {
   const adaptive = (() => {
     try {
       return listeningDifficultyLadder({ level, srs: getSrs(), entries: allEntries(), metrics: getMetrics(), reviewEvents: getReviewEvents() });
@@ -300,7 +300,31 @@ export function TrackPlayer({ track, baseRate, level = 'B1', onXp, onActivity, o
         stage: verifiedRecording ? track.stage ?? null : rate <= 0.75 ? 1 : 2,
         trackId: track.id,
       });
-      onActivity?.({ type: 'listening', trackId: track.id, score, label: track.title, mode: 'track' });
+      onActivity?.({
+        type: 'listening',
+        trackId: track.id,
+        score,
+        label: track.title,
+        mode: 'track',
+        // The support label travels with the activity event, not just the skill
+        // metric: this is what tells the error model a pass was scaffolded by a
+        // revealed transcript rather than earned.
+        assistance: showTranscript ? 'scaffolded' : 'none',
+        transcriptRevealed: showTranscript,
+      });
+      // A caller that is administering this track as a CHECK (the follow-up
+      // segment) needs the graded verdict and how much support was used, not
+      // just the score: reading the transcript or replaying repeatedly means
+      // the answer was scaffolded, and a check must record that honestly.
+      onQuizComplete?.({
+        trackId: track.id,
+        score,
+        correct: quiz.correct,
+        total: quiz.questions.length,
+        transcriptRevealed: showTranscript,
+        replayCount: Math.max(0, plays - 1),
+        authentic: verifiedRecording && !audioFailed,
+      });
       setQuiz({ ...quiz, done: true, gained });
     }
   };
@@ -429,6 +453,7 @@ export function TrackPlayer({ track, baseRate, level = 'B1', onXp, onActivity, o
             >
               <RefreshCw size={12} /> Retake
             </button>
+            {footer}
           </div>
         ) : (
           <div className="space-y-2">

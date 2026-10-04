@@ -70,10 +70,40 @@ Three consequences worth stating plainly:
   floor. A `delayed: true` from the scheduled-retest path is still honoured,
   because that path verifies the clock before setting it.
 - **Silence is an honest answer.** With no runnable check, no segment is
-  scheduled and nothing is promised. Listening, pronunciation, speaking and
-  reading follow-ups return `null` today — playing another track is exposure,
-  not evidence, and until the check itself can be graded against the weakness,
-  the loop would rather say nothing than fake a pass.
+  scheduled and nothing is promised. Pronunciation, speaking and reading
+  follow-ups still return `null`, each for its own stated reason in
+  `followUp.js`: pronunciation is spoken and its only honest scorer needs a
+  microphone; speaking already has its own transfer step in the conversation
+  loop; reading has no item pool keyed to the weak skill. Rather than fake a
+  pass, the loop says nothing.
+
+### What each skill's check actually is
+
+| Skill | The check | Graded by |
+|---|---|---|
+| grammar, writing | unseen items from the topic's `quiz` lane — the same rule, different sentences | authored answer keys |
+| vocabulary | the word used in a sentence of the learner's own | `followUp.gradeProduction` (presence, sentence-not-bare-word, non-copy) |
+| listening | the comprehension quiz of a recording the learner has **never scored** | `TrackPlayer`'s own per-question keys, surfaced via `onQuizComplete` |
+| speaking | the conversation loop's "use it somewhere new" challenge | `speakingTransfer.evaluateTransfer` |
+| pronunciation, reading | none yet — `null`, and nothing is promised | — |
+
+The listening case is the one with a freshness rule worth stating: the task is
+`null` unless a track exists that this session has not already put on **and**
+that the learner has never scored. A replay is exposure, not evidence. The bar
+is full comprehension (100%), because a listening weakness is precisely "the ear
+gives out on material it has not met"; a revealed transcript or more than two
+replays marks the pass as assisted, which records a real success that withholds
+the transfer claim.
+
+### Support labels are read, not just written
+
+`learningEvidence.assistanceOf` reads the `assistance` field (`'none' |
+'scaffolded' | 'assisted'`) that producers such as `TrackPlayer` actually send.
+`learnerErrors.assistanceTier` must read the same vocabulary — it used to key
+off `assisted`/`hinted` alone, so every `assistance: 'scaffolded'` pass was
+stored as independent and a transcript-revealed answer scored as earned. Two
+functions, two spellings of one idea, and the evidence rules quietly stopped
+holding. A new support label has to be understood by both.
 
 Adding a follow-up task kind means teaching `followUp.js` to build it and
 `FollowUpCheck.jsx` to run it; the planner, the curriculum and the due-check

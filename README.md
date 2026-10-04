@@ -105,6 +105,7 @@ bound to the weakness that owes it, and the session runs it as its own segment:
 |---|---|---|
 | a fresh-context check on an authored rule | different sentences for the same rule | the repair drill only ever shows the topic's `drills` lane, so `quiz` items are unseen — the rule, not the sentence, is being tested |
 | a fresh-context check on a word | to use the word in a sentence of their own | graded for presence, for being a sentence rather than the bare word, and for not copying the studied line; it claims productive **use**, never grammar |
+| a fresh-context check on listening | the comprehension quiz of a recording they have never scored | the verdict comes from what was understood, on unseen audio; the bar is full comprehension, because a listening weakness is exactly "the ear gives out on material it has not met" |
 | a delayed retest | the same check, days later | the floor is real elapsed time, and the check is only offered once |
 
 Three rules keep this honest: the due list has **one** owner
@@ -114,10 +115,24 @@ only on a clock-verified flag or an inference that clears `DELAYED_MIN_HOURS`
 (20h), because crossing midnight can be ten minutes with the answer still on
 screen; and a pass is called **transfer** only by a runner that actually
 administered and graded fresh material, never on the strength of a mode name.
-When no honest check can be built — as today for listening, pronunciation,
-speaking and reading follow-ups — nothing is scheduled and nothing is promised
-(`tests/follow-up.test.js`, `tests/follow-up-evidence.test.js`,
-`tests/delayed-floor.test.js`).
+Revealing a transcript or replaying more than twice marks a listening pass as
+**assisted**: a real success that deliberately withholds the demonstration.
+
+**Where the loop still says nothing.** Pronunciation, speaking and reading
+follow-ups return nothing today, each for its own reason: pronunciation is
+spoken and its only honest scorer needs a microphone, so a promised check could
+silently never run; speaking already has its own transfer step inside the
+conversation loop, where the "use it somewhere new" challenge verifies novelty
+before recording anything; reading has no item pool keyed to the weak skill.
+`null` means no segment is scheduled and nothing is promised — the alternative
+is repeating practice and calling it a check (`tests/follow-up.test.js`,
+`tests/follow-up-evidence.test.js`, `tests/delayed-floor.test.js`,
+`tests/authored-drill-rotation.test.js`).
+
+The repair drill rotates too. An authored topic's `drills` lane is a small pool
+(3–5 items), so the daily window shifts instead of showing the same questions in
+the same order every session — blocked repetition is the one thing targeted
+practice exists to avoid.
 
 ## 6. Supported languages and maturity
 

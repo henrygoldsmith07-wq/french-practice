@@ -37,6 +37,7 @@ export function ensureGrammarTopics() {
 import { GRAMMAR_ALIASES } from './cefr.js';
 import { PERSONS } from './conjugationMeta.js';
 import { applyCalibration } from './selectionCalibration.js';
+import { localDayIndex } from './localDay.js';
 
 // The conj-drill link sits FIRST when present: a trainer gap has a
 // purpose-built, exact-form repair (fully offline), which always beats the
@@ -97,14 +98,37 @@ export function conceptToTopicId(concept) {
   return best;
 }
 
-/** An authored drill exists for this concept and has usable questions. */
-export function authoredDrillFor(concept) {
+/**
+ * An authored drill exists for this concept and has usable questions.
+ *
+ * A topic's authored `drills` lane is a SMALL pool (3–5 items), so taking the
+ * first four meant a learner repairing the same weakness saw literally the same
+ * questions, in the same order, every session — blocked repetition, which is
+ * the one thing targeted practice is supposed to avoid. The window now rotates
+ * with the day: consecutive days start on different items and cover different
+ * subsets, and the most recently shown item is the one most likely to be pushed
+ * to the end.
+ *
+ * Deterministic (same topic + same day ⇒ same items) so the plan stays frozen
+ * for the session, and no worse for the study design: both arms rotate
+ * identically on a given day.
+ *
+ * @param {string} concept
+ * @param {{dayIndex?: number, limit?: number}} [options]
+ */
+export function authoredDrillFor(concept, options = {}) {
   const topicId = conceptToTopicId(concept);
   if (!topicId) return null;
   const topic = topicList.find((t) => t.id === topicId);
   const drills = Array.isArray(topic?.drills) ? topic.drills.filter((d) => d && d.q && Array.isArray(d.options)) : [];
   if (!drills.length) return null;
-  return { topicId, title: topic.title, exercises: drills.slice(0, 4) };
+  const day = Number.isFinite(options.dayIndex) ? Number(options.dayIndex) : localDayIndex();
+  // A three-item window over a four-item pool means no item is shown two days
+  // running for most topics — the spacing is the point, not the total count.
+  const limit = Math.max(1, Math.min(drills.length, options.limit ?? 3));
+  const start = drills.length > 1 ? ((day % drills.length) + drills.length) % drills.length : 0;
+  const rotated = Array.from({ length: drills.length }, (_, i) => drills[(start + i) % drills.length]);
+  return { topicId, title: topic.title, exercises: rotated.slice(0, limit) };
 }
 
 /**

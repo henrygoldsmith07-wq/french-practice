@@ -6,7 +6,7 @@
 // segment sends, so the wiring — not a mock — is what is under test.
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { followUpTask, gradeProduction, FOLLOW_UP_KINDS } from '../src/lib/followUp.js';
+import { followUpTask, gradeProduction, gradeListening, FOLLOW_UP_KINDS } from '../src/lib/followUp.js';
 import { ensureGrammarTopics } from '../src/lib/todayCapabilities.js';
 
 const ready = ensureGrammarTopics();
@@ -122,4 +122,61 @@ test('a vocabulary follow-up grades the sentence and records productive transfer
   const t = cycle.transfers.at(-1);
   assert.equal(t.heldOut, false, 'same word, so not held-out material — but still a transfer');
   assert.equal(t.independent, true);
+});
+
+// ── listening, end to end ────────────────────────────────────────────────────
+
+const unheardTrack = (id) => ({
+  id,
+  title: `Track ${id}`,
+  cefr: 'B1',
+  questions: [{ q: 'Is the rent inclusive of bills?', options: ['No', 'Yes'], answer: 1 }],
+});
+
+test('a listening check on unseen audio discharges the debt as held-out transfer', async () => {
+  const storage = await fresh();
+  storage.recordLearnerError({ category: 'listening', key: 'track:dl-colocation', label: 'Rent and bills', mode: 'track', score: 20, encounterId: 'l0', sessionId: 's1' });
+  storage.recordLearnerSuccess({ category: 'listening', key: 'track:dl-colocation', label: 'Rent and bills', mode: 'track', score: 80, encounterId: 'l1', sessionId: 's1' });
+
+  const due = storage.getLearningEvidenceOverview().due.find((d) => d.target.id === 'listening:track:dl-colocation');
+  assert.ok(due, 'a transfer check is owed for the ear');
+
+  // The learner has already scored THIS recording, so it cannot be the check.
+  const heard = ['dl-colocation'];
+  assert.equal(followUpTask(due, { tracks: [unheardTrack('dl-colocation'), unheardTrack('pod-boulot')], heardTrackIds: heard, dayIndex: 0 }).track.id, 'pod-boulot');
+
+  const task = followUpTask(due, { tracks: [unheardTrack('dl-colocation'), unheardTrack('pod-boulot')], heardTrackIds: heard, dayIndex: 0 });
+  const verdict = gradeListening(task, { score: 100, total: 1, correct: 1 });
+  assert.equal(verdict.correct, true);
+  storage.recordLearnerSuccess(followUpSuccessPayload(task, 100, '1/1 on a track the learner had not heard'));
+
+  const cycle = storage.getLearningEvidenceState().cycles.find((c) => c.target.id === 'listening:track:dl-colocation');
+  const t = cycle.transfers.at(-1);
+  assert.ok(t, 'understanding unseen audio is transfer evidence');
+  assert.equal(t.heldOut, true, 'the audio and its questions were never seen');
+  assert.equal(t.independent, true);
+  assert.ok(!storage.getLearningEvidenceOverview().due.some((d) => d.type === 'transfer'), 'the debt is discharged');
+});
+
+test('a listening pass taken with the transcript open is practice, never a demonstration', async () => {
+  const storage = await fresh();
+  storage.recordLearnerError({ category: 'listening', key: 'track:dl-colocation', label: 'Rent and bills', mode: 'track', score: 20, encounterId: 'l0', sessionId: 's1' });
+  storage.recordLearnerSuccess({ category: 'listening', key: 'track:dl-colocation', label: 'Rent and bills', mode: 'track', score: 80, encounterId: 'l1', sessionId: 's1' });
+  const due = storage.getLearningEvidenceOverview().due.find((d) => d.target.id === 'listening:track:dl-colocation');
+  const task = followUpTask(due, { tracks: [unheardTrack('pod-boulot')], heardTrackIds: ['dl-colocation'], dayIndex: 0 });
+
+  const verdict = gradeListening(task, { score: 100, total: 1, correct: 1, transcriptRevealed: true });
+  assert.equal(verdict.assisted, true);
+  // What FollowUpCheck sends for an assisted pass: a success that withholds
+  // the transfer claim.
+  storage.recordLearnerSuccess({
+    ...followUpSuccessPayload(task, 100, 'scaffolded by a revealed transcript'),
+    assistance: 'scaffolded',
+    transferVerified: false,
+  });
+
+  const cycle = storage.getLearningEvidenceState().cycles.find((c) => c.target.id === 'listening:track:dl-colocation');
+  assert.ok(!cycle.transfers.some((t) => t.correct), 'a supported pass is not a demonstration');
+  assert.ok(cycle.interventions.length >= 1, 'it is still recorded as practice');
+  assert.ok(storage.getLearningEvidenceOverview().due.some((d) => d.type === 'transfer'), 'the check is still owed');
 });

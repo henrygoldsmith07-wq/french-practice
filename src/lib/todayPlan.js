@@ -23,7 +23,7 @@ import { followUpTask } from './followUp.js';
 import {
   getSrs, getNotebook, getDueWeaknesses, getMistakeGraph, getSelectionTrial,
   getLearnerErrors, getLearningEvidenceOverview, getStudyChecks,
-  getSkillNeeds, getPlacementSkillNeeds,
+  getSkillNeeds, getPlacementSkillNeeds, getMetrics,
 } from './storage.js';
 import { getErrorNotebook, selectCorrectedErrors, selectDueRetypes } from './errorNotebook.js';
 import { hasCapabilityNow } from './capabilities.js';
@@ -166,6 +166,12 @@ export function buildTodayPlan(input) {
         tracks,
         // Never hand back the recording this session already plays.
         sessionTrackId: listeningTrack?.id || null,
+        // A listening check is only held out if the learner has never scored
+        // this recording. TrackPlayer persists the track id with every skill
+        // score, so this is the durable record of what has already been heard.
+        heardTrackIds: (() => {
+          try { return (getMetrics() || []).map((m) => m.trackId).filter(Boolean); } catch { return []; }
+        })(),
         dayIndex,
       });
     } catch { return null; }
