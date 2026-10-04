@@ -30,6 +30,7 @@ outcomes; it never decides what to practise.
 |---|---|
 | `lib/plannerState.js` | Reads persisted learner state and hands the planner one plain object. The only place that knows both storage shapes and planner inputs. |
 | `lib/sessionPlanner.js` | Scores practice candidates with named factors (SCORE_FACTORS), applies session constraints (no three-in-a-row activity types, target saturation caps, speaking/listening floors, receptive/productive alternation, occasional easy wins), sequences the session along the Warm-up → Input → Speaking → Repair → Transfer → Retrieval arc. |
+| `lib/followUp.js` | Turns ONE owed check into ONE concrete task the session can really run: unseen items on the same authored rule, or the word used in a new sentence. Returns `null` when no honest task exists, so the session promises nothing rather than repeating the drill. Grades production deterministically and offline. |
 | `lib/todayPlan.js` | Builds the frozen segment plan for one session (the former `useMemo` body of TodaySession), including the study-arm gating, drill-slot registry call and learner-facing explanation layer. |
 | `lib/todayBrief.js` | The Today dashboard's one dominant CTA ("Start today's session — 14 min") plus ≤3 reason lines and the outcome line. Composed from the same planner the session uses. |
 | `lib/weaknessLifecycle.js` | Learner-facing weakness states: Detected → Confirmed → Repairing → Improving → Transfer check → Delayed confirmation → Demonstrated, with Recurred reopening the cycle. Mistake confidence bands (single / uncertain / repeated / persistent) keep one-off slips quiet. |
@@ -42,6 +43,41 @@ outcomes; it never decides what to practise.
 | `lib/writingRepair.js` | After free writing: group errors, select the ≤3 most worth learning, compare (Your version / Improved / Why), repair by typing, rewrite. |
 | `lib/weeklyReview.js` | The weekly summary from real activity only — honest zeros, no fabricated minutes. |
 | `lib/instrumentation.js` | Local-only pilot events (session start/completion, dropout point, transfer/delayed results) and the research export. No learner text ever leaves the device. |
+
+## Owed checks are run, not promised
+
+The model's last two links — a fresh-context transfer check and a delayed
+retest — are only real if something administers them. Each question has one
+owner, and the session obeys all of them:
+
+| Question | Single owner |
+|---|---|
+| What does the model still owe? | `learningEvidence.dueLearningChecks` — used by `plannerState`, `todayPlan` and Progress alike |
+| What would a clean pass prove? | `learningEvidence.evidenceStrengthScore`; `followUp.proofFor` for the task |
+| Can this event be called "delayed"? | `learnerErrors.evidenceStrength` — an explicit clock-verified flag, or an inference that clears `DELAYED_MIN_HOURS` |
+| Can this event be called "transfer"? | Only a runner that administered and graded fresh material (`transferVerified`); never a mode name |
+| Which task discharges this debt? | `followUp.followUpTask` — `null` when no honest task exists |
+
+Three consequences worth stating plainly:
+
+- **A transfer claim is earned, never asserted.** The old rule trusted
+  `mode: 'held-out…'`, a name no ordinary practice produced — so the transfer
+  lane stayed empty for every learner who did not join the opt-in study, and
+  `Demonstrated` was unreachable. The follow-up check and the speaking loop's
+  verified "use it somewhere new" step now set the flag instead.
+- **A calendar boundary is not a delay.** Crossing local midnight can be ten
+  minutes with the answer still on screen; inference now requires the real
+  floor. A `delayed: true` from the scheduled-retest path is still honoured,
+  because that path verifies the clock before setting it.
+- **Silence is an honest answer.** With no runnable check, no segment is
+  scheduled and nothing is promised. Listening, pronunciation, speaking and
+  reading follow-ups return `null` today — playing another track is exposure,
+  not evidence, and until the check itself can be graded against the weakness,
+  the loop would rather say nothing than fake a pass.
+
+Adding a follow-up task kind means teaching `followUp.js` to build it and
+`FollowUpCheck.jsx` to run it; the planner, the curriculum and the due-check
+machinery pick it up unchanged.
 
 ## Evidence honesty rules
 

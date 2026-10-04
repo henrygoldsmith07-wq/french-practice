@@ -2,6 +2,7 @@ import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } fro
 import {
   WhyPanel, DrillChainRunner, RecallRunner, DelayedReview, TrainerDrill,
 } from './TodaySegments';
+import FollowUpCheck from './FollowUpCheck';
 import { takeawayPhrase } from '../lib/takeaway';
 import { buildTodayPlan } from '../lib/todayPlan';
 // Study glue is measurement infrastructure: it loads WITH the session (the
@@ -445,6 +446,10 @@ function TodayBody({ plan, trialId, segIndex, setSegIndex, close, apiKey, mockMo
         : (seg.payload?.chain || []).find((p) => p.kind === 'conj-drill') || null;
     } else if (seg.id === 'review') {
       body = <DelayedReview count={seg.payload.count} onXp={award} onDone={advance} />;
+    } else if (seg.id === 'followup' && seg.payload.task) {
+      // The check the recovery loop owes, run against the real weakness.
+      // No task → no body → the session moves on rather than faking a pass.
+      body = <FollowUpCheck task={seg.payload.task} onXp={award} onDone={advance} />;
     } else if (seg.id === 'listen' && seg.payload.track) {
       const resolved = resolveListeningTrack(liveTracks, seg.payload.track.id);
       if (resolved.status === 'loading') {

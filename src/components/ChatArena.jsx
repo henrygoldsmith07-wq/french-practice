@@ -589,6 +589,10 @@ export default function ChatArena({ apiKey, mockMode, ttsRate, level, onTtsRate,
                       encounterId: `transfer:${turn.encounterId || i}`,
                       activityId: `${scenario.id}:transfer`,
                       passed: result.independent,
+                      // The novelty check is what makes this a new context: a
+                      // re-typed copy of the correction is memorisation and
+                      // must stay an ordinary intervention.
+                      transferVerified: result.countsAsTransfer === true,
                     });
                   }
                   onTurn?.({ transfer: { correct: usedStructure, independent: result.independent } });

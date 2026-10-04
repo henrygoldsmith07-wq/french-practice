@@ -803,7 +803,7 @@ export function recordWeaknessError(topicId, { scenarioId = null } = {}) {
   writeWeakness(list);
   return e;
 }
-export function recordWeaknessRepair(topicId, { scenarioId = null, sessionId = null, encounterId = null, activityId = null, passed = true } = {}) {
+export function recordWeaknessRepair(topicId, { scenarioId = null, sessionId = null, encounterId = null, activityId = null, passed = true, transferVerified = false } = {}) {
   const id = clampTopicId(topicId);
   if (!id) return null;
   const now = new Date().toISOString();
@@ -837,6 +837,11 @@ export function recordWeaknessRepair(topicId, { scenarioId = null, sessionId = n
       sessionId,
       encounterId,
       activityId: activityId || scenarioId,
+      // The speaking loop's "use it somewhere new" step verified novelty and
+      // independence before calling this (speakingTransfer.evaluateTransfer).
+      // Only then is the pass a new-context USE rather than a re-answer of the
+      // drill, so only then may it land in the transfer lane.
+      transferVerified,
     });
   }
   return e;

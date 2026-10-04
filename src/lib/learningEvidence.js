@@ -33,7 +33,11 @@ const PHASE_SET = new Set(EVIDENCE_PHASES);
 const MAX_CYCLES = 240;
 const MAX_EVENTS_PER_PHASE = 24;
 const DAY = 86400000;
-const DELAYED_MIN_HOURS = 20;
+// How long a check must actually clear before it counts as retention
+// evidence rather than repetition. Exported because there must be ONE rule
+// for "delayed": this module schedules the delayed check, and the store that
+// classifies a success into the delayed lane has to use the same threshold.
+export const DELAYED_MIN_HOURS = 20;
 const SOURCE_RELIABILITY = { high: 1, medium: 0.82, low: 0.62, unknown: 0.72 };
 const ASSISTANCE_WEIGHT = { none: 1, scaffolded: 0.68, assisted: 0.38 };
 const PHASE_WEIGHT = { baseline: 0.75, intervention: 0.72, transfer: 1.18, delayed: 1.28, recurrence: 1.2 };

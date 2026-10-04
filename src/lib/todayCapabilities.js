@@ -107,6 +107,30 @@ export function authoredDrillFor(concept) {
   return { topicId, title: topic.title, exercises: drills.slice(0, 4) };
 }
 
+/**
+ * Every authored lane for a concept, not just the one the repair drill shows.
+ *
+ * The library ships two item lanes per topic: `drills` (what the repair
+ * segment shows, and therefore what the learner has already met) and `quiz`
+ * (the same rule, different sentences). Splitting them here is what lets a
+ * follow-up check ask for UNSEEN material on a known rule — the difference
+ * between transfer evidence and repeating the drill.
+ */
+export function authoredLanesFor(concept) {
+  const topicId = conceptToTopicId(concept);
+  if (!topicId) return null;
+  const topic = topicList.find((t) => t.id === topicId);
+  if (!topic) return null;
+  const clean = (items) => (Array.isArray(items) ? items.filter((d) => d && d.q && Array.isArray(d.options)) : []);
+  return {
+    topicId,
+    title: topic.title,
+    drills: clean(topic.drills),
+    quiz: clean(topic.quiz),
+    build: Array.isArray(topic.build) ? topic.build.filter((b) => b && b.fr) : [],
+  };
+}
+
 // ---- the drill slot's producer registry -------------------------------------
 //
 // The drill slot used to hand-wire every weakness producer into the session's

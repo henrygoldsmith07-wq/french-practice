@@ -181,10 +181,22 @@ export function recordLearnerSuccess(success, options = {}) {
     // event's timestamp travels with the success (callers may pin it through
     // options.at for back-dated evidence).
     const at = options.at || success.at || new Date().toISOString();
+    // "delayed" is decided by evidenceStrength — the same rule the delayed
+    // check is scheduled by, including the real delay floor for anything
+    // inferred rather than clock-verified by its caller.
     const strength = evidenceStrength({ ...success, at }, entry || {});
+    const delayHours = entry?.lastErrorAt
+      ? Math.max(0, (Date.parse(at) - Date.parse(entry.lastErrorAt)) / 3600000)
+      : null;
+    // "transfer" means a new-context use, and only the runner that ACTUALLY
+    // administered and graded a fresh task can assert that — `transferVerified`
+    // is set by the follow-up check, which builds unseen material and checks
+    // it. A mode name never can: the old `mode: 'held-out…'` prefix trusted a
+    // string, which is why the transfer lane stayed empty for every learner who
+    // did not join the opt-in study.
     const phase = strength === 'delayed'
       ? 'delayed'
-      : String(success.mode || '').startsWith('held-out') || success.heldOut === true
+      : success.transferVerified === true
         ? 'transfer'
         : 'intervention';
     const assistance = assistanceTier(success);
@@ -201,9 +213,10 @@ export function recordLearnerSuccess(success, options = {}) {
       // task can claim held-out evidence. Keeping these separate prevents a
       // normal transfer drill from accidentally satisfying the strongest
       // confirmation state.
-      heldOut: success.heldOut === true || /^held-out/i.test(String(success.mode || '')),
+      heldOut: success.heldOut === true,
       promptNovelty: success.promptNovelty,
       difficulty: success.difficulty,
+      delayHours: strength === 'delayed' && delayHours != null ? Math.round(delayHours) : undefined,
       assistance,
       // Independent means: the learner's own production, no support, and a
       // real encounter identity. Structurally-assisted modes (retype, choice)

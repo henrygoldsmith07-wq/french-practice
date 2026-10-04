@@ -155,6 +155,18 @@ export function scoreCandidates(state = {}) {
   for (const p of recent.slice(0, 14)) {
     if (p?.target) recentTargets.set(p.target, (recentTargets.get(p.target) || 0) + 1);
   }
+  // Per-modality practice need (0..1) from the evidence-weighted pressure of
+  // OPEN weaknesses — the same number the curriculum uses to size segments
+  // (learnerErrors.skillNeedsFromModel). The factor was declared and explained
+  // but never read, so a learner with a corroborated listening weakness and one
+  // with none at all were offered the same session. It now steers which
+  // modality gets the minutes, and only where the modality is runnable.
+  const need = state.skillNeeds && typeof state.skillNeeds === 'object' ? state.skillNeeds : {};
+  const needOf = (id) => {
+    const value = Number(need[id]);
+    if (!Number.isFinite(value)) return 0;
+    return Math.max(0, Math.min(1, value));
+  };
 
   // ── Repair candidates: one per active weakness, recurrence-aware ───────
   for (const entry of weaknesses.slice(0, 6)) {
@@ -220,6 +232,13 @@ export function scoreCandidates(state = {}) {
       factors[SCORE_FACTORS.transferDue] = 1.0;
       evidence.push('a repaired weakness is ready for an independent check');
     }
+    // Open speaking/pronunciation pressure outranks the base value, so a
+    // corroborated speaking weakness actually buys the session's speech.
+    const speakNeed = needOf('speak');
+    if (speakNeed > 0) {
+      factors[SCORE_FACTORS.skillImbalance] = 1.2 * speakNeed;
+      evidence.push(`open speaking and pronunciation weaknesses are worth ${Math.round(speakNeed * 100)}% of their usual pull`);
+    }
     const seen = recentTargets.get('speak') || 0;
     if (seen >= 2) {
       factors[SCORE_FACTORS.repetitionPenalty] = -0.4 * (seen - 1);
@@ -254,6 +273,13 @@ export function scoreCandidates(state = {}) {
     const factors = {};
     const evidence = [`${state.srsDue} word${state.srsDue === 1 ? '' : 's'} due for recall`];
     factors[SCORE_FACTORS.dueVocabulary] = Math.min(1.4, 0.5 + (state.srsDue / 20));
+    // Open vocabulary pressure: a word family that keeps slipping is worth more
+    // than another turn of the ordinary due queue.
+    const retrieveNeed = needOf('retrieve');
+    if (retrieveNeed > 0) {
+      factors[SCORE_FACTORS.skillImbalance] = 1.2 * retrieveNeed;
+      evidence.push(`open vocabulary weaknesses are worth ${Math.round(retrieveNeed * 100)}% of their usual pull`);
+    }
     if (state.fieldNoteDue > 0) {
       factors[SCORE_FACTORS.goalAlignment] = 0.4; // the learner's own words
       evidence.push(`${state.fieldNoteDue} of them are the learner's own saved phrases`);
@@ -293,6 +319,13 @@ export function scoreCandidates(state = {}) {
     }
     factors[SCORE_FACTORS.activeWeakness] = 0.3;
     evidence.push('comprehension exposure keeps the ear in the language');
+    // Open listening pressure: a corroborated listening weakness outranks the
+    // "don't neglect exposure" floor, so the ear gets real work.
+    const listenNeed = needOf('listen');
+    if (listenNeed > 0) {
+      factors[SCORE_FACTORS.skillImbalance] = 1.2 * listenNeed;
+      evidence.push(`open listening weaknesses are worth ${Math.round(listenNeed * 100)}% of their usual pull`);
+    }
     const seen = recentTargets.get('input') || 0;
     if (seen >= 2) {
       factors[SCORE_FACTORS.repetitionPenalty] = -0.3 * (seen - 1);

@@ -1,4 +1,5 @@
 import { localDayKey } from './localDay.js';
+import { followUpCopy } from './followUp.js';
 
 // Daily curriculum — answers "what is the most valuable French practice for
 // this learner TODAY?" and can explain why.
@@ -20,13 +21,20 @@ export const SEGMENT_WEIGHTS = {
   listen: 0.15,
 };
 
+// A follow-up check is a handful of items, so it gets a small fixed share —
+// but it is never modulated by taste or by skill-need: it exists because the
+// model owes it, and its size must not drift with an unrelated weakness.
+const FOLLOW_UP_WEIGHT = 0.12;
+
 const MIN_SEGMENT_MINUTES = 3;
 
 // When a short session cannot fit every eligible activity at a meaningful
 // length, keep the highest-value session roles instead of creating 1-minute
 // context switches. Listening outranks delayed review because it is a core
-// modality; review is the first optional segment to yield.
-const SEGMENT_KEEP_PRIORITY = ['speak', 'retrieve', 'drill', 'listen', 'review'];
+// modality; review is the first optional segment to yield. The follow-up
+// check outranks the drill on short sessions: it is the loop's own closing
+// step, and it is the one segment that can close a weakness.
+const SEGMENT_KEEP_PRIORITY = ['speak', 'retrieve', 'followup', 'drill', 'listen', 'review'];
 
 function allocateMinutes(sources, total) {
   if (!sources.length) return [];
@@ -104,6 +112,7 @@ function allocateMinutes(sources, total) {
  *   dayIndex?: number,
  *   skillNeeds?: { listen?: number, speak?: number, retrieve?: number },
  *   evidenceDue?: {type:'transfer'|'delayed', target?:{skill?:string,label?:string}}|null,
+ *   followUp?: {kind:string, type:'transfer'|'delayed', label:string, ...}|null,
  * }} input
  */
 export function buildDailyCurriculum(input = {}) {
@@ -112,7 +121,7 @@ export function buildDailyCurriculum(input = {}) {
     recentCorrections = 0, weaknessScenarioId = null, suggestedScenarioId = null,
     examSoon = false, listeningTrack = null,
     balanced = false, balancedDrillTopic = null,
-    skillNeeds = null, evidenceDue = null,
+    skillNeeds = null, evidenceDue = null, followUp = null,
   } = input;
   const total = Math.max(5, Math.min(45, Math.round(minutes)));
 
@@ -162,9 +171,15 @@ export function buildDailyCurriculum(input = {}) {
   const effWeaknessScenarioId = balanced ? null : weaknessScenarioId;
   const effRecentCorrections = balanced ? 0 : recentCorrections;
   const effPendingRetypes = balanced ? 0 : pendingRetypes;
+  const effFollowUp = balanced ? null : followUp;
 
   const scenarioId = effWeaknessScenarioId || suggestedScenarioId || null;
   const followUpSuffix = (id) => {
+    // When a real check is scheduled as its own segment, that segment carries
+    // the honest "here is the check" copy; repeating it as extra-time flavour
+    // on another segment would over-promise. With no runnable check, the
+    // follow-up is still owed and the modality still deserves the time.
+    if (effFollowUp) return '';
     if (balanced || dueModality !== id || !evidenceDue?.type) return '';
     const skill = String(dueSkill || id);
     return evidenceDue.type === 'delayed'
@@ -183,6 +198,10 @@ export function buildDailyCurriculum(input = {}) {
   addSource('retrieve', effectiveWeights.retrieve, srsDue > 0);
   addSource('speak', effectiveWeights.speak, Boolean(scenarioId));
   addSource('drill', effectiveWeights.drill, Boolean(effTopMistake || effPendingRetypes > 0 || balancedDrillTopic));
+  // The check the loop owes actually gets a place in the session — not just a
+  // line of copy on some other segment. Without a runnable task, nothing is
+  // owed today and nothing is promised (see lib/followUp.js).
+  addSource('followup', FOLLOW_UP_WEIGHT, !balanced && Boolean(effFollowUp));
   addSource('review', effectiveWeights.review, effRecentCorrections > 0);
   addSource('listen', effectiveWeights.listen, Boolean(listeningTrack));
 
@@ -240,6 +259,20 @@ export function buildDailyCurriculum(input = {}) {
     }
   }
 
+  // ── Follow-up: the check the loop owes, run against the real weakness ───
+  // This is the segment that makes transfer and delayed retest real. It is
+  // built only when followUp.js could produce an honest, runnable task for a
+  // due check (see lib/followUp.js). If no task can be built, no segment is
+  // promised and the debt stays visible as still owed — never faked.
+  if (effFollowUp && minutesFor('followup') > 0) {
+    segments.push({
+      id: 'followup', label: effFollowUp.type === 'delayed' ? 'Check again' : 'Use it in a new situation',
+      minutes: minutesFor('followup'),
+      payload: { task: effFollowUp },
+      why: followUpCopy(effFollowUp),
+    });
+  }
+
   // ── Review: delayed replay of very recent corrections ───────────────────
   if (effRecentCorrections > 0 && minutesFor('review') > 0) {
     segments.push({
@@ -260,7 +293,7 @@ export function buildDailyCurriculum(input = {}) {
     });
   }
 
-  for (const wouldBe of ['retrieve', 'drill', 'review', 'listen']) {
+  for (const wouldBe of ['retrieve', 'drill', 'followup', 'review', 'listen']) {
     if (!segments.some((s) => s.id === wouldBe)) skipped.push(wouldBe);
   }
 
@@ -270,5 +303,8 @@ export function buildDailyCurriculum(input = {}) {
     segments,
     skipped,
     followUpDue: balanced ? null : evidenceDue || null,
+    // The task, not just the debt: TodaySession needs it to record the check's
+    // real outcome against the weakness it belongs to.
+    followUpTask: segments.some((s) => s.id === 'followup') ? effFollowUp : null,
   };
 }
