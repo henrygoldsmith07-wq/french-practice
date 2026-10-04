@@ -11,6 +11,7 @@ import { notebookAsEntries, reviewOrder, dueEntries } from '../lib/memory';
 import { resolveListeningTrack, useListeningTracks } from '../lib/listeningAsync';
 import { callStudy } from '../lib/studyFlowAsync';
 import { currentSessionId, newEncounterId } from '../lib/evidenceIdentity';
+import { useTimeout } from '../hooks/useTimeout';
 import VocabCard from './VocabCard';
 import { NotebookRetype } from './NotebookRetype';
 import Quiz from './Quiz';
@@ -385,6 +386,10 @@ export function RecallRunner({ cardCap, onDone, onXp, onActivity }) {
   // fast double-tap (or a tap racing the 250 ms advance) is a no-op.
   const ratingRef = useRef(false);
   const encounterRef = useRef(null);
+  // The post-rating advance is cleared on unmount: skipping the segment or
+  // closing the overlay inside that window used to leave setIdx to fire
+  // against a tree that was already gone.
+  const scheduleAdvance = useTimeout(() => setIdx((i) => i + 1), 250);
   useEffect(() => {
     ratingRef.current = false;
     encounterRef.current = newEncounterId();
@@ -450,7 +455,7 @@ export function RecallRunner({ cardCap, onDone, onXp, onActivity }) {
         }
       } catch { /* graph bookkeeping must never break recall */ }
     }
-    setTimeout(() => setIdx((i) => i + 1), 250);
+    scheduleAdvance();
   };
   return (
     <div className="h-full overflow-y-auto nice-scroll px-4 py-6">

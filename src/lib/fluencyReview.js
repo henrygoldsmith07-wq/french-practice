@@ -25,8 +25,9 @@ const rankOfLevel = { definite_error: 0, likely_error: 1 };
  * Pick the highest-value corrections from a finished fluency conversation.
  * Only strong (definite/likely) corrections are candidates; stylistic
  * suggestions and acceptable alternatives are advice, not mistakes.
- * Ranking: severity first, then how badly the turn scored, then recency —
- * and a concept that slipped on several turns outranks a one-off.
+ * Ranking: severity first, then recurrence count (a concept that slipped on
+ * several turns outranks a one-off), then how badly the turn scored, then
+ * recency as the final tiebreak.
  */
 export function pickTopCorrections(history, { max = MAX_CORRECTIONS } = {}) {
   const turns = Array.isArray(history) ? history : [];
@@ -64,7 +65,12 @@ export function pickTopCorrections(history, { max = MAX_CORRECTIONS } = {}) {
     .sort((a, b) =>
       a.severity - b.severity ||
       b.recurrences - a.recurrences ||
-      b.weakness - a.weakness)
+      b.weakness - a.weakness ||
+      // Recency as the final tiebreak: when two concepts match on every real
+      // signal, the one the learner most recently got wrong is the one worth
+      // showing. `turnIndex` was collected for exactly this and then discarded
+      // without ever being read.
+      (b.turnIndex ?? 0) - (a.turnIndex ?? 0))
     .slice(0, max)
     .map(({ severity: _severity, weakness: _weakness, ...keep }) => keep);
 }

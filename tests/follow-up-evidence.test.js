@@ -8,18 +8,12 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { followUpTask, gradeProduction, gradeListening, FOLLOW_UP_KINDS } from '../src/lib/followUp.js';
 import { ensureGrammarTopics } from '../src/lib/todayCapabilities.js';
+import { memoryStorage as memoryStorageDouble } from './helpers/memory-storage.js';
 
 const ready = ensureGrammarTopics();
 
-function memoryStorage() {
-  const values = new Map();
-  return {
-    getItem: (key) => values.get(key) ?? null,
-    setItem: (key, value) => values.set(key, String(value)),
-    removeItem: (key) => values.delete(key),
-    key: (i) => [...values.keys()][i] ?? null,
-    get length() { return values.size; },
-  };
+function memoryStorage(seed) {
+  return memoryStorageDouble(seed);
 }
 
 async function fresh() {

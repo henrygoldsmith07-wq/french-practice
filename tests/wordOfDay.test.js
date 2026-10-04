@@ -15,8 +15,10 @@ describe('wordOfDay', () => {
   it('changes across days', () => {
     const a = wordOfDay(new Date(2026, 6, 30));
     const b = wordOfDay(new Date(2026, 6, 31));
-    // Extremely unlikely same index on consecutive days for large pool
-    assert.ok(a && b);
+    // Assert the property the test name claims. The body used to be
+    // `assert.ok(a && b)`, which passes even if wordOfDay always returned
+    // entries[0] — it never checked that the word actually changes.
+    assert.notEqual(a.fr, b.fr, 'consecutive days show different words');
   });
 
   it('returns a week list', () => {

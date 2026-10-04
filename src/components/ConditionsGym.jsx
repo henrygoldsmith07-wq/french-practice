@@ -90,7 +90,15 @@ export default function ConditionsGym({ ttsRate = 1, onBack }) {
     setPlaying(false);
   };
 
-  useEffect(() => () => stopRef.current?.(), []);
+  // Unmount must be as loud as Stop. `stopRef` only clears the sequencing
+  // timeouts, so navigating away with the bottom nav (or any unmount that
+  // doesn't go through Stop) left the segment mid-sentence AND the looping
+  // noise-bed AudioContext running audibly over the next screen, never closed.
+  useEffect(() => () => {
+    stopRef.current?.();
+    stopSpeaking();
+    stopNoiseBed();
+  }, []);
 
   const play = () => {
     if (!ttsSupported() || !lines.length) return;

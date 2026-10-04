@@ -16,7 +16,9 @@
     "validation:packet": "node scripts/validation-packet.mjs",
     "check": "npm run check:secrets && npm run lint:content && npm run lint:code && npm test",
     "e2e": "playwright test",
-    "type-check": "npx tsc --noEmit"
+    "type-check": "npx tsc --noEmit",
+    "type-check:probe": "echo \"tsc checks no JavaScript while checkJs is false (see .github/workflows/french-practice.yml)\"",
+    "lint:tests": "eslint tests scripts"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.1.0",

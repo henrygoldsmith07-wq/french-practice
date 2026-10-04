@@ -51,6 +51,33 @@ export default [
     },
   },
   {
+    // The test tree was outside the lint scope, which is how a duplicate
+    // `protocolVersion` key and two assertions that could not fail survived.
+    // Only correctness rules here — not formatting, not the React rules.
+    files: ['tests/**/*.{js,mjs}', 'scripts/**/*.mjs'],
+    languageOptions: {
+      ecmaVersion: 2023,
+      sourceType: 'module',
+      // Node for the runner itself, browser for the jsdom render tests and the
+      // localStorage doubles — both are legitimately used in this tree.
+      globals: { ...globals.node, ...globals.browser },
+    },
+    rules: {
+      'no-undef': 'error',
+      // A test that cannot fail is worse than no test: it reads as coverage.
+      'no-constant-binary-expression': 'error',
+      // Two keys with the same name in one literal — the second silently wins,
+      // which is how a fixture ends up asserting something it never set.
+      'no-dupe-keys': 'error',
+      // Known backlog: ~44 bindings that are built or destructured and never
+      // read (unused imports in pronunciation-profiles, `const { storage } =
+      // await import(...)` where only the module load matters). Surfaced as
+      // warnings and deliberately NOT blocking, so `npm run lint:tests` makes
+      // the backlog visible without turning this correctness gate into a wall.
+      'no-unused-vars': ['warn', { argsIgnorePattern: '^_', varsIgnorePattern: '^_', caughtErrors: 'none' }],
+    },
+  },
+  {
     ignores: ['dist/**', 'node_modules/**', 'coverage/**'],
   },
 ];

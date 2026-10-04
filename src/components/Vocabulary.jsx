@@ -17,6 +17,7 @@ import { weakEntries, notebookAsEntries, reviewOrder, dueEntries, frontierTier, 
 import { knowledgeProfile, knowledgeLabel, nextVocabMode } from '../lib/vocabKnowledge';
 import { fsrsRetention, isProductiveUnlocked } from '../lib/fsrs';
 import { SpeakButton } from './ui';
+import { useTimeout } from '../hooks/useTimeout';
 import { ChevronLeft, ChevronRight, Layers, Book, Plus, Trash, BarChart, Clock, Search, Target } from './icons';
 import { CARD_ROW, CARD_ROW_ACCENT, ICON_BTN_ROUND, ICON_BTN_SQUARE, ICON_BTN_SQUARE_SM } from '../components/classNames.js';
 
@@ -303,6 +304,13 @@ function Deck({ packId, onBack, srs, onRated, onSavedChange, apiKey, mockMode, o
   // deck empties or the quiz mounts.
   const [advancing, setAdvancing] = useState(false);
   const advancingRef = useRef(false);
+  // Cleared on unmount: leaving the deck inside the 250 ms advance window used
+  // to leave the advance firing against a component that no longer existed.
+  const scheduleAdvance = useTimeout(() => {
+    setIndex((i) => (i + 1) % deck.length);
+    advancingRef.current = false;
+    setAdvancing(false);
+  }, 250);
 
   // Virtual packs: 'review' = every due card (packs + notebook), 'weak' =
   // high-lapse stumblers, 'notebook' = the learner's custom flashcards.
@@ -398,11 +406,7 @@ function Deck({ packId, onBack, srs, onRated, onSavedChange, apiKey, mockMode, o
     });
     onRated();
     onActivity?.({ type: 'cards', rating, itemId: entry.id, itemLabel: entry.fr, mode: cardMode });
-    setTimeout(() => {
-      setIndex((i) => (i + 1) % deck.length);
-      advancingRef.current = false;
-      setAdvancing(false);
-    }, 250);
+    scheduleAdvance();
   };
 
   const toggleSave = () => {
@@ -428,6 +432,11 @@ function Deck({ packId, onBack, srs, onRated, onSavedChange, apiKey, mockMode, o
           </div>
           <button
             onClick={() => setIndex((i) => (i + 1) % deck.length)}
+            // Disabled during the 250 ms auto-advance: rating schedules its own
+            // advance, and a chevron tap inside that window advanced a second
+            // time — the card in between flashed past and was never rated, so
+            // its SRS state never updated.
+            disabled={advancing}
             aria-label="Next card"
             className={ICON_BTN_ROUND}
           >

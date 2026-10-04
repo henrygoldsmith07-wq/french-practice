@@ -41,7 +41,7 @@ function smooth(series, win = 5) {
 
 /**
  * Syllable nuclei from the energy envelope: local maxima above a fraction of
- * the peak, at least 120ms apart (French syllables rarely run faster).
+ * the peak, at least 150ms apart (French syllables rarely run faster).
  * Regularity = coefficient of variation of inter-nucleus intervals — French
  * is syllable-timed, so practiced speech has low CV.
  */

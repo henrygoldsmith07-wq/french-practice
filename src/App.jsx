@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useMemo, useReducer, useState } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import HomeDashboard from './components/HomeDashboard';
 import FeedbackWidget from './components/FeedbackWidget';
 const ChatArena = lazy(() => import('./components/ChatArena'));
@@ -636,10 +636,17 @@ export default function App() {
 }
 
 function Celebration({ data, onDone }) {
+  // `onDone` is an inline arrow at the only call site, so keying the
+  // auto-dismiss on it restarted the 2.8 s countdown on every App render —
+  // and `useDueCount` resolves right after each XP award, which is exactly when
+  // a level-up celebration mounts. The level-up could sit there forever waiting
+  // for a click. Read the handler through a ref so the timer is armed once.
+  const onDoneRef = useRef(onDone);
+  useEffect(() => { onDoneRef.current = onDone; }, [onDone]);
   useEffect(() => {
-    const id = setTimeout(onDone, 2800);
+    const id = setTimeout(() => onDoneRef.current?.(), 2800);
     return () => clearTimeout(id);
-  }, [onDone]);
+  }, []);
   const pieces = useMemo(() => {
     const shades = ['var(--ink)', 'var(--ink-2)', 'var(--ink-3)', 'var(--line)'];
     return Array.from({ length: 28 }, (_, i) => ({

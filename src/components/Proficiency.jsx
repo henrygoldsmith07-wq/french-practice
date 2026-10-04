@@ -339,9 +339,14 @@ function ListeningStage({ state, setState, onDone, onCancel }) {
     setPlayed(false);
     setPlayFailed(false);
     setStarting(false);
-    const timer = playTimerRef.current;
+    // Read the ref AT CLEANUP TIME, not at setup. `play()` arms
+    // `playTimerRef` after this effect body has already run, so capturing the
+    // id here captured whatever was left over from the previous item: the live
+    // gate was never cleared and fired later against this item, recording it
+    // as unavailable — i.e. silently marked "not measurable" when the learner
+    // had simply moved on.
     return () => {
-      if (timer) clearTimeout(timer);
+      if (playTimerRef.current) clearTimeout(playTimerRef.current);
       stopSpeaking();
     };
   }, [item?.id]);

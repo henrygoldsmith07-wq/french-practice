@@ -2,17 +2,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { URL } from 'node:url';
+import { memoryStorage as memoryStorageDouble } from './helpers/memory-storage.js';
 
-function memoryStorage() {
-  const values = new Map();
-  return {
-    get length() { return values.size; },
-    key: (index) => [...values.keys()][index] ?? null,
-    getItem: (key) => values.get(key) ?? null,
-    setItem: (key, value) => values.set(key, String(value)),
-    removeItem: (key) => values.delete(key),
-    clear: () => values.clear(),
-  };
+function memoryStorage(seed) {
+  return memoryStorageDouble(seed);
 }
 
 let importId = 0;

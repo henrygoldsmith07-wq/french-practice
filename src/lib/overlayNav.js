@@ -37,13 +37,38 @@ export function overlayReducer(state, action) {
   switch (action.type) {
     case 'open': {
       const next = makeOverlay(action.overlay, action.payload);
-      return next || state;
+      if (!next) return state;
+      // Re-opening the overlay that is ALREADY open must not produce a new
+      // object. useReducer only bails out of a re-render when the returned
+      // state is Object.is-equal to the current one, so a fresh `{ type }`
+      // literal here re-renders App every single time — which is exactly how a
+      // caller that re-dispatches `open` from inside an effect keyed on a prop
+      // turns into an unbounded render loop (ChatArena's session-timer expiry
+      // did precisely this). Idempotence is the reducer's job, not the
+      // caller's.
+      if (state && state.type === next.type && overlayPayloadEqual(state, next)) return state;
+      return next;
     }
     case 'close':
-      return null;
+      return state === null ? state : null;
     default:
       return state;
   }
+}
+
+/**
+ * Shallow equality over an overlay's payload keys.
+ *
+ * `makeOverlay` spreads the payload onto the descriptor, so a re-open with the
+ * same type but different payload IS a real change and must re-render; an
+ * identical payload must not. Values are compared with Object.is, which is what
+ * React itself uses for this decision.
+ */
+function overlayPayloadEqual(a, b) {
+  const keysA = Object.keys(a);
+  const keysB = Object.keys(b);
+  if (keysA.length !== keysB.length) return false;
+  return keysA.every((k) => Object.is(a[k], b[k]));
 }
 
 /** True when `overlay` is open and of `type` — the render gate. */

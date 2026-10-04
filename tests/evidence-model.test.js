@@ -48,7 +48,9 @@ test('next-day correct SAME-CONTEXT retest: real evidence, insufficient alone', 
   const r = g[0].retests[0];
   assert.equal(r.evidenceClass, 'DELAYED_NEW_CONTEXT', 'first delayed evidence establishes a context');
   assert.equal(r.delayDays, 1);
-  assert.equal(r.spacingQualified !== undefined || true, true);
+  // Was `assert.equal(r.spacingQualified !== undefined || true, true)` — the
+  // `|| true` made it true for every possible implementation, so it could
+  // never fail. The same property IS asserted properly further down this file.
   assert.ok(g[0].delayedSuccesses === 1);
   assert.equal(g[0].status, 'active', 'one delayed success is not retirement');
 });

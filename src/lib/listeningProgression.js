@@ -64,7 +64,7 @@ export function normaliseTrackMetadata(track = {}) {
     id: track.id || null,
     speaker: textOrNull(track.speaker) || (track.lines?.length >= 2 ? 'two speakers' : 'studio voice'),
     accent: textOrNull(track.accent) || 'fr-fr',
-    speed: clampEnum(track.speed, SPEED_VALUES) || (sourceType === 'tts' ? 'normal' : 'normal'),
+    speed: clampEnum(track.speed, SPEED_VALUES) || 'normal',
     formality: clampEnum(track.formality, FORMALITY_VALUES) || 'neutral',
     spontaneity: clampEnum(track.spontaneity, SPONTANEITY_VALUES) || (sourceType === 'tts' ? 'scripted' : 'spontaneous'),
     noise: clampEnum(track.noise, NOISE_VALUES) || 'none',
@@ -142,7 +142,14 @@ export function listeningEvidenceLabel(track) {
     : 'Practised with studio audio — not yet verified native listening.';
 }
 
-/** The next progression stage after `currentStageId`, or null at the top. */
+/**
+ * The next progression stage after `currentStageId`.
+ *
+ * Saturates at the top of the ladder: asking for the stage after the last one
+ * returns that last stage rather than null. (The docstring used to promise
+ * "or null at the top"; the code has always clamped, and the tests pin the
+ * clamped behaviour — so the comment was wrong, not the ladder.)
+ */
 export function nextListeningStage(currentStageId) {
   const index = LISTENING_PROGRESSION.findIndex((s) => s.id === currentStageId);
   if (index < 0) return LISTENING_PROGRESSION[0];

@@ -33,9 +33,19 @@ jobs:
         run: npm run lint:content
       - name: Lint code (no-undef + React hooks)
         run: npm run lint:code
+      - name: Lint tests (correctness: no-undef, no-dupe-keys, constant expressions)
+        run: npm run lint:tests -- --quiet
       - name: Unit tests
         run: npm test
-      - name: Type check (critical domain logic)
+      # Named for what it actually does. `tsconfig.json` sets `checkJs: false`,
+      # so tsc validates the tsconfig graph and the few .ts files — it does NOT
+      # type-check the JavaScript that makes up this app. The step used to be
+      # called "Type check (critical domain logic)" and was green while
+      # inspecting nothing; the crash-class coverage for domain logic lives in
+      # the ESLint step above (no-undef, react-hooks rules).
+      # Turning on `checkJs` for src/lib is the real upgrade and needs JSDoc
+      # annotations across the pure modules first — tracked, not pretended.
+      - name: Type check (tsconfig sanity — JS is covered by ESLint)
         run: npm run type-check
       - name: Build
         run: npm run build

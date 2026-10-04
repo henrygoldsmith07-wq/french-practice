@@ -141,6 +141,13 @@ export function recordLearnerError(error, options = {}) {
   const model = applyLearnerError(getLearnerErrorModel(), error, options);
   write(KEYS.learnerErrors, model);
   try {
+    // Support is classified by the SAME rule the success path uses. Deriving it
+    // here from `assisted`/`hinted` alone read a different vocabulary from the
+    // one `learningEvidence.assistanceOf` and `assistanceTier` understand, so an
+    // event labelled `assistance: 'scaffolded'` was filed as assistance 'none'
+    // with independent: true — a mistake the learner made WITH help recorded as
+    // a fully independent baseline. One concept, one classifier.
+    const tier = assistanceTier(error);
     recordLearningEvidence({
       phase: 'baseline',
       skill: error.category,
@@ -149,8 +156,8 @@ export function recordLearnerError(error, options = {}) {
       modality: error.mode || error.category,
       score: error.score,
       correct: false,
-      assistance: error.assisted ? 'assisted' : error.hinted ? 'scaffolded' : 'none',
-      independent: Boolean(error.encounterId) && !error.assisted && !error.hinted,
+      assistance: tier,
+      independent: Boolean(error.encounterId) && tier === 'none',
       source: error.source || 'learner-error',
       sourceReliability: Number(error.confidence) >= 0.8 ? 'high' : Number(error.confidence) >= 0.5 ? 'medium' : 'unknown',
       markerConfidence: Number.isFinite(Number(error.confidence)) ? Number(error.confidence) : null,

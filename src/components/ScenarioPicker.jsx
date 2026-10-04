@@ -13,6 +13,14 @@ const norm = (s) => s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,
 export default function ScenarioPicker({ open, activeId, onPick, onClose }) {
   const [query, setQuery] = useState('');
   const inputRef = useRef(null);
+  // The only call site passes an inline arrow, so `onClose` is a new identity
+  // on every parent render. Keying the effect on it re-ran `setQuery('')`
+  // mid-typing — with a session-timer preset running (ChatArena re-renders
+  // every second to tick the countdown) the search field wiped itself once a
+  // second and stole focus back off the results. The handler is read through a
+  // ref so only `open` can restart this effect.
+  const onCloseRef = useRef(onClose);
+  useEffect(() => { onCloseRef.current = onClose; }, [onClose]);
 
   useEffect(() => {
     if (!open) return;
@@ -20,10 +28,10 @@ export default function ScenarioPicker({ open, activeId, onPick, onClose }) {
     // Focus the field for keyboard users, but don't throw up the on-screen
     // keyboard on touch — there the list itself is the primary way in.
     if (window.matchMedia?.('(pointer: fine)').matches) inputRef.current?.focus();
-    const onKey = (e) => e.key === 'Escape' && onClose();
+    const onKey = (e) => e.key === 'Escape' && onCloseRef.current?.();
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [open, onClose]);
+  }, [open]);
 
   const scenarios = getScenarios();
   const situations = useMemo(() => getSituations(), []);

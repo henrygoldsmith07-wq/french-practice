@@ -31,6 +31,7 @@ import {
   KEYS,
   read,
   write,
+  remove,
   readLearnerValue,
   purgeLearnerData,
   activeLearnerId,
@@ -640,7 +641,12 @@ function publishPulseHistory() {
 export const getActiveSession = () => read(KEYS.active, null);
 export const setActiveSession = (scenarioId, history) =>
   write(KEYS.active, { scenarioId, history });
-export const clearActiveSession = () => localStorage.removeItem(KEYS.active);
+// Must go through the learner-aware remove() from storageCore, NOT
+// localStorage.removeItem: KEYS.active is a learner-ROUTED key, so write()
+// stored it at fp.learner.<memberId>.fp.activeSession. Deleting the bare
+// legacy key left the real session in place, and "clear the conversation"
+// silently did nothing whenever a household was active.
+export const clearActiveSession = () => remove(KEYS.active);
 
 // The most recent report powers the Home dashboard's "Today's focus".
 export function getLastReport() {
@@ -1130,8 +1136,12 @@ export function recordLearningActivity(event = {}) {
     activityId: event.activityId || null,
     // Assistance provenance: a post-feedback revision (or any producer-
     // flagged supported answer) must never count as independent production
-    // when it repairs a writing weakness.
+    // when it repairs a writing weakness. The whole label is forwarded, not
+    // just the legacy boolean — an event that says
+    // `assistance: 'scaffolded'` (TrackPlayer's revealed transcript, for one)
+    // used to arrive here as an unassisted success.
     assisted: event.assisted === true ? true : undefined,
+    assistance: event.assistance,
   };
   // Every scored skill feeds the SAME recovery loop — reading and writing
   // included — so a weakness surfaced in one mode is repaired by whichever

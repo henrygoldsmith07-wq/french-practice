@@ -121,9 +121,20 @@ export default function ChatArena({ apiKey, mockMode, ttsRate, level, onTtsRate,
   useEffect(() => () => stopSpeaking(), []);
 
   // Honour Home's 5/10/15 min presets: countdown only, never auto-sends speech.
+  //
+  // `onEndSession` is an inline arrow in App, so it is a NEW identity on every
+  // App render. Without a fired-guard this effect re-runs whenever it does,
+  // and the `secondsLeft <= 0` branch re-dispatches — which re-renders App,
+  // which produces a new callback, which re-runs this effect: an unbounded
+  // loop ending in "Maximum update depth exceeded" and a blank screen. The
+  // expiry must be a one-shot event, so it is guarded like every other one-shot
+  // in this codebase (DailyChallenge, HeldOutCheck, TodaySegments).
+  const timerExpiredRef = useRef(false);
   useEffect(() => {
     if (secondsLeft == null) return undefined;
     if (secondsLeft <= 0) {
+      if (timerExpiredRef.current) return undefined;
+      timerExpiredRef.current = true;
       try { sessionStorage.removeItem('fp.sessionMins'); } catch { /* ignore */ }
       onEndSession?.();
       return undefined;
