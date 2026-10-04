@@ -49,7 +49,12 @@ export default function TransferPrompt({ correction, contextId, difficulty = 2, 
       <p className="text-sm text-ink leading-snug">{challenge.prompt}</p>
       {challenge.hint && (
         <p className="text-xs text-ink2">
-          <SpeakButton text={challenge.structure} label="Hear it" /> {challenge.hint}
+          {/* For a vocabulary target the phrase IS the answer: never show or
+              speak it before the attempt — that would turn retrieval into
+              copying. Grammar/style targets may remind the rule or form. */}
+          {challenge.impact !== 'vocabulary' && (
+            <SpeakButton text={challenge.structure} label="Hear it" />
+          )} {challenge.hint}
         </p>
       )}
       <label className="block">

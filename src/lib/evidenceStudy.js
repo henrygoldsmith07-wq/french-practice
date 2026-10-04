@@ -442,6 +442,14 @@ export function makeOutcomeRecord({ trial, graphNode = null, now = Date.now() } 
     recurred: null,                // fresh occurrence after a delayed success
     hintsUsed: null,
     timeSpent: trial?.timeSpent ?? null,
+    // Spoken PRODUCTION, not time on the Speak screen: voiced milliseconds
+    // the learner actually said (see lib/speakingTime.js), summed across the
+    // session's speaking turns. Silence and the AI partner's playback never
+    // contribute. Null when no speaking happened — never zero-filled.
+    speakingSeconds: null,
+    // Learner-reported usefulness, 1–5, optional and dismissible. Null when
+    // not rated — never invented.
+    usefulness: null,
     completed: trial?.completed ?? null,
   };
 }

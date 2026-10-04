@@ -167,8 +167,11 @@ import { contentLang } from './content/active.js';
 
 export const getFrequencyWords = () => getFrequencyWordsFor(contentLang());
 
-// Back-compat alias: the French list (kept so older imports don't break).
-export { FREQUENCY_WORDS } from './frequency.js';
+// The French frequency list is deliberately NOT re-exported here: this
+// module is imported by the conjugation tooling (which never needs the
+// dictionary), and a re-export pulled the whole 44 KB word list into every
+// chunk that imports reference.js. Callers that need the list import
+// './frequency.js' (or vocab-frequency.js's async loaders) directly.
 
 // Parse a pasted custom word list — accepts "fr, en", "fr : en", "fr — en",
 // "fr => en", "fr | en" or tab-separated, one per line. A bare hyphen is NOT

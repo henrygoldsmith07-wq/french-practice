@@ -15,6 +15,7 @@ import { buildTodayPlan } from '../lib/todayPlan';
 // hooks/useTodayDeps.js.
 import { callStudy } from '../lib/studyFlowAsync';
 import { makeEvent, dropoutPoint, EVENT_TYPES } from '../lib/instrumentation';
+import { spokenProduction } from '../lib/speakingTime';
 import {
   recordSelectionTrial, getSelectionTrial, saveSelectionTrial, recordStudyEvent,
 } from '../lib/storage';
@@ -235,6 +236,42 @@ export function claimForwardTransition(ref, index) {
   return true;
 }
 
+// The optional usefulness prompt shown once, after a finished session. One
+// question, five buttons, dismissible — deliberately not a rating system: it
+// feeds the research path only (1–5), never a score, and skipping costs the
+// learner nothing. Dismissing stores nothing at all.
+function UsefulnessPrompt({ onRate }) {
+  const [answered, setAnswered] = useState(false);
+  const [dismissed, setDismissed] = useState(false);
+  if (answered || dismissed) return null;
+  return (
+    <div className="mx-auto max-w-xs space-y-2" role="group" aria-label="Was today's session useful?">
+      <p className="text-xs text-ink2">Was today’s session useful to you?</p>
+      <div className="flex items-center justify-center gap-1.5">
+        {[1, 2, 3, 4, 5].map((n) => (
+          <button
+            key={n}
+            type="button"
+            onClick={() => { setAnswered(true); onRate?.(n); }}
+            aria-label={`Useful — ${n} of 5`}
+            className="min-h-11 min-w-11 rounded-xl border border-line bg-surface text-sm font-semibold text-ink2 hover:border-ink hover:text-ink transition"
+          >
+            {n}
+          </button>
+        ))}
+      </div>
+      <p className="text-[11px] text-ink3">1 = not useful · 5 = very useful</p>
+      <button
+        type="button"
+        onClick={() => setDismissed(true)}
+        className="text-[11px] text-ink3 hover:text-ink2 underline underline-offset-2 min-h-8"
+      >
+        Skip
+      </button>
+    </div>
+  );
+}
+
 function TodayBody({ plan, trialId, segIndex, setSegIndex, close, apiKey, mockMode, level, ttsRate, onTurn, onActivity, award, history, setHistory }) {
   // Track content lives in the lazy listening chunk; today's payload only
   // carries ids, so resolve the real track when the listen segment renders.
@@ -294,6 +331,16 @@ function TodayBody({ plan, trialId, segIndex, setSegIndex, close, apiKey, mockMo
       trial.completed = Boolean(finishedAllSteps)
         && deliveredRef.current.length === plan.segments.length
         && !deliveredRef.current.some((d) => d.skipped && d.seconds < 5);
+      // Spoken production across the session's speak turns: voiced time on
+      // the learner's mic, deduped per presentation. An abandoned session
+      // records what was genuinely said — never a guessed total.
+      const spoken = spokenProduction(history.map((t, i) => ({
+        voicedMs: t.voicedMs,
+        encounterId: t.encounterId || `turn-${i}`,
+        sessionId: t.sessionId,
+        at: t.at,
+      })));
+      trial.speakingSeconds = spoken.seconds;
       saveSelectionTrial(trials);
       callStudy('updateOutcomeDelivery', {
         trialId: trial.id,
@@ -301,6 +348,7 @@ function TodayBody({ plan, trialId, segIndex, setSegIndex, close, apiKey, mockMo
         timeSpent: trial.timeSpent,
         completed: trial.completed,
         delivered: trial.delivered,
+        speakingSeconds: spoken.seconds,
       });
       // Pilot instrumentation: session outcome + drop-out point, local only.
       try {
@@ -318,7 +366,7 @@ function TodayBody({ plan, trialId, segIndex, setSegIndex, close, apiKey, mockMo
     } catch {
       return null;
     }
-  }, [trialId, plan.segments.length, plan.totalMinutes]);
+  }, [trialId, plan.segments.length, plan.totalMinutes, history]);
 
   // Persist a fully completed run as soon as its final step advances.
   useEffect(() => {
@@ -465,6 +513,16 @@ function TodayBody({ plan, trialId, segIndex, setSegIndex, close, apiKey, mockMo
               Today's {langName()} — {plan.totalMinutes} minutes · {plan.segments.map((s) => s.label).join(' → ')}.
             </p>
           )}
+          <UsefulnessPrompt onRate={(rating) => {
+            // Opt-in, dismissible, research-path only: a rating goes to the
+            // study outcome record (1–5), and skipping passes nothing.
+            try {
+              callStudy('updateOutcomeDelivery', {
+                trialId,
+                usefulness: rating,
+              });
+            } catch { /* a rating is never worth breaking the close */ }
+          }} />
           <button onClick={close} className="btn btn-primary w-full max-w-xs mx-auto min-h-12 rounded-xl text-sm">Close</button>
         </div>
       </div>

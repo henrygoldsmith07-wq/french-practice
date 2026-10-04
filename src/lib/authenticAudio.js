@@ -43,6 +43,59 @@ export const CONSENT_BASES = ['public-domain-recording', 'written-consent', 'cc-
 export const REGISTERS = ['clear-read', 'natural-read', 'spontaneous', 'conversation', 'interview', 'announcement', 'radio'];
 export const NOISE_LEVELS = ['quiet', 'ambient', 'busy'];
 
+// Speaker status: the brief's native/non-native distinction, kept explicit so
+// a non-native model voice is never counted as native listening evidence.
+export const SPEAKER_STATUSES = ['native', 'non-native', 'unknown'];
+// Recording conditions: studio-controlled vs field/realistic, kept separate
+// from the noise level (a quiet field recording is still not a studio one).
+export const CONDITIONS = ['studio', 'controlled-room', 'field', 'event'];
+// Transcription coverage for the asset's audio.
+export const TRANSCRIPTIONS = ['full', 'partial', 'none'];
+// Difficulty band of the audio itself (CEFR-ish, the recording's challenge).
+export const AUDIO_DIFFICULTIES = ['introductory', 'intermediate', 'advanced'];
+
+/**
+ * The four listening evidence classes. They are NOT equivalent: TTS practice
+ * trains the ear but proves nothing about real speech, while a spontaneous
+ * noisy conversation is the strongest — and rarest — listening evidence.
+ * Every listening surface must show which class it delivered.
+ */
+export const LISTENING_EVIDENCE_CLASSES = Object.freeze({
+  TTS_PRACTICE: 'tts-practice',
+  STUDIO_NATIVE: 'studio-native',
+  SPONTANEOUS_NATIVE: 'spontaneous-native',
+  NOISY_CONVERSATION: 'noisy-conversation',
+});
+
+export const LISTENING_EVIDENCE_LABELS = Object.freeze({
+  'tts-practice': 'Studio audio — practice only, not real-speech evidence.',
+  'studio-native': 'A real recorded native speaker in a controlled room.',
+  'spontaneous-native': 'A real native speaker talking spontaneously — the way people actually talk.',
+  'noisy-conversation': 'A real conversation with background noise — the strongest listening challenge.',
+});
+
+/**
+ * Classify an asset's listening evidence class. Never guesses upward: only a
+ * provenance-backed recording can claim any kind of real-speech evidence, and
+ * only its own metadata decides which kind.
+ */
+export function listeningEvidenceClass(asset) {
+  if (!asset || asset.sourceType === 'tts' || !asset.audioSrc) {
+    return LISTENING_EVIDENCE_CLASSES.TTS_PRACTICE;
+  }
+  const noisy = asset.realisticConversation === true
+    || asset.overlap === true
+    || (asset.noise && asset.noise !== 'quiet')
+    || asset.conditions === 'field'
+    || asset.conditions === 'event';
+  if (noisy) return LISTENING_EVIDENCE_CLASSES.NOISY_CONVERSATION;
+  const spontaneous = asset.register === 'spontaneous'
+    || asset.register === 'conversation'
+    || asset.register === 'interview';
+  if (spontaneous) return LISTENING_EVIDENCE_CLASSES.SPONTANEOUS_NATIVE;
+  return LISTENING_EVIDENCE_CLASSES.STUDIO_NATIVE;
+}
+
 // ── Validation ───────────────────────────────────────────────────────────────
 
 /** Validate one catalog asset. Returns {ok, errors[]} — strict on provenance. */
@@ -63,6 +116,22 @@ export function validateAsset(a) {
   if (a.realisticConversation != null && typeof a.realisticConversation !== 'boolean') errors.push('realisticConversation must be boolean');
   if (a.duration != null && (!Number.isFinite(Number(a.duration)) || Number(a.duration) <= 0)) errors.push('duration must be a positive number of seconds');
   if (a.speechRate != null && (!Number.isFinite(Number(a.speechRate)) || Number(a.speechRate) <= 0)) errors.push('speechRate must be a positive number');
+  // Speaker/record/transcript metadata — validated but never required to
+  // exist: an importer that cannot know a field must leave it absent rather
+  // than guess. When present it must be one of the declared values.
+  if (a.speakerStatus != null && !SPEAKER_STATUSES.includes(a.speakerStatus)) {
+    errors.push(`speakerStatus must be one of ${SPEAKER_STATUSES.join(', ')}`);
+  }
+  if (a.conditions != null && !CONDITIONS.includes(a.conditions)) {
+    errors.push(`conditions must be one of ${CONDITIONS.join(', ')}`);
+  }
+  if (a.transcription != null && !TRANSCRIPTIONS.includes(a.transcription)) {
+    errors.push(`transcription must be one of ${TRANSCRIPTIONS.join(', ')}`);
+  }
+  if (a.difficulty != null && !AUDIO_DIFFICULTIES.includes(a.difficulty)) {
+    errors.push(`difficulty must be one of ${AUDIO_DIFFICULTIES.join(', ')}`);
+  }
+  if (a.topic != null && typeof a.topic !== 'string') errors.push('topic must be a string');
   return { ok: errors.length === 0, errors };
 }
 

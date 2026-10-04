@@ -196,12 +196,16 @@ export function freshContextChallenge(correction = {}, options = {}) {
     contextId: context.id,
     prompt: transferPrompt(target, context, difficulty, framing),
     // No hint at higher difficulty: a hint turns the task into phrase copying.
-    // At lower difficulty the hint names the RULE, never the whole sentence.
+    // At lower difficulty the hint names the RULE — and for a vocabulary
+    // target it never contains the phrase itself, because there the phrase
+    // IS the answer the learner must retrieve.
     hint: difficulty >= 2
       ? null
-      : target.form
-        ? `Remember the rule: ${target.form}.`
-        : `Try to work in: «${structure}»`,
+      : target.impact === 'vocabulary'
+        ? 'Think of the phrase you saved or fixed — say it in your own sentence.'
+        : target.form
+          ? `Remember the rule: ${target.form}.`
+          : `Try to work in: «${structure}»`,
     successCriteria: 'Your sentence uses the repaired form correctly, in your own words and a new situation.',
     requiresIndependence: difficulty >= 2,
     // The corrected wording is kept only as fallback vocabulary for
@@ -253,30 +257,101 @@ function transferPrompt(target, context, difficulty, framing) {
  * corrected phrase? A submission that copies the correction (or the original
  * mistake) near-verbatim is memorisation, not transfer — it must not earn
  * transfer evidence. Returns { transferred, reason }.
+ *
+ * Three signals, strongest first:
+ *   1. normalised identity — catches verbatim copies and punctuation-only
+ *      "changes" (punctuation is stripped by normalisation);
+ *   2. order-sensitive word-sequence similarity (LCS ratio) — catches synonym
+ *      swaps over an unchanged skeleton and a subject swap that leaves the
+ *      phrase skeleton identical;
+ *   3. verbatim embedding — a substantial corrected sentence with material
+ *      bolted on is still that sentence. Skipped for vocabulary targets (the
+ *      task requires the word to appear) and for short corrections (a short
+ *      phrase reused inside a new sentence is exactly the task).
+ *
+ * The threshold is deliberately permissive below the near-copy band: a
+ * genuinely different sentence, or the same target expressed through a
+ * different valid construction, shares few ordered words and passes. A short
+ * correction reused in a new sentence ("Le pain est bon" after fixing
+ * "le pain") is legitimate French and must pass.
  */
 export function assessTransferNovelty(attempt, correction = {}) {
   const said = normaliseWords(String(attempt || ''));
   const corrected = normaliseWords(String(correction.correction || ''));
   const original = normaliseWords(String(correction.original || ''));
   if (!said) return { transferred: false, reason: 'empty' };
-  if (!corrected) return { transferred: true, reason: 'no-target' };
-  if (said === corrected) return { transferred: false, reason: 'repeated-correction' };
-  if (overlapRatio(corrected, said) >= 0.8) return { transferred: false, reason: 'repeated-correction' };
-  if (original && overlapRatio(original, said) >= 0.8) return { transferred: false, reason: 'repeated-original' };
+  if (!corrected && !original) return { transferred: true, reason: 'no-target' };
+  if (corrected && said === corrected) return { transferred: false, reason: 'repeated-correction' };
+  if (original && said === original) return { transferred: false, reason: 'repeated-original' };
+
+  const impact = correctionImpact(correction);
+  const saidTokens = tokens(said);
+  const nearCopy = (referenceTokens, reason) => {
+    if (sequenceSimilarity(referenceTokens, saidTokens) >= NEAR_COPY_RATIO) {
+      return { transferred: false, reason };
+    }
+    // Embedding: the attempt IS the reference sentence with something bolted
+    // on. Only meaningful for substantial references — and never for a
+    // vocabulary target, where the phrase showing up is the task itself.
+    if (impact !== 'vocabulary'
+      && referenceTokens.length >= MIN_EMBED_TOKENS
+      && containsSequence(saidTokens, referenceTokens)) {
+      return { transferred: false, reason };
+    }
+    return null;
+  };
+
+  if (corrected) {
+    const hit = nearCopy(tokens(corrected), 'repeated-correction');
+    if (hit) return hit;
+  }
+  if (original) {
+    const hit = nearCopy(tokens(original), 'repeated-original');
+    if (hit) return hit;
+  }
   return { transferred: true, reason: 'novel' };
 }
+
+// Order-sensitive similarity: longest common subsequence over the max length.
+// Synonym swaps keep nearly every surrounding token in order and score high;
+// a genuinely new sentence shares only stray function words.
+const NEAR_COPY_RATIO = 0.55;
+// Embedding only counts as repetition for references long enough that a
+// learner following "say it differently" would have restructured them.
+const MIN_EMBED_TOKENS = 4;
+
+function sequenceSimilarity(a, b) {
+  if (!a.length || !b.length) return 0;
+  let prev = new Array(b.length + 1).fill(0);
+  for (let i = 1; i <= a.length; i += 1) {
+    const cur = new Array(b.length + 1).fill(0);
+    for (let j = 1; j <= b.length; j += 1) {
+      cur[j] = a[i - 1] === b[j - 1]
+        ? prev[j - 1] + 1
+        : Math.max(prev[j], cur[j - 1]);
+    }
+    prev = cur;
+  }
+  return prev[b.length] / Math.max(a.length, b.length);
+}
+
+function containsSequence(haystack, needle) {
+  if (!needle.length || needle.length > haystack.length) return false;
+  outer: for (let i = 0; i + needle.length <= haystack.length; i += 1) {
+    for (let j = 0; j < needle.length; j += 1) {
+      if (haystack[i + j] !== needle[j]) continue outer;
+    }
+    return true;
+  }
+  return false;
+}
+
+// NOTE: the module's word tokenizer above (`tokens`) is reused by the novelty
+// checks — it accepts raw or normalised text, so there is one tokenizer here.
 
 function normaliseWords(text) {
   return String(text).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
     .replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
-}
-
-function overlapRatio(reference, said) {
-  const refWords = reference.split(' ').filter(Boolean);
-  if (!refWords.length) return 0;
-  const saidSet = new Set(said.split(' ').filter(Boolean));
-  const hits = refWords.filter((w) => saidSet.has(w)).length;
-  return hits / refWords.length;
 }
 
 /**

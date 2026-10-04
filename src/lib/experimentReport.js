@@ -129,27 +129,61 @@ export function experimentComparison(pooled = {}) {
     (s) => s.recurrence?.rate ?? null,
     (s) => (s.recurrence?.n ? { successes: Math.round((s.recurrence.rate || 0) * s.recurrence.n), trials: s.recurrence.n } : null),
   );
-  // Per-skill transfer, kept separate — domains never merge. The headline
-  // `transferSuccess` cell is arm-keyed like every other metric (its value is
-  // the mean across protocol skills); the per-skill detail lives beside it.
+  // Per-skill transfer, kept separate — domains never merge into a misleading
+  // raw item-level pool. The headline `transferSuccess` cell aggregates
+  // ACROSS skills at the participant level first, then across participants:
+  //
+  //   1. for each participant, take the mean of every skill that participant
+  //      actually measured (missing skills are EXCLUDED — never zero-filled);
+  //   2. the arm value is the mean of those per-participant means, so a
+  //      participant with five measured skills weighs exactly as much as one
+  //      with a single skill (participant-weighted, not item-weighted);
+  //   3. a participant with no measured skill contributes nothing and is
+  //      excluded from the sample size rather than counted as zero.
+  //
+  // The skill set is the UNION across ALL summaries (not the first one's keys):
+  // a skill only later participants carry is still reported, and per-skill
+  // cells are computed per arm from everyone who measured that skill.
+  const skills = [...new Set(
+    summaries.flatMap((s) => Object.keys(s?.transferBySkill || {})),
+  )].sort();
   const transferBySkill = {};
-  const skills = Object.keys(summaries[0]?.transferBySkill || { vocabulary: null });
   for (const skill of skills) {
     transferBySkill[skill] = metric((s) => {
       const t = s.transferBySkill?.[skill];
       return t && t.mean != null ? t.mean / 100 : null;
     });
   }
-  const transferSuccess = metric((s) => {
-    const t = s.transferBySkill?.[skills[0]];
-    return t && t.mean != null ? t.mean / 100 : null;
-  });
+  // Participant-level mean over their own measured skills.
+  const participantTransfer = (s) => {
+    const measured = (s?.transferBySkill ? Object.values(s.transferBySkill) : [])
+      .map((t) => (t && t.mean != null ? t.mean / 100 : null))
+      .filter((v) => typeof v === 'number' && Number.isFinite(v));
+    return measured.length ? measured.reduce((a, b) => a + b, 0) / measured.length : null;
+  };
+  const transferSuccess = metric(participantTransfer);
 
   // Assistance dependence: hints/retries per recorded attempt, from the raw
   // rows (a null hintsUsed means "not recorded", not zero).
   const assistanceDependence = metric((s) => {
     const rows = rowsForArm(s.arm).filter((o) => o.participantId === s.participantId && typeof o.hintsUsed === 'number');
     return rows.length ? meanOf(rows.map((o) => o.hintsUsed)) : null;
+  });
+
+  // Spoken production and usefulness are captured on outcome rows when a
+  // study participant completes a session (speakingSeconds from the learner's
+  // voiced mic time; usefulness from the optional 1–5 prompt). Until rows
+  // exist these read no-data — never invented, and the capture-gap list below
+  // narrows to whatever is genuinely still missing.
+  const speakingTime = metric((s) => {
+    const rows = rowsForArm(s.arm).filter((o) => o.participantId === s.participantId
+      && Number.isFinite(Number(o.speakingSeconds)) && Number(o.speakingSeconds) > 0);
+    return rows.length ? meanOf(rows.map((o) => Number(o.speakingSeconds) / 60)) : null;
+  });
+  const usefulness = metric((s) => {
+    const rows = rowsForArm(s.arm).filter((o) => o.participantId === s.participantId
+      && Number.isFinite(Number(o.usefulness)) && Number(o.usefulness) >= 1 && Number(o.usefulness) <= 5);
+    return rows.length ? meanOf(rows.map((o) => Number(o.usefulness))) : null;
   });
 
   const metrics = {
@@ -161,10 +195,8 @@ export function experimentComparison(pooled = {}) {
     delayedRecallLong,
     recurrence,
     assistanceDependence,
-    // Not yet captured on outcome rows: reported as no-data rather than
-    // invented. See the capture gaps below.
-    speakingTime: metric(() => null),
-    usefulness: metric(() => null),
+    speakingTime,
+    usefulness,
   };
 
   const arms = Object.fromEntries(armNames.map((arm) => [arm, {
@@ -186,8 +218,14 @@ export function experimentComparison(pooled = {}) {
     state: anyReportable ? 'provisional' : 'no-data',
     note: 'Participant-weighted and descriptive: a difference here is not a significance claim, and a small sample is reported as provisional rather than as a result.',
     captureGaps: [
-      'speakingTime — spoken-production duration is not yet written to study outcome rows; it is collected in local instrumentation only.',
-      'usefulness — learner-reported usefulness has no UI prompt yet, so no data exists and none is invented.',
+      // Only genuinely-missing capture is listed. Once rows carry the field,
+      // the gap disappears instead of nagging forever.
+      ...(speakingTime.adaptive.state === 'no-data' && speakingTime.balanced.state === 'no-data'
+        ? ['speakingTime — no study outcome rows carry spoken-production time yet; collected in local instrumentation until a participant session records it.']
+        : []),
+      ...(usefulness.adaptive.state === 'no-data' && usefulness.balanced.state === 'no-data'
+        ? ['usefulness — no learner has rated a session yet; the optional prompt stores nothing until they do.']
+        : []),
     ],
   };
 }

@@ -247,6 +247,135 @@ describe('buildSessionPlan', () => {
     }
   });
 
+  it('names the concrete evidence that triggered each segment', () => {
+    const plan = buildSessionPlan({
+      minutes: 18,
+      state: {
+        weaknesses: [weakness({ errorCount: 3, recurrenceCount: 1, successCount: 2, independentPasses: 0 })],
+        srsDue: 12,
+        hasListeningContent: true, hasScenario: true,
+        speakingMinutes7d: 3,
+      },
+    });
+    const repair = plan.segments.find((s) => s.kind === 'repair');
+    if (repair) {
+      assert.ok(repair.explain.evidence.some((e) => /3 recorded mistakes/.test(e)),
+        JSON.stringify(repair.explain.evidence));
+      assert.ok(repair.explain.evidence.some((e) => /recurrence/.test(e)));
+      assert.ok(repair.explain.evidence.some((e) => /without help/.test(e)));
+    }
+    const speak = plan.segments.find((s) => s.kind === 'speak');
+    if (speak) {
+      assert.ok(speak.explain.evidence.some((e) => /3 min of speaking/.test(e)),
+        JSON.stringify(speak.explain.evidence));
+    }
+  });
+
+  it('records the competing candidate that lost and by how much', () => {
+    // Three repair candidates contend for the repair slot: the variety
+    // constraint caps same-type runs at two, so the third genuinely loses and
+    // every winner must name it — "why this one" is only answerable beside
+    // "why not that one".
+    const plan = buildSessionPlan({
+      minutes: 14,
+      state: {
+        weaknesses: [
+          weakness({ id: 'g:a', key: 'a', label: 'A', errorCount: 4, recurrenceCount: 2 }),
+          weakness({ id: 'g:b', key: 'b', label: 'B', errorCount: 3 }),
+          weakness({ id: 'g:c', key: 'c', label: 'C', errorCount: 2 }),
+        ],
+        hasListeningContent: false, hasScenario: false,
+      },
+    });
+    const repairs = plan.segments.filter((s) => s.kind === 'repair');
+    assert.ok(repairs.length >= 1, 'a repair runs');
+    assert.ok(repairs.length < 3, 'the variety constraint refuses three of the same kind');
+    assert.ok(plan.adjustments.some((a) => a.includes('type-run')), 'the binding constraint is named');
+
+    // `competing` is the LOSER — the strongest candidate that missed the
+    // plan — and `lostBy` is the winner's margin over it.
+    const winner = repairs[0];
+    assert.equal(winner.target, 'g:a', 'the strongest weakness wins the slot');
+    assert.ok(winner.explain.competing, 'the losing candidate is recorded');
+    assert.equal(winner.explain.competing.candidate, 'repair:g:c');
+    assert.ok(winner.explain.competing.lostBy > 0, 'the winning margin is recorded');
+    assert.ok(winner.explain.constraints.includes('skipped:repair:type-run'),
+      'the constraint that shaped the field is named');
+
+    // The second repair sees the same loser; a tie is recorded as a zero
+    // margin, not silently dropped.
+    const second = repairs[repairs.length - 1];
+    assert.equal(second.explain.competing.candidate, 'repair:g:c');
+    assert.equal(second.explain.competing.lostBy, 0, 'a tie records a zero margin');
+  });
+
+  it('states what a clean pass on each segment would prove', () => {
+    const plan = buildSessionPlan({
+      minutes: 20,
+      state: {
+        weaknesses: [weakness()], srsDue: 5, easyWinEligible: true,
+        evidenceDue: [{ type: 'transfer', target: { skill: 'grammar' } }],
+        hasListeningContent: true, hasScenario: true,
+      },
+    });
+    for (const seg of plan.segments) {
+      assert.ok(typeof seg.explain.successProof === 'string' && seg.explain.successProof.length > 20,
+        `segment ${seg.kind} lacks a success claim`);
+    }
+    const warmup = plan.segments.find((s) => s.kind === 'warmup');
+    if (warmup) {
+      // An easy win must NOT claim mastery — that is the whole point of it.
+      assert.ok(/proves nothing about mastery/.test(warmup.explain.successProof),
+        warmup.explain.successProof);
+    }
+    const transfer = plan.segments.find((s) => s.kind === 'transfer');
+    if (transfer) {
+      assert.ok(/skill, not the sentence/.test(transfer.explain.successProof));
+    }
+  });
+
+  it('names the constraint that affected ranking when one binds', () => {
+    const recent = [
+      { kind: 'retrieve', target: 'retrieve' },
+      { kind: 'retrieve', target: 'retrieve' },
+      { kind: 'retrieve', target: 'retrieve' },
+    ];
+    const plan = buildSessionPlan({
+      minutes: 14,
+      state: {
+        weaknesses: [weakness({ id: 'g:a', key: 'a', label: 'A', errorCount: 5, recurrenceCount: 3 })],
+        recentPlans: recent,
+        srsDue: 10,
+        hasListeningContent: false,
+        hasScenario: false,
+      },
+    });
+    const repair = plan.segments.find((s) => s.kind === 'repair');
+    if (repair && repair.explain.constraints.length) {
+      assert.ok(repair.explain.constraints.every((c) => typeof c === 'string'));
+    }
+    // The variety penalty for the repeated retrieval must be visible either
+    // as a named penalty or as the constraint that skipped it.
+    const retrieve = plan.segments.find((s) => s.kind === 'retrieve');
+    if (retrieve) {
+      assert.ok(retrieve.explain.penalties.some((p) => p.includes('recently')),
+        JSON.stringify(retrieve.explain.penalties));
+    }
+  });
+
+  it('keep the scoring model out of learner-facing copy', () => {
+    const plan = buildSessionPlan({
+      minutes: 12,
+      state: { weaknesses: [weakness()], srsDue: 3, hasListeningContent: true, hasScenario: true },
+    });
+    for (const seg of plan.segments) {
+      for (const bad of ['SCORE_FACTORS', 'active-weakness', 'repetition-penalty', 'due-vocabulary', 'independence-gap']) {
+        assert.ok(!seg.why.toLowerCase().includes(bad.toLowerCase()),
+          `learner copy leaks "${bad}"`);
+      }
+    }
+  });
+
   it('a due delayed retest outranks low-value novelty', () => {
     const cands = scoreCandidates({
       weaknesses: [],

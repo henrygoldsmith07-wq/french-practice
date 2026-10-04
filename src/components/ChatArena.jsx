@@ -132,6 +132,16 @@ export default function ChatArena({ apiKey, mockMode, ttsRate, level, onTtsRate,
     return () => clearInterval(id);
   }, [secondsLeft, onEndSession]);
 
+  // Spoken production for the session: voiced milliseconds per turn, keyed
+  // by encounter so a re-submit of the same recording can never double-count.
+  // Only the learner's mic feeds this — the AI partner's playback is not an
+  // input, and silence contributes nothing (useRecorder measures voiced time
+  // directly). Reset on scenario switch below.
+  const spokenRef = useRef([]);
+  // Voiced milliseconds of the recording awaiting submission (one attempt =
+  // one presentation, attached to the turn it produces).
+  const lastVoicedRef = useRef(0);
+
   const recorder = useRecorder({
     onComplete: async (blob, durationMs, acoustic = {}) => {
       if (navigator.vibrate) navigator.vibrate([20, 40, 20]); // haptic: stopped
@@ -143,6 +153,10 @@ export default function ChatArena({ apiKey, mockMode, ttsRate, level, onTtsRate,
         // Coach on delivery from the raw spoken transcript, before any edits.
         const m = speechMetrics(text, durationMs, activeLanguage().id);
         const delivery = { ...m, pauseCount: acoustic.pauseCount || 0, longestPauseMs: acoustic.longestPauseMs || 0 };
+        // Voiced production only: the acoustic loop separates speech from
+        // silence, so a one-minute turn with 12 s of talking is 12 s.
+        spokenRef.current.push({ voicedMs: Number(acoustic.voicedMs) || 0, at: new Date().toISOString() });
+        lastVoicedRef.current = Number(acoustic.voicedMs) || 0;
         setSpoken(
           delivery.fillers > 0 || delivery.pace === 'fast' || delivery.pauseCount >= 2 || delivery.longestPauseMs > 1800
             ? delivery
@@ -179,6 +193,7 @@ export default function ChatArena({ apiKey, mockMode, ttsRate, level, onTtsRate,
     flightRef.current += 1; // orphan any in-flight turn/hint from the old chat
     hintSeqRef.current += 1;
     stopSpeaking();
+    spokenRef.current = []; // a new conversation starts its own speaking total
     setScenario(s);
     setHistory([]);
     setHint('');
@@ -373,6 +388,11 @@ export default function ChatArena({ apiKey, mockMode, ttsRate, level, onTtsRate,
         userText,
         evaluation,
         reply: evaluation.reply,
+        // Spoken production for THIS turn: voiced milliseconds measured on
+        // the learner's mic recording (never the partner's playback, never
+        // silence). Attached to the turn so a reload keeps the session's
+        // speaking total intact and one presentation counts once.
+        voicedMs: lastVoicedRef.current,
         // Evidence identity for this encounter (one drill presentation): a
         // redo of this turn re-answers the SAME encounter and must never
         // double-count toward independent mastery. Persisted with the turn so

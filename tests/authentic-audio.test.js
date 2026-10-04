@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import {
   validateAsset, stageFor, mergeCatalogs, playbackPlan,
   progressionFrom, recordAttempt, emptyProgression,
+  listeningEvidenceClass, LISTENING_EVIDENCE_CLASSES, LISTENING_EVIDENCE_LABELS,
+  validateAsset as validate,
   STAGES, MAX_STAGE,
 } from '../src/lib/authenticAudio.js';
 import { AUTHENTIC_AUDIO_SEED } from '../src/lib/content/authenticAudioSeed.js';
@@ -125,5 +127,63 @@ describe('playbackPlan + track conversion', () => {
     assert.equal(t.sourceUrl, base.sourceUrl);
     assert.deepEqual(t.speakers, ['Reader']);
     assert.equal(t.duration, 42);
+  });
+});
+
+// ---- listening evidence classes: not all listening is equal ---------------
+
+describe('listeningEvidenceClass — real speech vs studio audio', () => {
+  it('TTS practice is never real-speech evidence', () => {
+    assert.equal(listeningEvidenceClass({ sourceType: 'tts' }), LISTENING_EVIDENCE_CLASSES.TTS_PRACTICE);
+    assert.equal(listeningEvidenceClass(null), LISTENING_EVIDENCE_CLASSES.TTS_PRACTICE);
+    assert.equal(listeningEvidenceClass({ sourceType: 'recording' }), LISTENING_EVIDENCE_CLASSES.TTS_PRACTICE,
+      'a recording with no audio source claims nothing');
+  });
+
+  it('a controlled studio reading is studio-native, not spontaneous', () => {
+    assert.equal(listeningEvidenceClass({ ...base, sourceType: 'recording' }), LISTENING_EVIDENCE_CLASSES.STUDIO_NATIVE);
+  });
+
+  it('spontaneous registers are flagged distinctly from studio reading', () => {
+    assert.equal(
+      listeningEvidenceClass({ ...base, sourceType: 'recording', register: 'spontaneous' }),
+      LISTENING_EVIDENCE_CLASSES.SPONTANEOUS_NATIVE,
+    );
+    assert.equal(
+      listeningEvidenceClass({ ...base, sourceType: 'recording', register: 'interview' }),
+      LISTENING_EVIDENCE_CLASSES.SPONTANEOUS_NATIVE,
+    );
+  });
+
+  it('noise, overlap and field conditions read as the strongest class', () => {
+    assert.equal(
+      listeningEvidenceClass({ ...base, sourceType: 'recording', noise: 'busy' }),
+      LISTENING_EVIDENCE_CLASSES.NOISY_CONVERSATION,
+    );
+    assert.equal(
+      listeningEvidenceClass({ ...base, sourceType: 'recording', conditions: 'field' }),
+      LISTENING_EVIDENCE_CLASSES.NOISY_CONVERSATION,
+    );
+    assert.equal(
+      listeningEvidenceClass({ ...base, sourceType: 'recording', realisticConversation: true }),
+      LISTENING_EVIDENCE_CLASSES.NOISY_CONVERSATION,
+    );
+  });
+
+  it('every class has learner-facing copy and TTS copy admits it is not real evidence', () => {
+    for (const cls of Object.values(LISTENING_EVIDENCE_CLASSES)) {
+      assert.ok(LISTENING_EVIDENCE_LABELS[cls], `class ${cls} lacks copy`);
+    }
+    assert.ok(LISTENING_EVIDENCE_LABELS['tts-practice'].toLowerCase().includes('not real-speech evidence'));
+  });
+
+  it('the new metadata fields validate without fabricating presence', () => {
+    // Absent metadata is legal (never guessed); present-but-wrong is rejected.
+    assert.ok(validateAsset(base).ok, 'old assets stay valid');
+    assert.ok(validateAsset({ ...base, speakerStatus: 'native', conditions: 'studio', transcription: 'full', difficulty: 'intermediate', topic: 'daily life' }).ok);
+    assert.ok(!validateAsset({ ...base, speakerStatus: 'fluent' }).ok, 'unknown speakerStatus rejected');
+    assert.ok(!validateAsset({ ...base, conditions: 'outdoors' }).ok, 'unknown conditions rejected');
+    assert.ok(!validateAsset({ ...base, transcription: 'yes' }).ok, 'unknown transcription rejected');
+    assert.ok(!validateAsset({ ...base, difficulty: 'hard' }).ok, 'unknown difficulty rejected');
   });
 });

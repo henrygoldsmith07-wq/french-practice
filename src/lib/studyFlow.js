@@ -323,7 +323,7 @@ export function markOutcomeRecurrence({ mistakeId, recurred = true }) {
 }
 
 /** Delivery facts recorded when the Today session finishes. */
-export function updateOutcomeDelivery({ trialId = null, trialAt, timeSpent, completed, delivered }) {
+export function updateOutcomeDelivery({ trialId = null, trialAt, timeSpent, completed, delivered, speakingSeconds = null, usefulness = null }) {
   // Research-write guard: no consent/active study, no fp.study.* write.
   if (!canRecordStudyData() || !canRecordUnderProtocol()) return;
   try {
@@ -337,6 +337,17 @@ export function updateOutcomeDelivery({ trialId = null, trialAt, timeSpent, comp
     list[idx].timeSpent = Number.isFinite(timeSpent) ? timeSpent : list[idx].timeSpent;
     list[idx].completed = typeof completed === 'boolean' ? completed : list[idx].completed;
     if (Array.isArray(delivered)) list[idx].delivered = delivered;
+    // Spoken production: voiced seconds the learner actually said. A number
+    // wins; null leaves the field alone so a later call cannot erase it.
+    if (Number.isFinite(Number(speakingSeconds)) && Number(speakingSeconds) > 0) {
+      list[idx].speakingSeconds = Math.round(Number(speakingSeconds) * 100) / 100;
+    }
+    // Learner-reported usefulness: 1–5 only, validated. A dismissed prompt
+    // passes null and the field stays null — absence is never a rating.
+    const rating = Number(usefulness);
+    if (Number.isFinite(rating) && rating >= 1 && rating <= 5) {
+      list[idx].usefulness = Math.round(rating);
+    }
     saveStudyOutcomes(list);
   } catch { /* noop */ }
 }

@@ -22,6 +22,8 @@ import {
   prioritiseLearnerErrors,
   learnerErrorSummary,
   canonicaliseModel,
+  assistanceTier,
+  evidenceStrength,
 } from '../learnerErrors.js';
 import { recordLearningEvidence } from './learningEvidenceStore.js';
 
@@ -166,12 +168,26 @@ export function recordLearnerSuccess(success, options = {}) {
   const model = applyLearnerSuccess(getLearnerErrorModel(), success, options);
   write(KEYS.learnerErrors, model);
   try {
-    const mode = String(success.mode || '');
-    const phase = /^(held-out|transfer)/i.test(mode)
-      ? 'transfer'
-      : /^(weakness-retest|srs)$/i.test(mode) || success.delayed === true
-        ? 'delayed'
+    // The phase and independence of this success come from the SAME rules
+    // the recovery model uses — never from the caller's mode label. A label
+    // is a claim about intent; the clock decides "delayed", actual support
+    // decides "assisted". (A retype, for example, is structurally assisted:
+    // the answer was on screen, and it must never read as independent mastery
+    // evidence just because its mode name looked innocuous.)
+    const entry = model.entries.find((e) => (
+      e.category === success.category && e.key === (success.key || success.topicId || success.itemId)
+    )) || null;
+    // The clock decides "delayed", so the clock must actually reach it: the
+    // event's timestamp travels with the success (callers may pin it through
+    // options.at for back-dated evidence).
+    const at = options.at || success.at || new Date().toISOString();
+    const strength = evidenceStrength({ ...success, at }, entry || {});
+    const phase = strength === 'delayed'
+      ? 'delayed'
+      : String(success.mode || '').startsWith('held-out') || success.heldOut === true
+        ? 'transfer'
         : 'intervention';
+    const assistance = assistanceTier(success);
     recordLearningEvidence({
       phase,
       skill: success.category,
@@ -185,11 +201,14 @@ export function recordLearnerSuccess(success, options = {}) {
       // task can claim held-out evidence. Keeping these separate prevents a
       // normal transfer drill from accidentally satisfying the strongest
       // confirmation state.
-      heldOut: success.heldOut === true || /^held-out/i.test(mode),
+      heldOut: success.heldOut === true || /^held-out/i.test(String(success.mode || '')),
       promptNovelty: success.promptNovelty,
       difficulty: success.difficulty,
-      assistance: success.assisted ? 'assisted' : success.hinted ? 'scaffolded' : 'none',
-      independent: Boolean(success.encounterId) && !success.assisted && !success.hinted,
+      assistance,
+      // Independent means: the learner's own production, no support, and a
+      // real encounter identity. Structurally-assisted modes (retype, choice)
+      // can never claim independence, whatever the caller believed.
+      independent: assistance === 'none' && Boolean(success.encounterId) && !success.assisted && !success.hinted,
       source: success.source || 'learner-success',
       sourceReliability: Number(success.confidence) >= 0.8 ? 'high' : Number(success.confidence) >= 0.5 ? 'medium' : 'unknown',
       markerConfidence: Number.isFinite(Number(success.confidence)) ? Number(success.confidence) : null,

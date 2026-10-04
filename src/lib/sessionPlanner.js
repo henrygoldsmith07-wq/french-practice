@@ -68,14 +68,38 @@ const FACTOR_PENALTY = {
 };
 
 /**
+ * What a clean pass on this segment would PROVE — the planner's forward
+ * claim, kept with the plan for research/development inspection. Learners
+ * only ever see the concise `why`.
+ */
+function successProof(kind) {
+  switch (kind) {
+    case 'repair': return 'a clean pass shows the repaired form works under guided practice; the delayed retest decides whether it sticks';
+    case 'transfer': return 'an independent pass in a NEW situation proves the skill, not the sentence, was learned';
+    case 'speak': return 'speaking without correction shows the form survives real-time production';
+    case 'retrieve': return 'recall without the answer on screen shows the memory exists; it is not yet productive use';
+    case 'input': return 'understanding at speed shows the ear holds up; it proves comprehension, not production';
+    case 'warmup': return 'an easy success builds fluency and confidence — it proves nothing about mastery, by design';
+    case 'review': return 'a due retest passed on time confirms an earlier repair actually held';
+    default: return 'practice only; no mastery claim is made from this segment';
+  }
+}
+
+/**
  * One candidate segment. `kind` is a SESSION_ARC slot; `target` names what it
  * practises (a weakness id/concept, a skill, or 'general').
  *
- * Every candidate carries its full reasoning: `factors` (the raw scoring
- * model), and `reasons` / `penalties` (the same in plain language) so a
- * planner decision can be inspected and validated without guessing.
+ * Every candidate carries its full reasoning so a planner decision can be
+ * inspected and validated without guessing:
+ *   · `reasons` / `penalties` — the named scoring factors in plain language
+ *   · `evidence` — what concrete state triggered each factor (counts, due
+ *     retests, recent sessions), separate from the interpretation of it
+ *   · `successProof` — what a clean pass on this segment would prove
+ * The nearest losing competitor and the constraint that bound the choice are
+ * attached at plan-build time in `buildSessionPlan`, where the whole field of
+ * candidates is known. Learners only ever see the concise `why` line.
  */
-function candidate(kind, target, factors) {
+function candidate(kind, target, factors, evidence = []) {
   const entries = Object.entries(factors).filter(([, v]) => Number.isFinite(v) && v !== 0);
   const score = round2(entries.reduce((sum, [, v]) => sum + v, 0));
   const reasons = [];
@@ -93,6 +117,8 @@ function candidate(kind, target, factors) {
     factors: Object.fromEntries(entries.map(([k, v]) => [k, round2(v)])),
     reasons,
     penalties,
+    evidence: Array.isArray(evidence) ? evidence : [],
+    successProof: successProof(kind),
   };
 }
 
@@ -134,38 +160,72 @@ export function scoreCandidates(state = {}) {
   for (const entry of weaknesses.slice(0, 6)) {
     const life = lifecycleOf.get(entry.id) || weaknessLifecycle(entry, {});
     const factors = {};
+    const evidence = [];
     const recurrences = Number(entry.recurrenceCount) || 0;
-    if (recurrences > 0) factors[SCORE_FACTORS.recurrence] = 1.2 + Math.min(1, recurrences / 3);
-    if (entry.errorCount > 1) factors[SCORE_FACTORS.activeWeakness] = 1.0;
-    else factors[SCORE_FACTORS.activeWeakness] = 0.4; // one-off slips stay visible but quiet
+    if (recurrences > 0) {
+      factors[SCORE_FACTORS.recurrence] = 1.2 + Math.min(1, recurrences / 3);
+      evidence.push(`${recurrences} recurrence${recurrences === 1 ? '' : 's'} after improving`);
+    }
+    if (entry.errorCount > 1) {
+      factors[SCORE_FACTORS.activeWeakness] = 1.0;
+      evidence.push(`${entry.errorCount} recorded mistakes on this form`);
+    } else {
+      factors[SCORE_FACTORS.activeWeakness] = 0.4; // one-off slips stay visible but quiet
+      evidence.push('1 recorded mistake (treated as a possible slip)');
+    }
     if (entry.independentPasses === 0 && entry.successCount > 0) {
       factors[SCORE_FACTORS.independenceGap] = 0.8; // improves only with help so far
+      evidence.push(`${entry.successCount} correct attempt${entry.successCount === 1 ? '' : 's'} so far, none without help`);
     }
-    if (life?.state === WEAKNESS_LIFECYCLE.RECURRED) factors[SCORE_FACTORS.recurrence] += 0.6;
+    if (life?.state === WEAKNESS_LIFECYCLE.RECURRED) {
+      factors[SCORE_FACTORS.recurrence] += 0.6;
+      evidence.push('lifecycle state: it came back after improving');
+    }
     if (life?.state === WEAKNESS_LIFECYCLE.TRANSFER_CHECK || life?.state === WEAKNESS_LIFECYCLE.DELAYED_CONFIRMATION) {
       factors[SCORE_FACTORS.independenceGap] = (factors[SCORE_FACTORS.independenceGap] || 0) + 0.5;
+      evidence.push(`lifecycle state: ${life.state === WEAKNESS_LIFECYCLE.TRANSFER_CHECK ? 'ready for a fresh-context check' : 'holding up, one confirmation left'}`);
     }
     // Controlled variety: targeting the same weakness session after session
     // earns a decaying penalty so one loud weakness cannot own every day.
     const seen = recentTargets.get(entry.id) || 0;
-    if (seen > 0) factors[SCORE_FACTORS.repetitionPenalty] = -0.5 * seen;
+    if (seen > 0) {
+      factors[SCORE_FACTORS.repetitionPenalty] = -0.5 * seen;
+      evidence.push(`targeted in ${seen} recent session${seen === 1 ? '' : 's'}`);
+    }
     // Aligned with the learner's stated goals.
     const goalHit = (state.goals || []).some((g) => String(entry.label || '').toLowerCase().includes(String(g).toLowerCase()));
-    if (goalHit) factors[SCORE_FACTORS.goalAlignment] = 0.5;
-    out.push(candidate('repair', entry.id, factors));
+    if (goalHit) {
+      factors[SCORE_FACTORS.goalAlignment] = 0.5;
+      evidence.push('matches a stated goal');
+    }
+    out.push(candidate('repair', entry.id, factors, evidence));
   }
 
   // ── Speak: regular, goal-aligned, and pushed when speaking is starved ──
   if (state.hasScenario !== false) {
     const factors = {};
+    const evidence = [];
     factors[SCORE_FACTORS.activeWeakness] = 0.6; // production is always worth something
-    if ((state.speakingMinutes7d || 0) < 20) factors[SCORE_FACTORS.speakingStarved] = 1.0;
-    if ((state.assistanceDependence || 0) > 0.5) factors[SCORE_FACTORS.independenceGap] = 0.6;
+    evidence.push('productive practice always scores a base value');
+    if ((state.speakingMinutes7d || 0) < 20) {
+      factors[SCORE_FACTORS.speakingStarved] = 1.0;
+      evidence.push(`${Math.round(state.speakingMinutes7d || 0)} min of speaking in the last 7 days`);
+    }
+    if ((state.assistanceDependence || 0) > 0.5) {
+      factors[SCORE_FACTORS.independenceGap] = 0.6;
+      evidence.push(`${Math.round(state.assistanceDependence * 100)}% of recent successes needed help`);
+    }
     const dueTransfer = (state.evidenceDue || []).find((e) => e.type === 'transfer');
-    if (dueTransfer) factors[SCORE_FACTORS.transferDue] = 1.0;
+    if (dueTransfer) {
+      factors[SCORE_FACTORS.transferDue] = 1.0;
+      evidence.push('a repaired weakness is ready for an independent check');
+    }
     const seen = recentTargets.get('speak') || 0;
-    if (seen >= 2) factors[SCORE_FACTORS.repetitionPenalty] = -0.4 * (seen - 1);
-    out.push(candidate('speak', 'speak', factors));
+    if (seen >= 2) {
+      factors[SCORE_FACTORS.repetitionPenalty] = -0.4 * (seen - 1);
+      evidence.push(`speaking ran in ${seen} recent sessions`);
+    }
+    out.push(candidate('speak', 'speak', factors, evidence));
   }
 
   // ── Transfer: periodic fresh-context testing, not constant training ───
@@ -173,48 +233,80 @@ export function scoreCandidates(state = {}) {
   const dueDelayed = (state.evidenceDue || []).find((e) => e.type === 'delayed');
   if (dueTransfer || dueDelayed) {
     const factors = {};
-    if (dueTransfer) factors[SCORE_FACTORS.transferDue] = 1.6;
-    if (dueDelayed) factors[SCORE_FACTORS.delayedDue] = 1.4;
-    if ((state.assistanceDependence || 0) > 0.3) factors[SCORE_FACTORS.independenceGap] = 0.5;
-    out.push(candidate('transfer', dueDelayed?.target?.skill || dueTransfer?.target?.skill || 'transfer', factors));
+    const evidence = [];
+    if (dueTransfer) {
+      factors[SCORE_FACTORS.transferDue] = 1.6;
+      evidence.push(`fresh-context check due for ${dueTransfer.target?.label || 'a repaired weakness'}`);
+    }
+    if (dueDelayed) {
+      factors[SCORE_FACTORS.delayedDue] = 1.4;
+      evidence.push(`delayed retest due for ${dueDelayed.target?.label || 'a repaired weakness'}`);
+    }
+    if ((state.assistanceDependence || 0) > 0.3) {
+      factors[SCORE_FACTORS.independenceGap] = 0.5;
+      evidence.push(`${Math.round(state.assistanceDependence * 100)}% of recent successes needed help`);
+    }
+    out.push(candidate('transfer', dueDelayed?.target?.skill || dueTransfer?.target?.skill || 'transfer', factors, evidence));
   }
 
   // ── Retrieve: due vocabulary, weighted for high-frequency words ────────
   if ((state.srsDue || 0) > 0) {
     const factors = {};
+    const evidence = [`${state.srsDue} word${state.srsDue === 1 ? '' : 's'} due for recall`];
     factors[SCORE_FACTORS.dueVocabulary] = Math.min(1.4, 0.5 + (state.srsDue / 20));
-    if (state.fieldNoteDue > 0) factors[SCORE_FACTORS.goalAlignment] = 0.4; // the learner's own words
+    if (state.fieldNoteDue > 0) {
+      factors[SCORE_FACTORS.goalAlignment] = 0.4; // the learner's own words
+      evidence.push(`${state.fieldNoteDue} of them are the learner's own saved phrases`);
+    }
     const seen = recentTargets.get('retrieve') || 0;
-    if (seen >= 2) factors[SCORE_FACTORS.repetitionPenalty] = -0.3 * (seen - 1);
-    out.push(candidate('retrieve', 'retrieve', factors));
+    if (seen >= 2) {
+      factors[SCORE_FACTORS.repetitionPenalty] = -0.3 * (seen - 1);
+      evidence.push(`recall ran in ${seen} recent sessions`);
+    }
+    out.push(candidate('retrieve', 'retrieve', factors, evidence));
   }
 
   // ── Due retests: delayed reviews owed to earlier repairs ──────────────
   for (const retest of (state.dueRetests || []).slice(0, 3)) {
     const factors = {};
+    const evidence = [`retest of ${retest.concept || retest.id} is due`];
     factors[SCORE_FACTORS.dueRetest] = 1.3;
-    if (retest.recurrence > 0) factors[SCORE_FACTORS.recurrence] = 0.6;
+    if (retest.recurrence > 0) {
+      factors[SCORE_FACTORS.recurrence] = 0.6;
+      evidence.push(`${retest.recurrence} recurrenc${retest.recurrence === 1 ? 'y' : 'ies'} on record`);
+    }
     const seen = recentTargets.get(retest.id) || 0;
-    if (seen > 0) factors[SCORE_FACTORS.repetitionPenalty] = -0.3 * seen;
-    out.push(candidate('review', retest.id, factors));
+    if (seen > 0) {
+      factors[SCORE_FACTORS.repetitionPenalty] = -0.3 * seen;
+      evidence.push(`targeted in ${seen} recent session${seen === 1 ? '' : 's'}`);
+    }
+    out.push(candidate('review', retest.id, factors, evidence));
   }
 
   // ── Input/listening: exposure that must not be neglected ───────────────
   if (state.hasListeningContent !== false) {
     const factors = {};
-    if ((state.listeningMinutes7d || 0) < 15) factors[SCORE_FACTORS.listeningStarved] = 1.1;
+    const evidence = [];
+    if ((state.listeningMinutes7d || 0) < 15) {
+      factors[SCORE_FACTORS.listeningStarved] = 1.1;
+      evidence.push(`${Math.round(state.listeningMinutes7d || 0)} min of listening in the last 7 days`);
+    }
     factors[SCORE_FACTORS.activeWeakness] = 0.3;
+    evidence.push('comprehension exposure keeps the ear in the language');
     const seen = recentTargets.get('input') || 0;
-    if (seen >= 2) factors[SCORE_FACTORS.repetitionPenalty] = -0.3 * (seen - 1);
-    out.push(candidate('input', 'listening', factors));
+    if (seen >= 2) {
+      factors[SCORE_FACTORS.repetitionPenalty] = -0.3 * (seen - 1);
+      evidence.push(`listening ran in ${seen} recent sessions`);
+    }
+    out.push(candidate('input', 'listening', factors, evidence));
   }
 
   // ── Occasional easy material: fluency and confidence ──────────────────
   if (state.easyWinEligible) {
-    const factors = {};
-    factors[SCORE_FACTORS.easyWin] = 0.9;
-    factors[SCORE_FACTORS.fluencyBoost] = 0.4;
-    out.push(candidate('warmup', 'fluency', factors));
+    out.push(candidate('warmup', 'fluency', {
+      [SCORE_FACTORS.easyWin]: 0.9,
+      [SCORE_FACTORS.fluencyBoost]: 0.4,
+    }, ['an easy success is due for fluency and confidence (every third day)']));
   }
 
   return out.sort((a, b) => b.score - a.score);
@@ -332,23 +424,48 @@ export function buildSessionPlan(input = {}) {
   }
   if (remaining > 0 && byArc.length) budget[byArc[0].kind] += remaining;
 
-  const segments = byArc.map((c) => ({
-    id: c.kind,
-    kind: c.kind,
-    label: SEGMENT_LABEL[c.kind] || 'Practice',
-    minutes: budget[c.kind] || 2,
-    target: c.target,
-    factors: c.factors,
-    // The full reasoning, kept with the plan for dev inspection; the learner
-    // only ever sees `why` below.
-    explain: {
-      candidate: `${c.kind}${c.target ? `:${c.target}` : ''}`,
-      score: c.score,
-      reasons: c.reasons,
-      penalties: c.penalties,
-    },
-    why: segmentWhy(c, state),
-  }));
+  const segments = byArc.map((c) => {
+    // The nearest losing competitor: the highest-scoring candidate of the
+    // same kind that did NOT make the plan, or the runner-up overall when
+    // this kind had no rival. "Why THIS one" is only inspectable beside
+    // "why not that one".
+    const losers = candidates.filter((x) => !chosen.includes(x));
+    const sameKindLoser = losers
+      .filter((x) => x.kind === c.kind)
+      .sort((a, b) => b.score - a.score)[0] || null;
+    const runnerUp = losers.slice().sort((a, b) => b.score - a.score)[0] || null;
+    const competing = sameKindLoser || (runnerUp && runnerUp.kind !== c.kind ? runnerUp : null);
+    // The constraint that most affected this candidate's ranking, if any.
+    const constraints = adjustments.filter((a) => a.includes(`:${c.kind}:`));
+    return {
+      id: c.kind,
+      kind: c.kind,
+      label: SEGMENT_LABEL[c.kind] || 'Practice',
+      minutes: budget[c.kind] || 2,
+      target: c.target,
+      factors: c.factors,
+      // The full reasoning, kept with the plan for dev/research inspection;
+      // the learner only ever sees `why` below. No raw scoring jargon leaves
+      // this object — it is internal, and it is complete.
+      explain: {
+        candidate: `${c.kind}${c.target ? `:${c.target}` : ''}`,
+        score: c.score,
+        reasons: c.reasons,
+        penalties: c.penalties,
+        evidence: c.evidence,
+        successProof: c.successProof,
+        competing: competing
+          ? {
+            candidate: `${competing.kind}${competing.target ? `:${competing.target}` : ''}`,
+            score: competing.score,
+            lostBy: round2(c.score - competing.score),
+          }
+          : null,
+        constraints,
+      },
+      why: segmentWhy(c, state),
+    };
+  });
 
   const focus = segments.find((s) => s.kind === 'repair') || segments.find((s) => s.kind === 'transfer') || segments[0] || null;
   const demonstration = segments.find((s) => s.kind === 'transfer') || null;

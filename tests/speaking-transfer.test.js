@@ -3,6 +3,7 @@ import { describe, it } from 'node:test';
 import {
   correctionImpact, shouldCorrectNow, freshContextChallenge,
   evaluateTransfer, transferResultCopy, CORRECTION_PRIORITY, correctionTarget,
+  assessTransferNovelty,
 } from '../src/lib/speakingTransfer.js';
 
 describe('speaking transfer — correction triage', () => {
@@ -163,6 +164,90 @@ describe('speaking transfer — phrase reuse is not transfer', () => {
     assert.ok(copy.toLowerCase().includes('own words'), copy);
     assert.ok(!copy.toLowerCase().includes('repair it once more'),
       'phrase reuse is not a wrong answer — the copy must not send them to repair');
+  });
+
+  // ---- adversarial novelty: superficial changes are still memorisation -----
+
+  it('a punctuation-only change is still the corrected sentence', () => {
+    const result = assessTransferNovelty('Je suis allé au marché?', correction);
+    assert.equal(result.transferred, false);
+    assert.equal(result.reason, 'repeated-correction');
+  });
+
+  it('a capitalisation-only change is still the corrected sentence', () => {
+    assert.equal(assessTransferNovelty('je SUIS allé au MARCHÉ.', correction).transferred, false);
+  });
+
+  it('a synonym swap over an unchanged skeleton is not transfer', () => {
+    // "Je suis allé au marché" → "Je suis allé au supermarché": one word
+    // swapped, everything else in order — a paraphrase of the sentence, not
+    // use of the rule.
+    const result = assessTransferNovelty('Je suis allé au supermarché', correction);
+    assert.equal(result.transferred, false);
+    assert.equal(result.reason, 'repeated-correction');
+  });
+
+  it('a subject swap with the identical phrase skeleton is not transfer', () => {
+    // "J'ai acheté le pain" → "Il a acheté le pain": the pronoun changed, the
+    // skeleton did not. This is the brief's "changed subject, identical
+    // phrase skeleton" case.
+    const pronounSwap = { original: "J'ai acheté le pain", correction: 'J\'ai acheté le pain', impact: 'grammar' };
+    const result = assessTransferNovelty('Il a acheté le pain', pronounSwap);
+    assert.equal(result.transferred, false);
+  });
+
+  it('material bolted onto the corrected sentence is not transfer', () => {
+    // The corrected sentence appears verbatim inside a longer attempt —
+    // that is recall of the sentence, not use of the rule in a new one.
+    const result = assessTransferNovelty(
+      'Hier soir, je suis allé au marché et j\'ai acheté des fleurs pour ma mère.',
+      correction,
+    );
+    assert.equal(result.transferred, false);
+    assert.equal(result.reason, 'repeated-correction');
+  });
+
+  it('a genuinely new valid sentence passes', () => {
+    assert.equal(assessTransferNovelty('Elle est arrivée à Paris la semaine dernière.', correction).transferred, true);
+    assert.equal(assessTransferNovelty('Nous sommes partis avant la pluie.', correction).transferred, true);
+    assert.equal(assessTransferNovelty('Tu es monté dans le train à Lyon.', correction).transferred, true);
+  });
+
+  it('an alternative valid grammatical construction passes', () => {
+    // Same target (past with être), different valid surface: "C\'est à Paris
+    // qu\'elle est arrivée" or a reflexive form — both legitimate French.
+    assert.equal(assessTransferNovelty('C\'est à Paris qu\'elle est arrivée.', correction).transferred, true);
+    assert.equal(assessTransferNovelty('Elle s\'est levée tôt ce matin-là.', correction).transferred, true);
+  });
+
+  it('a vocabulary target MAY contain the corrected phrase in a new sentence', () => {
+    // For a vocabulary fix the word must appear — the task is a new sentence
+    // with it, so embedding the phrase is expected, not memorisation. Short
+    // corrections reused in a new sentence are legitimate French too.
+    const vocabFix = {
+      original: 'Ça dépend',
+      correction: 'Ça dépend',
+      impact: 'vocabulary',
+      targetSkill: 'word-choice',
+      targetForm: 'Ça dépend',
+    };
+    assert.equal(assessTransferNovelty('Ça dépend de la météo, en fait.', vocabFix).transferred, true);
+    // But a verbatim sentence is still repetition, even for vocabulary.
+    assert.equal(assessTransferNovelty('Ça dépend', vocabFix).transferred, false);
+  });
+
+  it('a short correction used in a brand-new sentence is legitimate', () => {
+    // "le pain" is a short fix; requiring a restructure would reject valid
+    // French. The bar is only near-copies of SUBSTANTIAL sentences.
+    const shortFix = { original: 'la pain', correction: 'le pain', impact: 'grammar' };
+    assert.equal(assessTransferNovelty('Le pain est bon aujourd\'hui.', shortFix).transferred, true);
+    assert.equal(assessTransferNovelty('J\'aime le pain.', shortFix).transferred, true);
+  });
+
+  it('an alternative valid construction with some shared words still passes', () => {
+    // "Elle est arrivée à Paris" shares function words with the correction
+    // but restructures the verb phrase — real production, not recall.
+    assert.equal(assessTransferNovelty('Quand elle est arrivée, il pleuvait.', correction).transferred, true);
   });
 });
 

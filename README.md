@@ -261,5 +261,8 @@ as per-language lazy chunks and must never enter the boot graph.
 
 ## Licence
 
-No repository licence file is currently included. Add an explicit licence before
-redistributing Le Studio as an open-source package.
+This repository is **source-available, not open source**: reading, studying
+and running it locally for your own study is fine, but no open-source licence
+is granted. See [SOURCE_AVAILABILITY.md](SOURCE_AVAILABILITY.md) for the full
+terms. If you want to reuse Le Studio beyond that, contact the repository
+owner.

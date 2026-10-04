@@ -5,6 +5,7 @@ import { ProgressRing, RadarChart, TrendChart, renderShareCard } from './charts'
 import { sessionReport, quizFromConversation, friendlyError } from '../lib/groq';
 import { takeawayPhrase } from '../lib/takeaway';
 import { saveSession, getSessions, getStreak } from '../lib/storage';
+import { spokenProduction } from '../lib/speakingTime';
 import { Flame, Share as ShareIcon, Download as DownloadIcon, X as XIcon, Target } from './icons';
 import FluencyDebrief from './FluencyDebrief';
 
@@ -42,8 +43,20 @@ export default function SessionDashboard({ open, onClose, apiKey, mockMode, scen
         const r = await sessionReport(apiKey, { scenario, history, level, mock: mockMode });
         if (cancelled) return;
         setReport(r);
-        saveSession({ scenarioId: scenario.id, turns: history.length, report: r });
-        onSessionSaved?.(r);
+        // Spoken production summed from the turns themselves: voiced
+        // milliseconds per recording, deduped per presentation. Silence and
+        // the partner's playback never contributed in the first place.
+        const spoken = spokenProduction(history.map((t, i) => ({
+          voicedMs: t.voicedMs,
+          encounterId: t.encounterId || `turn-${i}`,
+          sessionId: t.sessionId,
+          at: t.at,
+        })));
+        saveSession({
+          scenarioId: scenario.id, turns: history.length, report: r,
+          speakingSeconds: spoken.seconds,
+        });
+        onSessionSaved?.(r, spoken.seconds);
       } catch (e) {
         if (!cancelled) setError(friendlyError(e));
       }
