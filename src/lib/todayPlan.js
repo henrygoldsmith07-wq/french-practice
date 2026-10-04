@@ -19,6 +19,7 @@ import {
   probeCapabilities, resolvePlanCapabilities, buildDrillSlot,
 } from './todayCapabilities.js';
 import { balancedDrillTopic } from './assignment.js';
+import { followUpTask } from './followUp.js';
 import {
   getSrs, getNotebook, getDueWeaknesses, getMistakeGraph, getSelectionTrial,
   getLearnerErrors, getLearningEvidenceOverview, getStudyChecks,
@@ -155,6 +156,20 @@ export function buildTodayPlan(input) {
     recentCorrections: selectCorrectedErrors(notebook, { since: now - 48 * 3600000 }).length,
     languageCaps: { conj: conjCap, authored: authoredCap, accent: accentCap },
   });
+  // Turn the owed check into a task the session can actually run: fresh
+  // material for the exact weakness that owes it. Null when no honest task
+  // exists (lib/followUp.js) — the signal to promise nothing rather than
+  // repeat the drill and call it a check.
+  const followUp = followUpDue ? (() => {
+    try {
+      return followUpTask(followUpDue, {
+        tracks,
+        // Never hand back the recording this session already plays.
+        sessionTrackId: listeningTrack?.id || null,
+        dayIndex,
+      });
+    } catch { return null; }
+  })() : null;
   const planBuilt = buildDailyCurriculum({
     minutes,
     srsDue,
@@ -171,6 +186,7 @@ export function buildTodayPlan(input) {
     balancedDrillTopic: balanced ? rotationTopic : null,
     skillNeeds: getSkillNeedsSafe(),
     evidenceDue: followUpDue,
+    followUp,
   });
   const planResolved = resolvePlanCapabilities(planBuilt, caps);
   if (!planResolved.segments.length) return null;

@@ -12,6 +12,7 @@ import {
 import { dueEntries, notebookAsEntries, NEW_CARD_CAP } from './memory.js';
 import { dueRetests } from './mistakeGraph.js';
 import { weaknessLifecycle, WEAKNESS_LIFECYCLE } from './weaknessLifecycle.js';
+import { dueLearningChecks } from './learningEvidence.js';
 import { localDayIndex } from './localDay.js';
 
 const DAY = 86400000;
@@ -71,28 +72,19 @@ export function plannerState(options = {}) {
   const graph = read.graph || getMistakeGraph();
   const errorEntries = read.errorEntries || getLearnerErrors({ limit: 12 });
   const evidence = read.learningEvidence || getLearningEvidenceState();
-  const cycles = Array.isArray(evidence?.cycles) ? evidence.cycles : [];
   const minutes7 = read.recentMinutes || recentMinutes({ now, timeLog: read.timeLog, sessions: read.sessions });
   const prefs = read.prefs || getPrefs();
   const settings = read.settings || getSettings();
 
-  // Due evidence follow-ups: transfer/delayed checks the model owes.
-  const evidenceDue = [];
-  for (const cycle of cycles) {
-    const lifecycle = weaknessLifecycle({
-      errorCount: cycle.baseline?.length ? 2 : 1,
-      successCount: (cycle.interventions || []).length,
-      independentPasses: (cycle.transfers || []).filter((e) => e.independent !== false).length,
-      status: (cycle.delayed || []).length ? 'resolved' : 'recovering',
-      lastEvidence: (cycle.delayed || []).length ? 'delayed' : 'same-session',
-      label: cycle.target?.label,
-    }, { now, cycle });
-    if (lifecycle?.state === WEAKNESS_LIFECYCLE.TRANSFER_CHECK) {
-      evidenceDue.push({ type: 'transfer', target: cycle.target || {} });
-    } else if (lifecycle?.state === WEAKNESS_LIFECYCLE.DELAYED_CONFIRMATION) {
-      evidenceDue.push({ type: 'delayed', target: cycle.target || {} });
-    }
-  }
+  // Due evidence follow-ups: the transfer check and delayed retest the model
+  // OWES. This is the ONE rule for that question — dueLearningChecks in
+  // learningEvidence.js — not a second, looser derivation here. The old local
+  // version counted lanes directly, which could ask for a transfer check
+  // straight after one had passed, and could call a delayed retest due the
+  // moment a transfer landed, with no delay at all. One implementation means
+  // the session planner, Today's brief and Progress can never disagree about
+  // what the learner still owes.
+  const evidenceDue = dueLearningChecks(evidence, now).slice(0, 3);
 
   // Per-modality need from live weakness pressure (0..1).
   const skillNeeds = read.skillNeeds || (() => {
@@ -113,7 +105,7 @@ export function plannerState(options = {}) {
     weaknessLifecycle: new Map(errorEntries.map((e) => [e.id, weaknessLifecycle(e, { now })])),
     srsDue: due.length,
     dueRetests: dueRetests(graph, now, 3),
-    evidenceDue: evidenceDue.slice(0, 3),
+    evidenceDue,
     skillNeeds,
     goals,
     recentPlans: read.recentPlans || recentPlansFromTrials(read.trials || getSelectionTrial()),

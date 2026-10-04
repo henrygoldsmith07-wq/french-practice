@@ -20,6 +20,10 @@
 
 import { evidenceIdentity, encounterKeyOf } from './evidenceIdentity.js';
 import { localDayKey } from './localDay.js';
+// One definition of "delayed", shared with the module that schedules the
+// delayed check: if the two disagreed, the loop could schedule a check the
+// evidence rules would then refuse to count.
+import { DELAYED_MIN_HOURS } from './learningEvidence.js';
 
 export const LEARNER_ERROR_CATEGORIES = ['grammar', 'vocabulary', 'listening', 'pronunciation', 'reading', 'speaking', 'writing'];
 
@@ -111,24 +115,26 @@ export const evidenceStrength = (success, entry) => {
   // produces those mode names today (the scheduled-retest producer sends
   // `mode: 'conversation'` plus `source: 'weakness-retest'` and an explicit
   // `delayed` flag), so the shortcut bought nothing and cost correctness.
+  // A `delayed: true` from a caller is a VERIFIED claim: the scheduled-retest
+  // path (storage.js recordWeaknessRetestResult) already checked the clock
+  // against the weakness's own due time before setting it, so honour it.
   if (success.delayed === true) return 'delayed';
   if (success.delayed === false) return 'same-session';
-  // Infer from the entry: a success on a different LOCAL calendar day than
-  // the last mistake is a delayed recall; the same local day is (probably)
-  // same-session.
+  // Otherwise INFER, and a calendar boundary is not enough. Crossing local
+  // midnight can be ten minutes of real time — with the answer still on screen
+  // an hour ago — and since one delayed pass resolves a weakness outright
+  // (DELAYED_PASSES_TO_RESOLVE === 1), guessing here is guessing about
+  // mastery. Inference therefore needs BOTH a different local day and the
+  // model's own delay floor.
   //
-  // Local, not UTC. Day identity here must agree with every other "Today"
-  // surface (streaks, XP days, daily content), which all roll over at the
-  // learner's local midnight. A UTC comparison both mislabels a genuinely
-  // delayed recall as same-session and — the damaging direction — labels a
-  // same-session retry as 'delayed' whenever UTC has rolled over but the
-  // learner's day has not. That single misclassification is enough to resolve
-  // a weakness outright (DELAYED_PASSES_TO_RESOLVE === 1) on evidence where
-  // the answer was on screen moments earlier.
+  // Local, not UTC. Day identity must agree with every other "Today" surface
+  // (streaks, XP days, daily content), which all roll over at the learner's
+  // local midnight.
   const lastError = entry?.lastErrorAt ? Date.parse(entry.lastErrorAt) : null;
   const at = Date.parse(success.at || success.lastSeen || '') || null;
   if (lastError && at) {
-    return localDayKey(lastError) === localDayKey(at) ? 'same-session' : 'delayed';
+    if (localDayKey(lastError) === localDayKey(at)) return 'same-session';
+    return (at - lastError) >= DELAYED_MIN_HOURS * 3600000 ? 'delayed' : 'same-session';
   }
   return 'unknown';
 };

@@ -25,13 +25,14 @@ Learn · Progress** — five tabs, with everything else folded underneath.
 ## 2. The adaptive Today loop
 
 Today is a single composed session, not a mode picker. A typical plan:
-listen to something, hold a short conversation, then a **targeted repair**
-segment built from the learner's own error model, then a retrieval step.
-Segments are capability-aware (offline → authored drills replace AI drills) and
-every segment explains itself: **what you're practising, why it was chosen**
-(real evidence: recurring mistakes, due cards), **what success requires**, and
-the current recovery state. Learners never see internal ids, engine names or
-research vocabulary — copy is test-enforced (`tests/segment-explain.test.js`).
+listen to something, hold a short conversation, a **targeted repair** segment
+built from the learner's own error model, the **check that repair owes** (see
+§5), then a retrieval step. Segments are capability-aware (offline → authored
+drills replace AI drills) and every segment explains itself: **what you're
+practising, why it was chosen** (real evidence: recurring mistakes, due cards),
+**what success requires**, and the current recovery state. Learners never see
+internal ids, engine names or research vocabulary — copy is test-enforced
+(`tests/segment-explain.test.js`).
 
 ## 3. How learner modelling works
 
@@ -93,6 +94,30 @@ delayed/fresh-context evidence is stronger than training repetition. A mistake
 after repair reactivates the weakness and counts as recurrence. The learner-
 facing longitudinal states are **Active weakness → Improving → Needs
 confirmation → Demonstrated**, with **Recurred** reopening the cycle.
+
+### The two links that are actually run
+
+Transfer and delayed retest are only real if something administers them, so
+`src/lib/followUp.js` turns each owed check into one concrete, offline task
+bound to the weakness that owes it, and the session runs it as its own segment:
+
+| The model owes | The learner is asked | Why it counts |
+|---|---|---|
+| a fresh-context check on an authored rule | different sentences for the same rule | the repair drill only ever shows the topic's `drills` lane, so `quiz` items are unseen — the rule, not the sentence, is being tested |
+| a fresh-context check on a word | to use the word in a sentence of their own | graded for presence, for being a sentence rather than the bare word, and for not copying the studied line; it claims productive **use**, never grammar |
+| a delayed retest | the same check, days later | the floor is real elapsed time, and the check is only offered once |
+
+Three rules keep this honest: the due list has **one** owner
+(`learningEvidence.dueLearningChecks`), so the session, Today's brief and
+Progress can never disagree about what is owed; a success is called **delayed**
+only on a clock-verified flag or an inference that clears `DELAYED_MIN_HOURS`
+(20h), because crossing midnight can be ten minutes with the answer still on
+screen; and a pass is called **transfer** only by a runner that actually
+administered and graded fresh material, never on the strength of a mode name.
+When no honest check can be built — as today for listening, pronunciation,
+speaking and reading follow-ups — nothing is scheduled and nothing is promised
+(`tests/follow-up.test.js`, `tests/follow-up-evidence.test.js`,
+`tests/delayed-floor.test.js`).
 
 ## 6. Supported languages and maturity
 
@@ -221,9 +246,13 @@ src/
     stores/               domain stores: settings, learnerError, study,
                           seen-lists, research (light/heavy split)
     learnerErrors.js      pure recovery-loop model (evidence-weighted)
+    followUp.js           what the loop owes → the concrete check that
+                          discharges it (unseen items / new-sentence use)
     fsrs.js mistakeGraph.js segmentExplain.js content/ ...
   components/             screens + hubs (heavy/detail screens lazy-loaded;
                           lightweight navigation hubs stay in the entry graph)
+                          FollowUpCheck.jsx runs the owed transfer/delayed
+                          check and records its real outcome
 api/
   auth/                   optional Google OAuth/session routes
   sync.js                 optional account snapshot API with conflict checks
