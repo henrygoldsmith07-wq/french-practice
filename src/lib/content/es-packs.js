@@ -4,8 +4,14 @@
 // and it is only fetched when the learner actually studies Spanish.
 
 import { ES_VOCAB_PACKS } from './es-vocab.js';
-import { getFrequencyPacksFor } from '../vocab-frequency.js';
+import { getFrequencyPacksFor, dropThemedDuplicates } from '../vocab-frequency.js';
 
 export function getEsPacks() {
-  return getFrequencyPacksFor('es').then((freq) => [...ES_VOCAB_PACKS, ...freq]);
+  // Themed first: it owns the head-words it teaches with an example sentence,
+  // so the bare frequency copy of the same word is dropped rather than shipped
+  // as a second, weaker card.
+  return getFrequencyPacksFor('es').then((freq) => [
+    ...ES_VOCAB_PACKS,
+    ...dropThemedDuplicates(ES_VOCAB_PACKS, freq, 'es'),
+  ]);
 }
