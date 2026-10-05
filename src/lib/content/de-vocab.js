@@ -239,5 +239,149 @@ export const DE_VOCAB_PACKS = [
       w('de-natur', 'die Natur', 'nature', '🍃', 2, 'Ich liebe die Natur.', 'I love nature.'),
     ],
   },
+  // ── Second wave ───────────────────────────────────────────────────────────
+  // The packs above cover topics; these cover the GRAMMAR-BEARING core —
+  // verbs, modals and prepositions — which is what a learner actually needs to
+  // build a sentence. Verbs and prepositions are the backbone of the Speak and
+  // Repair stages, so they get their own packs rather than eight nouns.
+  {
+    id: 'de-family', title: 'Family & Relatives', description: 'The people at home.',
+    entries: [
+      w('de-eltern', 'die Eltern', 'parents', '👨‍👩‍👦', 2, 'Meine Eltern wohnen in Köln.', 'My parents live in Cologne.'),
+      w('de-bruder', 'der Bruder', 'brother', '👦', 2, 'Mein Bruder spielt Fußball.', 'My brother plays football.'),
+      w('de-schwester', 'die Schwester', 'sister', '👧', 2, 'Meine Schwester ist Lehrerin.', 'My sister is a teacher.'),
+      w('de-sohn', 'der Sohn', 'son', '👶', 2, 'Ihr Sohn ist erst zwei Jahre alt.', 'Her son is only two years old.'),
+      w('de-tochter', 'die Tochter', 'daughter', '👶', 2, 'Meine Tochter geht zur Schule.', 'My daughter goes to school.'),
+      w('de-grossvater', 'der Großvater', 'grandfather', '👴', 3, 'Mein Großvater erzählt gern Geschichten.', 'My grandfather likes telling stories.'),
+      w('de-enkel', 'der Enkel', 'grandchild', '🧒', 3, 'Mein Enkel besucht uns im Sommer.', 'My grandchild visits us in summer.'),
+      w('de-cousin', 'der Cousin', 'cousin (m)', '👬', 3, 'Mein Cousin wohnt in Wien.', 'My cousin lives in Vienna.'),
+    ],
+  },
+  {
+    // The `de-verbs` pack above already owns the eight highest-frequency
+    // infinitives (sein, haben, machen, gehen, kommen, wollen, können,
+    // sprechen), several with conjugation notes. This pack carries the NEXT
+    // tier instead of restating them — a duplicate id here would silently
+    // shadow one of those entries.
+    id: 'de-more-verbs', title: 'More Everyday Verbs', description: 'The second tier of verbs you need.',
+    entries: [
+      w('de-sehen', 'sehen', 'to see', '👁️', 1, 'Ich sehe dich morgen.', 'I’ll see you tomorrow.'),
+      w('de-geben', 'geben', 'to give', '🎁', 1, 'Gib mir bitte das Buch.', 'Please give me the book.'),
+      w('de-nehmen', 'nehmen', 'to take', '🤏', 1, 'Nimm bitte einen Zug.', 'Take a train, please.'),
+      w('de-finden', 'finden', 'to find', '🔎', 2, 'Ich finde meine Schlüssel nicht.', 'I can’t find my keys.'),
+      w('de-wissen', 'wissen', 'to know (a fact)', '🧠', 1, 'Ich weiß die Antwort nicht.', 'I don’t know the answer.'),
+      w('de-lesen', 'lesen', 'to read', '📖', 1, 'Ich lese jeden Abend die Zeitung.', 'I read the newspaper every evening.'),
+      w('de-schreiben', 'schreiben', 'to write', '✍️', 1, 'Schreib mir bitte eine Nachricht.', 'Please write me a message.'),
+      w('de-arbeiten', 'arbeiten', 'to work', '💼', 1, 'Ich arbeite von neun bis fünf.', 'I work from nine to five.'),
+    ],
+  },
+  {
+    // können and wollen live in `de-verbs` already; this is the rest of the
+    // modal system plus the two verbs that behave like modals in practice.
+    id: 'de-modals', title: 'Modals, Need & Belief', description: 'Obligation, permission and what you take for granted.',
+    entries: [
+      w('de-muessen', 'müssen', 'must / have to', '⚠️', 1, 'Du musst jetzt leider gehen.', 'Unfortunately you have to go now.'),
+      w('de-sollen', 'sollen', 'should', '📌', 2, 'Du sollst das nicht sagen.', 'You shouldn’t say that.'),
+      w('de-duerfen', 'dürfen', 'may / be allowed to', '✅', 2, 'Hier darf man nicht parken.', 'You may not park here.'),
+      w('de-moechten', 'möchten', 'would like (polite)', '🌟', 1, 'Ich möchte bitte ein Zimmer.', 'I would like a room, please.'),
+      w('de-moegen', 'mögen', 'to like', '❤️', 2, 'Ich mag Kaffee mit Milch.', 'I like coffee with milk.'),
+      w('de-werden', 'werden', 'will (future)', '🔮', 2, 'Ich werde dich morgen anrufen.', 'I’ll call you tomorrow.'),
+      w('de-brauchen', 'brauchen', 'to need', '🫱', 1, 'Ich brauche zwei Tage Zeit.', 'I need two days.'),
+      w('de-glauben', 'glauben', 'to believe / think', '💭', 2, 'Ich glaube, du hast recht.', 'I think you’re right.'),
+    ],
+  },
+  {
+    id: 'de-prepositions', title: 'Prepositions', description: 'Two-letter words that carry the case.',
+    entries: [
+      w('de-prap-in', 'in', 'in', '📥', 1, 'Ich wohne in Köln.', 'I live in Cologne.'),
+      w('de-prap-auf', 'auf', 'on / onto', '⬆️', 1, 'Das Buch liegt auf dem Tisch.', 'The book is on the table.'),
+      w('de-prap-bei', 'bei', 'at / near', '📍', 2, 'Ich wohne bei meiner Schwester.', 'I live near my sister.'),
+      w('de-prap-mit', 'mit', 'with', '🤝', 1, 'Komm bitte mit mir.', 'Please come with me.'),
+      w('de-prap-fuer', 'für', 'for', '🎯', 1, 'Das Geschenk ist für dich.', 'The present is for you.'),
+      w('de-prap-ohne', 'ohne', 'without', '🚫', 2, 'Einen Kaffee ohne Zucker, bitte.', 'A coffee without sugar, please.'),
+      w('de-prap-von', 'von', 'from / of', '↩️', 2, 'Das Buch ist von Anna.', 'The book is by Anna.'),
+      w('de-prap-zu', 'zu', 'to (a person or place)', '➡️', 2, 'Ich gehe zu dem Arzt.', 'I’m going to the doctor.'),
+    ],
+  },
+  {
+    id: 'de-city', title: 'City & Places', description: 'Where things are, and where to ask.',
+    entries: [
+      w('de-stadt', 'die Stadt', 'city', '🏙️', 2, 'Die Stadt hat viele Kirchen.', 'The city has many churches.'),
+      w('de-strasse', 'die Straße', 'street', '🛣️', 2, 'Ich wohne in dieser Straße.', 'I live on this street.'),
+      w('de-platz', 'der Platz', 'square', '🌇', 3, 'Der Platz ist heute sehr voll.', 'The square is very busy today.'),
+      w('de-kirche', 'die Kirche', 'church', '⛪', 3, 'Die Kirche ist alt.', 'The church is old.'),
+      w('de-museum', 'das Museum', 'museum', '🏛️', 2, 'Das Museum ist montags geschlossen.', 'The museum is closed on Mondays.'),
+      w('de-krankenhaus', 'das Krankenhaus', 'hospital', '🏥', 3, 'Das Krankenhaus ist weit weg.', 'The hospital is far away.'),
+      w('de-markt', 'der Markt', 'market', '🧺', 2, 'Am Markt kaufe ich frisches Brot.', 'At the market I buy fresh bread.'),
+      w('de-bruecke', 'die Brücke', 'bridge', '🌉', 3, 'Wir gehen über die Brücke.', 'We are going over the bridge.'),
+    ],
+  },
+  {
+    id: 'de-tech', title: 'Phone & Technology', description: 'Screens, messages and passwords.',
+    entries: [
+      w('de-handy', 'das Handy', 'mobile phone', '📱', 2, 'Mein Handy ist kaputt.', 'My phone is broken.'),
+      w('de-laptop', 'der Laptop', 'laptop', '💻', 2, 'Ich arbeite am Laptop.', 'I work on my laptop.'),
+      w('de-app', 'die App', 'app', '🧩', 2, 'Ich lade die App herunter.', 'I’m downloading the app.'),
+      w('de-internet', 'das Internet', 'the internet', '🌐', 2, 'Im Internet lerne ich viel.', 'I learn a lot on the internet.'),
+      w('de-nachricht', 'die Nachricht', 'message', '✉️', 2, 'Ich habe eine Nachricht bekommen.', 'I got a message.'),
+      w('de-passwort', 'das Passwort', 'password', '🔑', 2, 'Ich habe mein Passwort vergessen.', 'I’ve forgotten my password.'),
+      w('de-bildschirm', 'der Bildschirm', 'screen', '🖥️', 2, 'Der Bildschirm ist zu hell.', 'The screen is too bright.'),
+      w('de-datei', 'die Datei', 'file', '📁', 3, 'Die Datei ist zu groß.', 'The file is too large.'),
+    ],
+  },
+  {
+    id: 'de-school', title: 'School & Study', description: 'Lessons, exams and timetables.',
+    entries: [
+      w('de-schule', 'die Schule', 'school', '🏫', 2, 'Die Schule beginnt um acht.', 'School starts at eight.'),
+      w('de-lehrer', 'der Lehrer', 'teacher (m)', '🧑‍🏫', 2, 'Der Lehrer erklärt es noch einmal.', 'The teacher is explaining it once more.'),
+      w('de-klasse', 'die Klasse', 'class', '👨‍🎓', 2, 'Die Klasse hat dreißig Schüler.', 'The class has thirty pupils.'),
+      w('de-lernen', 'lernen', 'to learn / study', '📖', 1, 'Ich lerne jeden Tag ein Wort.', 'I learn a word every day.'),
+      w('de-pruefung', 'die Prüfung', 'exam / test', '📝', 3, 'Die Prüfung war nicht schwer.', 'The exam was not difficult.'),
+      w('de-hausaufgaben', 'die Hausaufgaben', 'homework', '📚', 3, 'Die Hausaufgaben sind heute schwer.', 'The homework is hard today.'),
+      w('de-stundenplan', 'der Stundenplan', 'timetable', '🗓️', 3, 'Der Stundenplan ändert sich jedes Jahr.', 'The timetable changes every year.'),
+      w('de-universitaet', 'die Universität', 'university', '🎓', 3, 'Die Universität ist in der Nähe.', 'The university is nearby.'),
+    ],
+  },
+  {
+    id: 'de-sports', title: 'Sport & Hobbies', description: 'What you do when nobody is testing you.',
+    entries: [
+      w('de-sport', 'der Sport', 'sport', '⚽', 2, 'Machen wir Sport am Wochenende?', 'Shall we play sport at the weekend?'),
+      w('de-schwimmen', 'schwimmen', 'to swim', '🏊', 2, 'Im Sommer schwimme ich im See.', 'In summer I swim in the lake.'),
+      w('de-hobby', 'das Hobby', 'hobby', '🎯', 2, 'Mein Hobby ist Fotografieren.', 'My hobby is photography.'),
+      w('de-verein', 'der Verein', 'club / society', '⚽', 3, 'Er ist im Fußballverein.', 'He is in the football club.'),
+      w('de-spiel', 'das Spiel', 'match / game', '🎮', 2, 'Das Spiel beginnt um acht.', 'The match starts at eight.'),
+      w('de-piano', 'das Klavier', 'piano', '🎹', 2, 'Sie spielt sehr gut Klavier.', 'She plays piano very well.'),
+      w('de-roman', 'der Roman', 'novel', '📕', 3, 'Ich lese gerade einen langen Roman.', 'I’m reading a long novel at the moment.'),
+      w('de-musik', 'die Musik', 'music', '🎵', 2, 'Ich höre gern Musik beim Lernen.', 'I like listening to music while I study.'),
+    ],
+  },
+  {
+    id: 'de-politeness', title: 'Politeness & Phrases', description: 'The sentences that make you sound polite.',
+    entries: [
+      w('de-bitte-schoen', 'bitte schön', 'here you are / you’re welcome', '🙇', 2, '— Danke! — Bitte schön.', '— Thanks! — You’re welcome.'),
+      w('de-gern', 'gern', 'gladly', '😌', 1, 'Ich trinke gern Tee.', 'I like drinking tea.'),
+      w('de-tut-mir-leid', 'es tut mir leid', 'I’m sorry', '😔', 2, 'Es tut mir leid, ich habe es nicht gewusst.', 'I’m sorry, I didn’t know.'),
+      w('de-kein-problem', 'kein Problem', 'no problem', '👌', 2, 'Kein Problem, ich warte gern.', 'No problem, I’m happy to wait.'),
+      w('de-natuerlich', 'natürlich', 'of course', '🌿', 1, 'Natürlich, ich helfe dir gern.', 'Of course, I’m happy to help you.'),
+      w('de-willkommen', 'herzlich willkommen', 'welcome (formal)', '🎉', 3, 'Herzlich willkommen in Berlin!', 'Welcome to Berlin!'),
+      w('de-wie-geht-es-ihnen', 'wie geht es Ihnen?', 'how are you? (formal)', '🎩', 2, 'Guten Tag, wie geht es Ihnen?', 'Good day, how are you?'),
+      w('de-stimmt', 'das stimmt', 'that’s right / that’s correct', '✅', 2, 'Ja, das stimmt.', 'Yes, that’s correct.'),
+    ],
+  },
+  {
+    // Termin and E-Mail are already taught in the tech pack; this is the
+    // vocabulary of arranging and changing a plan.
+    id: 'de-appointments', title: 'Calling & Appointments', description: 'Bookings, plans and rescheduling.',
+    entries: [
+      w('de-anrufen', 'anrufen', 'to call (phone)', '📞', 2, 'Ich rufe dich morgen an.', 'I’ll call you tomorrow.'),
+      w('de-buchen', 'buchen', 'to book', '📝', 2, 'Ich möchte ein Zimmer buchen.', 'I’d like to book a room.'),
+      w('de-vereinbaren', 'vereinbaren', 'to arrange (a time)', '🤝', 3, 'Wir müssen einen Termin vereinbaren.', 'We have to arrange a time.'),
+      w('de-verschieben', 'verschieben', 'to postpone / move', '📆', 3, 'Können wir das auf morgen verschieben?', 'Can we move it to tomorrow?'),
+      w('de-absagen', 'absagen', 'to cancel', '🚫', 2, 'Ich muss den Termin leider absagen.', 'Unfortunately I have to cancel.'),
+      w('de-kalender', 'der Kalender', 'calendar', '📆', 2, 'Trage es bitte in den Kalender ein.', 'Please put it in the calendar.'),
+      w('de-erreichen', 'erreichen', 'to reach / get hold of', '📬', 3, 'Ich bin heute nicht zu erreichen.', 'I can’t be reached today.'),
+      w('de-durchrufen', 'durchrufen', 'to call back', '📲', 3, 'Ich rufe Sie später zurück.', 'I’ll call you back later.'),
+    ],
+  },
 ];
 

@@ -85,6 +85,41 @@ export function dedupeByTerm(words) {
   return out;
 }
 
+// A themed pack teaches its head-word properly — article, a worked example
+// sentence, sometimes a `note` with the conjugated forms. The frequency deck
+// teaches the same word as a bare gloss with no example at all. Shipping both
+// means the learner meets the word twice, and the bare copy is always the
+// weaker card, so the themed pack wins.
+//
+// Comparison is exact first, then a second pass that ignores a leading definite
+// article, because themed entries carry "der/die/das" or "el/la/los/las" while
+// the frequency dictionary stores the bare stem.
+const LEADING_ARTICLE = {
+  de: /^(der|die|das)\s+/i,
+  es: /^(el|la|los|las)\s+/i,
+};
+
+export function dropThemedDuplicates(themedPacks, freqPacks, lang) {
+  const themed = themedPacks.flatMap((p) => p.entries || []);
+  const exact = new Set(themed.map((e) => e.fr));
+  const article = LEADING_ARTICLE[lang];
+  const stemmed = article
+    ? new Set(themed.map((e) => e.fr.replace(article, '').toLowerCase()))
+    : null;
+  const isDuplicate = (term) => (
+    exact.has(term) || Boolean(stemmed && stemmed.has(term.replace(article, '').toLowerCase()))
+  );
+
+  return freqPacks
+    .map((pack) => {
+      const entries = (pack.entries || []).filter((e) => !isDuplicate(e.fr));
+      return entries.length === pack.entries.length ? pack : { ...pack, entries };
+    })
+    // A deck can lose its last word once the overlap is removed; drop the shell
+    // rather than ship an empty "Frequency 151–150" card list.
+    .filter((pack) => pack.entries.length > 0);
+}
+
 // Build frequency decks for one language. `adjective` names the language in the
 // deck description ("the 1–150 most common German words").
 function buildPacks(words, adjective, prefix) {

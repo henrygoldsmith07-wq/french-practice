@@ -239,5 +239,147 @@ export const ES_VOCAB_PACKS = [
       w('es-naturaleza', 'la naturaleza', 'nature', '🍃', 2, 'Me encanta la naturaleza.', 'I love nature.'),
     ],
   },
+  // ── Second wave ───────────────────────────────────────────────────────────
+  // Mirrors the German second wave pack for pack, so a learner switching
+  // languages meets the same progression. These cover the GRAMMAR-BEARING core
+  // — verbs, modals and prepositions — rather than more topic nouns.
+  {
+    id: 'es-family', title: 'Family & Relatives', description: 'The people at home.',
+    entries: [
+      w('es-padres', 'los padres', 'parents', '👨‍👩‍👦', 2, 'Mis padres viven en Sevilla.', 'My parents live in Seville.'),
+      w('es-hermano', 'el hermano', 'brother', '👦', 2, 'Mi hermano juega al fútbol.', 'My brother plays football.'),
+      w('es-hermana', 'la hermana', 'sister', '👧', 2, 'Mi hermana es profesora.', 'My sister is a teacher.'),
+      w('es-hijo', 'el hijo', 'son', '👶', 2, 'Su hijo tiene solo dos años.', 'Her son is only two years old.'),
+      w('es-hija', 'la hija', 'daughter', '👶', 2, 'Mi hija va al colegio.', 'My daughter goes to school.'),
+      w('es-abuelo', 'el abuelo', 'grandfather', '👴', 3, 'Mi abuelo cuenta historias siempre.', 'My grandfather always tells stories.'),
+      w('es-nieto', 'el nieto', 'grandchild', '🧒', 3, 'Mi nieto nos visita en verano.', 'My grandchild visits us in summer.'),
+      w('es-primo', 'el primo', 'cousin (m)', '👬', 3, 'Mi primo vive en Valencia.', 'My cousin lives in Valencia.'),
+    ],
+  },
+  {
+    // The `es-verbs` pack above already owns the eight highest-frequency
+    // infinitives (ser, estar, tener, ir, hacer, poder, querer, hablar), several
+    // with conjugation notes. This pack carries the NEXT tier instead of
+    // restating them — a duplicate id here would silently shadow one of those.
+    id: 'es-more-verbs', title: 'More Everyday Verbs', description: 'The second tier of verbs you need.',
+    entries: [
+      w('es-venir', 'venir', 'to come', '🚪', 1, 'Ven aquí, por favor.', 'Come here, please.'),
+      w('es-ver', 'ver', 'to see', '👁️', 1, 'Te veo mañana.', 'I’ll see you tomorrow.'),
+      w('es-tomar', 'tomar', 'to take / drink', '🤏', 1, 'Toma un tren, por favor.', 'Take a train, please.'),
+      w('es-leer', 'leer', 'to read', '📖', 1, 'Leo el periódico cada tarde.', 'I read the newspaper every afternoon.'),
+      w('es-escribir', 'escribir', 'to write', '✍️', 1, 'Escríbeme un mensaje, por favor.', 'Please write me a message.'),
+      w('es-trabajar', 'trabajar', 'to work', '💼', 1, 'Trabajo de nueve a cinco.', 'I work from nine to five.'),
+      w('es-vivir', 'vivir', 'to live', '🏠', 1, 'Vivo cerca del centro.', 'I live near the centre.'),
+      w('es-dormir', 'dormir', 'to sleep', '😴', 2, 'Los niños duermen muy tarde.', 'The children sleep very late.'),
+    ],
+  },
+  {
+    // poder and querer live in `es-verbs` already; this is the rest of the
+    // modal system plus the two verbs that behave like modals in practice.
+    id: 'es-modals', title: 'Modals, Need & Belief', description: 'Obligation, permission and what you take for granted.',
+    entries: [
+      w('es-deber', 'deber', 'must / mustn’t', '⚠️', 1, 'No debes salir solo.', 'You mustn’t go out alone.'),
+      w('es-saber', 'saber', 'to know (facts)', '🧠', 1, 'No sé la respuesta.', 'I don’t know the answer.'),
+      w('es-conocer', 'conocer', 'to know (people, places)', '🗺️', 1, '¿Conoces a Marta?', 'Do you know Marta?'),
+      w('es-gustar', 'gustar', 'to please (to someone)', '❤️', 2, 'Me gusta mucho el chocolate.', 'I like chocolate a lot.'),
+      w('es-tener-que', 'tener que', 'to have to', '📌', 1, 'Tenemos que salir ahora.', 'We have to leave now.'),
+      w('es-hay-que', 'hay que', 'one has to', '🔑', 2, 'Hay que reservar con tiempo.', 'You have to book in advance.'),
+      w('es-necesitar', 'necesitar', 'to need', '🫱', 1, 'Necesito dos días.', 'I need two days.'),
+      w('es-creer', 'creer', 'to believe / think', '💭', 2, 'Creo que tienes razón.', 'I think you’re right.'),
+    ],
+  },
+  {
+    id: 'es-prepositions', title: 'Prepositions', description: 'The words that fix a verb to a place.',
+    entries: [
+      w('es-prep-en', 'en', 'in / on / at', '📥', 1, 'Vivo en Madrid.', 'I live in Madrid.'),
+      w('es-prep-sobre', 'sobre', 'on / about', '⬆️', 1, 'El libro está sobre la mesa.', 'The book is on the table.'),
+      w('es-prep-con', 'con', 'with', '🤝', 1, 'Ven conmigo, por favor.', 'Come with me, please.'),
+      w('es-prep-sin', 'sin', 'without', '🚫', 2, 'Un café sin azúcar, por favor.', 'A coffee without sugar, please.'),
+      w('es-prep-para', 'para', 'for / towards', '🎯', 1, 'El regalo es para ti.', 'The present is for you.'),
+      w('es-prep-de', 'de', 'from / of', '↩️', 1, 'El libro es de Ana.', 'The book is Ana’s.'),
+      w('es-prep-a', 'a', 'to / at', '➡️', 2, 'Voy al médico.', 'I’m going to the doctor.'),
+      w('es-prep-desde', 'desde', 'from (since)', '🕐', 2, 'Trabajo aquí desde marzo.', 'I have worked here since March.'),
+    ],
+  },
+  {
+    id: 'es-city', title: 'City & Places', description: 'Where things are, and where to ask.',
+    entries: [
+      w('es-ciudad', 'la ciudad', 'city', '🏙️', 2, 'La ciudad tiene muchas iglesias.', 'The city has many churches.'),
+      w('es-calle', 'la calle', 'street', '🛣️', 2, 'Vivo en esta calle.', 'I live on this street.'),
+      w('es-plaza', 'la plaza', 'square', '🌇', 3, 'La plaza está muy llena hoy.', 'The square is very busy today.'),
+      w('es-iglesia', 'la iglesia', 'church', '⛪', 3, 'La iglesia es muy antigua.', 'The church is very old.'),
+      w('es-museo', 'el museo', 'museum', '🏛️', 2, 'El museo está cerrado los lunes.', 'The museum is closed on Mondays.'),
+      w('es-hospital', 'el hospital', 'hospital', '🏥', 3, 'El hospital está muy lejos.', 'The hospital is far away.'),
+      w('es-mercado', 'el mercado', 'market', '🧺', 2, 'En el mercado compro pan fresco.', 'At the market I buy fresh bread.'),
+      w('es-puente', 'el puente', 'bridge', '🌉', 3, 'Cruzamos el puente.', 'We cross the bridge.'),
+    ],
+  },
+  {
+    id: 'es-tech', title: 'Phone & Technology', description: 'Screens, messages and passwords.',
+    entries: [
+      w('es-movil', 'el móvil', 'mobile phone', '📱', 2, 'Mi móvil no funciona.', 'My phone doesn’t work.'),
+      w('es-portatil', 'el portátil', 'laptop', '💻', 2, 'Trabajo con el portátil.', 'I work on my laptop.'),
+      w('es-aplicacion', 'la aplicación', 'app', '🧩', 2, 'Estoy descargando la aplicación.', 'I’m downloading the app.'),
+      w('es-internet', 'internet', 'the internet', '🌐', 2, 'Aprendo mucho en internet.', 'I learn a lot on the internet.'),
+      w('es-mensaje', 'el mensaje', 'message', '✉️', 2, 'He recibido un mensaje.', 'I’ve received a message.'),
+      w('es-contrasena', 'la contraseña', 'password', '🔑', 2, 'He olvidado mi contraseña.', 'I’ve forgotten my password.'),
+      w('es-pantalla', 'la pantalla', 'screen', '🖥️', 2, 'La pantalla está muy brillante.', 'The screen is too bright.'),
+      w('es-archivo', 'el archivo', 'file', '📁', 3, 'El archivo es demasiado grande.', 'The file is too large.'),
+    ],
+  },
+  {
+    id: 'es-school', title: 'School & Study', description: 'Lessons, exams and timetables.',
+    entries: [
+      w('es-escuela', 'la escuela', 'school', '🏫', 2, 'La escuela empieza a las ocho.', 'School starts at eight.'),
+      w('es-profesor', 'el profesor', 'teacher (m)', '🧑‍🏫', 2, 'El profesor lo explica otra vez.', 'The teacher explains it once more.'),
+      w('es-clase', 'la clase', 'class', '👨‍🎓', 2, 'La clase tiene treinta alumnos.', 'The class has thirty students.'),
+      w('es-aprender', 'aprender', 'to learn / study', '📖', 1, 'Aprendo una palabra cada día.', 'I learn a word every day.'),
+      w('es-examen', 'el examen', 'exam / test', '📝', 3, 'El examen no fue difícil.', 'The exam wasn’t difficult.'),
+      w('es-deberes', 'los deberes', 'homework', '📚', 3, 'Los deberes de hoy son difíciles.', 'Today’s homework is difficult.'),
+      w('es-horario', 'el horario', 'timetable / schedule', '🗓️', 3, 'El horario cambia cada año.', 'The timetable changes every year.'),
+      w('es-universidad', 'la universidad', 'university', '🎓', 3, 'La universidad está cerca.', 'The university is nearby.'),
+    ],
+  },
+  {
+    id: 'es-sports', title: 'Sport & Hobbies', description: 'What you do when nobody is testing you.',
+    entries: [
+      w('es-deporte', 'el deporte', 'sport', '⚽', 2, '¿Hacemos deporte el fin de semana?', 'Shall we play sport at the weekend?'),
+      w('es-nadar', 'nadar', 'to swim', '🏊', 2, 'En verano nado en el lago.', 'In summer I swim in the lake.'),
+      w('es-aficion', 'la afición', 'hobby', '🎯', 2, 'Mi afición es la fotografía.', 'My hobby is photography.'),
+      w('es-club', 'el club', 'club', '⚽', 3, 'Juega en el club de fútbol.', 'He plays in the football club.'),
+      w('es-partido', 'el partido', 'match / game', '🎮', 2, 'El partido empieza a las ocho.', 'The match starts at eight.'),
+      w('es-piano', 'el piano', 'piano', '🎹', 2, 'Ella toca el piano muy bien.', 'She plays the piano very well.'),
+      w('es-novela', 'la novela', 'novel', '📕', 3, 'Estoy leyendo una novela larga.', 'I’m reading a long novel at the moment.'),
+      w('es-musica', 'la música', 'music', '🎵', 2, 'Me gusta escuchar música al estudiar.', 'I like listening to music while studying.'),
+    ],
+  },
+  {
+    id: 'es-politeness', title: 'Politeness & Phrases', description: 'The sentences that make you sound polite.',
+    entries: [
+      w('es-de-nada', 'de nada', 'you’re welcome', '🙇', 1, '— Gracias. — De nada.', '— Thanks. — You’re welcome.'),
+      w('es-con-gusto', 'con gusto', 'gladly / with pleasure', '😌', 2, 'Con gusto te ayudo.', 'I’d be glad to help you.'),
+      w('es-lo-siento', 'lo siento', 'I’m sorry', '😔', 2, 'Lo siento, no lo sabía.', 'I’m sorry, I didn’t know.'),
+      w('es-no-hay-problema', 'no hay problema', 'no problem', '👌', 2, 'No hay problema, espero con gusto.', 'No problem, I’m happy to wait.'),
+      w('es-por-supuesto', 'por supuesto', 'of course', '🌿', 1, 'Por supuesto, te ayudo.', 'Of course, I’ll help you.'),
+      w('es-bienvenido', 'bienvenido', 'welcome', '🎉', 1, '¡Bienvenido a Madrid!', 'Welcome to Madrid!'),
+      w('es-como-esta', 'cómo está', 'how are you? (formal)', '🎩', 2, 'Buenos días, ¿cómo está?', 'Good morning, how are you?'),
+      w('es-es-correcto', 'es correcto', 'that’s right / that’s correct', '✅', 2, 'Sí, eso es correcto.', 'Yes, that’s correct.'),
+    ],
+  },
+  {
+    // cita and correo are already taught; this is the vocabulary of arranging
+    // and changing a plan.
+    id: 'es-appointments', title: 'Calling & Appointments', description: 'Bookings, plans and rescheduling.',
+    entries: [
+      w('es-llamar', 'llamar', 'to call (phone)', '📞', 2, 'Te llamo mañana.', 'I’ll call you tomorrow.'),
+      w('es-reservar', 'reservar', 'to book / reserve', '📝', 2, 'Quisiera reservar una habitación.', 'I’d like to book a room.'),
+      w('es-quedar', 'quedar', 'to arrange to meet', '🤝', 3, '¿Podemos quedar el jueves?', 'Can we meet on Thursday?'),
+      w('es-aplazar', 'aplazar', 'to postpone', '📆', 3, '¿Podemos aplazar la cita?', 'Can we postpone the appointment?'),
+      w('es-cancelar', 'cancelar', 'to cancel', '🚫', 2, 'Tengo que cancelar la cita.', 'I have to cancel the appointment.'),
+      w('es-calendario', 'el calendario', 'calendar', '📆', 2, 'Ponlo en el calendario, por favor.', 'Put it in the calendar, please.'),
+      w('es-contactar', 'contactar', 'to contact / get hold of', '📬', 3, 'Hoy no me puedes contactar.', 'You can’t reach me today.'),
+      w('es-devolver', 'devolver', 'to call back / return', '📲', 3, 'Te devuelvo la llamada luego.', 'I’ll call you back later.'),
+    ],
+  },
 ];
 

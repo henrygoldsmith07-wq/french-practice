@@ -47,7 +47,62 @@ describe('per-language vocab registries', () => {
     }
   });
 
-  it('de and es registries do not share entry ids (SRS ids must never collide)', async () => {
+  it('within a language, no entry id or head-word is duplicated', async () => {
+    // A duplicate id inside one language is invisible at runtime: the SRS keys
+    // on id, so the second entry silently shadows the first and one word can
+    // never be reviewed. A duplicate head-word is nearly as bad — it means two
+    // cards teach the same word with different example sentences.
+    //
+    // Frequency decks are deliberately bare (word + gloss + IPA, no example),
+    // so they carry neither `example` nor `emoji`; this only checks the hand-
+    // written themed packs, which are the ones that carry a full card.
+    const themed = (packs) => packs.filter((p) => !p.id.startsWith('freq'));
+    for (const [lang, packs] of [['de', await getDePacks()], ['es', await getEsPacks()]]) {
+      const entries = themed(packs).flatMap((p) => p.entries);
+      const ids = entries.map((e) => e.id);
+      const dupeIds = ids.filter((v, i) => ids.indexOf(v) !== i);
+      assert.deepEqual([...new Set(dupeIds)], [], `${lang} duplicate themed entry ids`);
+
+      const terms = entries.map((e) => e.fr);
+      const dupeTerms = terms.filter((v, i) => terms.indexOf(v) !== i);
+      assert.deepEqual([...new Set(dupeTerms)], [], `${lang} duplicate themed head-words`);
+
+      const packIds = themed(packs).map((p) => p.id);
+      assert.equal(new Set(packIds).size, packIds.length, `${lang} pack ids are unique`);
+    }
+  });
+
+  it('a themed word is never ALSO shipped as a bare frequency card', async () => {
+    // The themed entry teaches the word with an example sentence; the frequency
+    // row teaches the same word with no example. Shipping both made the learner
+    // meet the word twice and the bare copy always looked like the worse card.
+    for (const [lang, packs] of [['de', await getDePacks()], ['es', await getEsPacks()]]) {
+      const themedTerms = new Set(
+        packs.filter((p) => !p.id.startsWith('freq')).flatMap((p) => p.entries).map((e) => e.fr),
+      );
+      const freqPacks = packs.filter((p) => p.id.startsWith('freq'));
+      const freqEntries = freqPacks.flatMap((p) => p.entries);
+      const clash = freqEntries.filter((e) => themedTerms.has(e.fr)).map((e) => e.fr);
+      assert.deepEqual([...new Set(clash)], [], `${lang}: themed words re-shipped as bare frequency cards`);
+      assert.ok(freqPacks.every((p) => p.entries.length > 0), `${lang} ships no empty frequency deck`);
+    }
+  });
+
+  it('every themed entry carries the fields the card UI reads', async () => {
+    for (const [lang, packs] of [['de', await getDePacks()], ['es', await getEsPacks()]]) {
+      for (const p of packs.filter((x) => !x.id.startsWith('freq'))) {
+        assert.ok(p.id && p.title && p.description, `${lang}/${p.id} has pack metadata`);
+        for (const e of p.entries) {
+          assert.ok(e.id && e.fr && e.en, `${lang}/${e.id} has id/term/gloss`);
+          assert.ok(e.example && e.exampleEn, `${lang}/${e.id} has a worked example`);
+          assert.ok(e.emoji, `${lang}/${e.id} has an emoji`);
+          assert.ok(Number.isFinite(Number(e.freq)), `${lang}/${e.id} has a numeric frequency`);
+        }
+      }
+    }
+  });
+
+  it('de/es registries do not share entry ids (SRS ids must never collide)', async () => {
     const [de, es] = await Promise.all([getDePacks(), getEsPacks()]);
     const deIds = new Set(de.flatMap((p) => p.entries.map((e) => e.id)));
     const esIds = es.flatMap((p) => p.entries.map((e) => e.id));
