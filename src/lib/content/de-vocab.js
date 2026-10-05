@@ -156,7 +156,7 @@ export const DE_VOCAB_PACKS = [
       w('de-hose', 'die Hose', 'trousers', '👖', 2, 'Die Hose passt perfekt.', 'The trousers fit perfectly.'),
       w('de-schuhe', 'die Schuhe', 'shoes', '👟', 2, 'Deine Schuhe sind schön.', 'Your shoes are nice.'),
       w('de-rot', 'rot', 'red', '🔴', 1, 'Ich mag das rote Kleid.', 'I like the red dress.'),
-      w('de-blau', 'blau', 'blue', '🔵', 1, 'Der Himmel ist blau.', 'The sky is blue.'),
+      w('de-blau', 'blau', 'blue', '🔵', 1, 'Die Jacke ist blau.', 'The jacket is blue.'),
       w('de-gruen', 'grün', 'green', '🟢', 1, 'Das Gras ist grün.', 'The grass is green.'),
       w('de-schwarz', 'schwarz', 'black', '⚫', 1, 'Er trägt einen schwarzen Mantel.', 'He’s wearing a black coat.'),
     ],
@@ -294,7 +294,7 @@ export const DE_VOCAB_PACKS = [
     id: 'de-prepositions', title: 'Prepositions', description: 'Two-letter words that carry the case.',
     entries: [
       w('de-prap-in', 'in', 'in', '📥', 1, 'Ich wohne in Köln.', 'I live in Cologne.'),
-      w('de-prap-auf', 'auf', 'on / onto', '⬆️', 1, 'Das Buch liegt auf dem Tisch.', 'The book is on the table.'),
+      w('de-prap-auf', 'auf', 'on / onto', '⬆️', 1, 'Der Schlüssel liegt auf dem Tisch.', 'The key is on the table.'),
       w('de-prap-bei', 'bei', 'at / near', '📍', 2, 'Ich wohne bei meiner Schwester.', 'I live near my sister.'),
       w('de-prap-mit', 'mit', 'with', '🤝', 1, 'Komm bitte mit mir.', 'Please come with me.'),
       w('de-prap-fuer', 'für', 'for', '🎯', 1, 'Das Geschenk ist für dich.', 'The present is for you.'),
