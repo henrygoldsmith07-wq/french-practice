@@ -19,6 +19,16 @@ const ASSET_URLS = {
   es: new URL('../assets/content/frequency-es.tsv', import.meta.url),
 };
 
+// Worked example sentences live in their own asset rather than as extra columns
+// on the frequency lexicon: the lexicon is a word list, the examples are prose,
+// and the two are authored at very different rates. A language with no
+// examples yet simply has no entry here, and loadExamples yields an empty map
+// for it — a missing example file is never a load failure.
+const EXAMPLE_URLS = {
+  de: new URL('../assets/content/examples-de.tsv', import.meta.url),
+  es: new URL('../assets/content/examples-es.tsv', import.meta.url),
+};
+
 // Map a coarse frequency band (rank 1–10) onto the card's freq label bucket
 // (FREQ_LABELS in vocab.js: 1 Top 100 · 2 Top 500 · 3 Top 1000 · 4 Top 5000 · 5 Niche).
 const freqBucket = (rank) => (rank <= 1 ? 1 : rank <= 3 ? 2 : rank <= 5 ? 3 : rank <= 8 ? 4 : 5);
@@ -72,14 +82,27 @@ async function loadFrequencyAsset(lang) {
   return parseFrequencyAsset(await fetchAssetText(url));
 }
 
-// Drop repeated head-words (kept first, i.e. the most frequent sense) so a term
-// that recurs across bands doesn't appear twice in the decks or the dictionary.
+// Drop repeated head-words so a term that recurs across bands doesn't appear
+// twice in the decks or the dictionary — but MERGE their glosses rather than
+// discarding the later ones.
+//
+// Dropping was lossy in a way that mattered: German `sein` appears twice, as
+// the possessive "his / its" and as the verb "to be", and the second meaning
+// was being thrown away entirely. A learner seeing only "his / its" has no way
+// to learn the verb, which is the use they meet first. Identical glosses (most
+// repeats are just the source listing a word in two bands) collapse to one, so
+// the common case is unchanged.
 export function dedupeByTerm(words) {
-  const seen = new Set();
+  const byTerm = new Map();
   const out = [];
   for (const wd of words) {
-    if (seen.has(wd.fr)) continue;
-    seen.add(wd.fr);
+    const seen = byTerm.get(wd.fr);
+    if (seen) {
+      if (wd.en && !seen.en.includes(wd.en)) seen.en = `${seen.en}; ${wd.en}`;
+      // Keep the earliest (most frequent) rank; examples are attached later.
+      continue;
+    }
+    byTerm.set(wd.fr, wd);
     out.push(wd);
   }
   return out;
@@ -120,9 +143,42 @@ export function dropThemedDuplicates(themedPacks, freqPacks, lang) {
     .filter((pack) => pack.entries.length > 0);
 }
 
+// Parse `term \t example \t exampleEn`. Both languages are required to give an
+// example in BOTH — a target sentence with no translation (or the reverse) is
+// worse than no example, because the card then teaches something the learner
+// cannot check.
+export function parseExamplesAsset(text) {
+  const out = new Map();
+  for (const line of String(text || '').split('\n')) {
+    if (!line.trim()) continue;
+    const cells = line.split('\t');
+    if (cells.length < 3) continue;
+    const [term, example, exampleEn] = cells;
+    if (!term || !example || !exampleEn) continue;
+    if (!out.has(term)) out.set(term, { example: example.trim(), exampleEn: exampleEn.trim() });
+  }
+  return out;
+}
+
+const exampleCache = new Map();
+// A language with no examples asset resolves to an EMPTY map, so the decks build
+// exactly as they did before — examples are additive, never a dependency.
+async function loadExamples(lang) {
+  const url = EXAMPLE_URLS[lang];
+  if (!url) return new Map();
+  if (!exampleCache.has(lang)) {
+    const p = fetchAssetText(url)
+      .then((text) => parseExamplesAsset(text))
+      .catch(() => new Map());
+    p.catch(() => exampleCache.delete(lang));
+    exampleCache.set(lang, p);
+  }
+  return exampleCache.get(lang);
+}
+
 // Build frequency decks for one language. `adjective` names the language in the
 // deck description ("the 1–150 most common German words").
-function buildPacks(words, adjective, prefix) {
+function buildPacks(words, adjective, prefix, examples = new Map()) {
   const unique = dedupeByTerm(words);
   const packs = [];
   for (let i = 0; i < unique.length; i += CHUNK) {
@@ -139,8 +195,11 @@ function buildPacks(words, adjective, prefix) {
         en: wd.en,
         emoji: '',
         freq: freqBucket(wd.rank),
-        example: '',
-        exampleEn: '',
+        // A frequency card used to be a bare gloss with nothing showing how the
+        // word is used. Where an example exists it is attached here, matched on
+        // the exact head-word; words without one still build (example '').
+        example: examples.get(wd.fr)?.example || '',
+        exampleEn: examples.get(wd.fr)?.exampleEn || '',
         syn: [],
         ant: [],
         coll: [],
@@ -175,8 +234,12 @@ function ensureFrenchPacks() {
 // not cached on failure, so a transient error can be retried.
 const loaders = {
   fr: ensureFrenchPacks,
-  de: () => loadFrequencyAsset('de').then((words) => buildPacks(words, 'German', 'fqde')),
-  es: () => loadFrequencyAsset('es').then((words) => buildPacks(words, 'Spanish', 'fqes')),
+  // Lexicon and examples resolve together, so a deck is never built half-way:
+  // either the word arrives with its example or without one at all.
+  de: () => Promise.all([loadFrequencyAsset('de'), loadExamples('de')])
+    .then(([words, examples]) => buildPacks(words, 'German', 'fqde', examples)),
+  es: () => Promise.all([loadFrequencyAsset('es'), loadExamples('es')])
+    .then(([words, examples]) => buildPacks(words, 'Spanish', 'fqes', examples)),
 };
 const cache = new Map();
 export function getFrequencyPacksFor(lang) {

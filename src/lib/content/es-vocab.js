@@ -292,7 +292,7 @@ export const ES_VOCAB_PACKS = [
     id: 'es-prepositions', title: 'Prepositions', description: 'The words that fix a verb to a place.',
     entries: [
       w('es-prep-en', 'en', 'in / on / at', '📥', 1, 'Vivo en Madrid.', 'I live in Madrid.'),
-      w('es-prep-sobre', 'sobre', 'on / about', '⬆️', 1, 'El libro está sobre la mesa.', 'The book is on the table.'),
+      w('es-prep-sobre', 'sobre', 'on / about', '⬆️', 1, 'El papel está sobre la mesa.', 'The paper is on the table.'),
       w('es-prep-con', 'con', 'with', '🤝', 1, 'Ven conmigo, por favor.', 'Come with me, please.'),
       w('es-prep-sin', 'sin', 'without', '🚫', 2, 'Un café sin azúcar, por favor.', 'A coffee without sugar, please.'),
       w('es-prep-para', 'para', 'for / towards', '🎯', 1, 'El regalo es para ti.', 'The present is for you.'),

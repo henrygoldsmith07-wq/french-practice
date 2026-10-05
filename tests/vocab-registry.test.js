@@ -88,6 +88,75 @@ describe('per-language vocab registries', () => {
     }
   });
 
+  it('frequency decks carry worked examples, never a half-written one', async () => {
+    // A frequency card used to be a bare gloss: term + translation + IPA and
+    // nothing showing how the word is used. Where an example exists it must be
+    // a sentence in BOTH languages — a target sentence with no translation (or
+    // the reverse) is worse than none, because the learner cannot check it.
+    for (const [lang, packs] of [['de', await getDePacks()], ['es', await getEsPacks()]]) {
+      const freq = packs.filter((p) => p.id.startsWith('freq')).flatMap((p) => p.entries);
+      assert.ok(freq.length > 500, `${lang} frequency decks are substantial (${freq.length})`);
+
+      const half = freq.filter((e) => Boolean(e.example) !== Boolean(e.exampleEn));
+      assert.deepEqual(half.map((e) => e.fr), [], `${lang}: an example exists without its translation`);
+
+      const withExample = freq.filter((e) => e.example);
+      assert.ok(
+        withExample.length > 100,
+        `${lang} frequency cards teach usage, not just a gloss (${withExample.length} of ${freq.length})`,
+      );
+      for (const e of withExample) {
+        assert.ok(e.example.length > 4 && e.exampleEn.length > 4, `${lang}/${e.fr} example is a real sentence`);
+      }
+    }
+  });
+
+  it('no two cards in a language share the same example sentence', async () => {
+    // Two cards showing one sentence means the learner meets the same pair
+    // twice, and one of the two cards is not really teaching its own word.
+    // Caught themed prepositions colliding with the nouns they mention
+    // ("Der Schlüssel liegt auf dem Tisch." on both `auf` and `der Tisch`).
+    for (const [lang, packs] of [['de', await getDePacks()], ['es', await getEsPacks()]]) {
+      const seen = new Map();
+      const clashes = [];
+      for (const e of packs.flatMap((p) => p.entries)) {
+        if (!e.example) continue;
+        if (seen.has(e.example)) clashes.push(`${seen.get(e.example)} / ${e.fr}`);
+        else seen.set(e.example, e.fr);
+      }
+      assert.deepEqual(clashes, [], `${lang}: cards sharing an example sentence`);
+    }
+  });
+
+  it('a repeated head-word keeps BOTH senses instead of dropping one', async () => {
+    // German `sein` appears twice in the lexicon — as the possessive "his / its"
+    // and as the verb "to be". Dedupe used to keep only the first, so the verb
+    // was never taught at all: a learner met `sein` and learned it meant "his".
+    const { dedupeByTerm } = await import('../src/lib/vocab-frequency.js');
+    const merged = dedupeByTerm([
+      { fr: 'sein', en: 'his / its', rank: 1 },
+      { fr: 'sein', en: 'to be', rank: 4 },
+      { fr: 'und', en: 'and', rank: 1 },
+      { fr: 'und', en: 'and', rank: 3 },
+    ]);
+    assert.equal(merged.length, 2, 'still two cards, not three and not one');
+    const sein = merged.find((w) => w.fr === 'sein');
+    assert.ok(sein.en.includes('his / its') && sein.en.includes('to be'), 'both senses survive');
+    assert.equal(sein.rank, 1, 'the most frequent rank is kept');
+    assert.equal(merged.find((w) => w.fr === 'und').en, 'and', 'an identical gloss is not duplicated');
+  });
+
+  it('a malformed example row is dropped rather than half-applied', async () => {
+    // French has a frequency lexicon but no examples file yet. Examples are
+    // additive: a missing or malformed asset must never break the decks.
+    const { parseExamplesAsset } = await import('../src/lib/vocab-frequency.js');
+    assert.equal(parseExamplesAsset(undefined).size, 0, 'no text yields no examples');
+    assert.equal(parseExamplesAsset('').size, 0);
+    assert.equal(parseExamplesAsset('nur-zwei\tonly').size, 0, 'a short row is dropped');
+    assert.equal(parseExamplesAsset('term\tonly\t').size, 0, 'a missing translation is dropped');
+    assert.equal(parseExamplesAsset('term\tonly\tI only').size, 1, 'a complete row is kept');
+  });
+
   it('every themed entry carries the fields the card UI reads', async () => {
     for (const [lang, packs] of [['de', await getDePacks()], ['es', await getEsPacks()]]) {
       for (const p of packs.filter((x) => !x.id.startsWith('freq'))) {
