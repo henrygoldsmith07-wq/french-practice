@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState } from 'react';
 import { activeLanguage, langName } from '../lib/i18n';
-import { allEntries } from '../lib/vocab';
+import { useAllEntries } from '../lib/vocabAsync';
 import { recordSkillScore } from '../lib/storage';
 import { SpeakButton } from './ui';
 import { useTimeout } from '../hooks/useTimeout';
@@ -31,28 +31,42 @@ const similarity = (a, b) => {
 };
 
 export default function TranslateDrill({ onXp }) {
+  // The pool comes from the ASYNC library. allEntries() is the sync facade and
+  // returns [] for DE/ES until that language's registry chunk resolves; reading
+  // it in a `useMemo(..., [])` froze `pool` as [] on a cold start, and
+  // `pool[game.idx].exampleEn` then threw into the root ErrorBoundary, which
+  // replaced the whole app with "Oups — something broke". `useAllEntries`
+  // returns null while loading, so "not ready yet" and "genuinely empty" are
+  // different states and the drill can never run on a half-loaded library.
+  const entries = useAllEntries();
   const pool = useMemo(
-    () => allEntries().filter((e) => e.example && e.exampleEn && e.example.split(' ').length <= 10),
-    [],
+    () => (entries || []).filter((e) => e.example && e.exampleEn && e.example.split(' ').length <= 10),
+    [entries],
   );
   const [game, setGame] = useState(null);
   const inputRef = useRef(null);
   // Cleared on unmount, so leaving mid-round cannot refocus a dead ref.
   const scheduleFocus = useTimeout(() => inputRef.current?.focus(), 50);
 
+  // Never ask for more rounds than there are sentences. `draw` used to resample
+  // until it found an unused index, which spins forever once the pool is
+  // exhausted — a small deck froze the tab instead of ending the round.
+  const rounds = Math.min(ROUNDS, pool.length);
+
   const draw = (used) => {
-    let i;
-    do { i = Math.floor(Math.random() * pool.length); } while (used.includes(i));
-    return i;
+    const free = pool.map((_, i) => i).filter((i) => !used.includes(i));
+    return free.length ? free[Math.floor(Math.random() * free.length)] : 0;
   };
 
   const start = () => {
+    if (!rounds) return;
     const first = draw([]);
     setGame({ n: 1, idx: first, used: [first], toFr: true, input: '', checked: false, correct: 0 });
   };
 
   const check = () => {
     const e = pool[game.idx];
+    if (!e) return;
     const target = game.toFr ? e.example : e.exampleEn;
     const sim = similarity(game.input, target);
     const ok = sim >= 0.6;
@@ -60,8 +74,8 @@ export default function TranslateDrill({ onXp }) {
   };
 
   const next = () => {
-    if (game.n >= ROUNDS) {
-      const score = Math.round((game.correct / ROUNDS) * 100);
+    if (game.n >= rounds) {
+      const score = Math.round((game.correct / rounds) * 100);
       recordSkillScore('writing', score);
       onXp(Math.max(1, game.correct * 3));
       setGame({ ...game, done: true, score });
@@ -72,11 +86,29 @@ export default function TranslateDrill({ onXp }) {
     scheduleFocus();
   };
 
+  if (entries === null) {
+    return (
+      <div className={EMPTY_CARD}>
+        <p className="text-sm text-ink2">Loading sentences…</p>
+      </div>
+    );
+  }
+
+  if (!pool.length) {
+    return (
+      <div className={EMPTY_CARD}>
+        <p className="text-sm text-ink2">
+          No worked sentences are available in {activeLanguage().name} yet, so there is nothing to translate.
+        </p>
+      </div>
+    );
+  }
+
   if (!game) {
     return (
       <div className={EMPTY_CARD}>
         <p className="text-sm text-ink2">
-          Eight sentences, alternating directions: English → {langName()}, then {langName()} → English.
+          {rounds} sentence{rounds === 1 ? '' : 's'}, alternating directions: English → {langName()}, then {langName()} → English.
           Close paraphrases count — accents and punctuation are forgiven.
         </p>
         <button onClick={start} className="btn btn-primary min-h-11 px-6 rounded-xl text-sm"><Play size={14} /> Start</button>
@@ -87,7 +119,7 @@ export default function TranslateDrill({ onXp }) {
   if (game.done) {
     return (
       <div className="bg-surface border border-line rounded-2xl p-6 text-center space-y-3 fade-in">
-        <p className="text-3xl font-bold text-ink tabular-nums">{game.correct}/{ROUNDS}</p>
+        <p className="text-3xl font-bold text-ink tabular-nums">{game.correct}/{rounds}</p>
         <p className="text-xs text-ink2">{game.score >= 75 ? `Solid translation in both directions!` : 'Both directions — that is how it sticks.'}</p>
         <button onClick={start} className="btn btn-secondary min-h-10 px-4 rounded-xl text-xs"><RefreshCw size={12} /> Again</button>
       </div>
@@ -95,13 +127,14 @@ export default function TranslateDrill({ onXp }) {
   }
 
   const e = pool[game.idx];
+  if (!e) return <div className={EMPTY_CARD}><p className="text-sm text-ink2">Loading sentences…</p></div>;
   const source = game.toFr ? e.exampleEn : e.example;
   const target = game.toFr ? e.example : e.exampleEn;
 
   return (
     <div className="bg-surface border border-line rounded-2xl p-6 space-y-4">
       <div className="flex items-center justify-between text-[11px] text-ink3 tabular-nums">
-        <span>Sentence {game.n}/{ROUNDS}</span>
+        <span>Sentence {game.n}/{rounds}</span>
         <span className="font-semibold">{game.toFr ? `EN → ${langCode().toUpperCase()}` : `${langCode().toUpperCase()} → EN`}</span>
         <span>{game.correct} ✓</span>
       </div>

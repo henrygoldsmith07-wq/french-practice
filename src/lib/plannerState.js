@@ -13,29 +13,55 @@ import { dueEntries, notebookAsEntries, NEW_CARD_CAP } from './memory.js';
 import { dueRetests } from './mistakeGraph.js';
 import { weaknessLifecycle, WEAKNESS_LIFECYCLE } from './weaknessLifecycle.js';
 import { dueLearningChecks } from './learningEvidence.js';
-import { localDayIndex } from './localDay.js';
+import { localDayIndex, localDayKey } from './localDay.js';
 
 const DAY = 86400000;
 
 /** Minutes of practice recorded over the last `days` days, per modality. */
 export function recentMinutes({ days = 7, now = Date.now(), timeLog = null, sessions = null } = {}) {
   const log = timeLog || getTimeLog();
-  const since = new Date(now - days * DAY).toISOString().slice(0, 10);
+  // The log's keys are LOCAL day keys (storage.js dayStamp / localDayKey), so
+  // the window must be a local day too. A UTC slice here shifted the whole
+  // window by a day for anyone not on UTC: a learner in New York asking for
+  // "the last 7 days" got 6.
+  const since = localDayKey(now - days * DAY);
   let total = 0;
   for (const [day, seconds] of Object.entries(log || {})) {
     if (day >= since) total += Number(seconds) || 0;
   }
   const rows = sessions || getSessions();
   const recent = (rows || []).filter((s) => s && s.date && new Date(s.date).getTime() >= now - days * DAY);
-  const speaking = recent.reduce((sum, s) => {
-    const seconds = Number(s.durationSeconds) || 0;
-    return sum + (s.kind === 'speaking' ? seconds / 60 : (Number(s.turns) || 0) * 0.6);
-  }, 0);
+  const speaking = recent.reduce((sum, s) => sum + sessionSpeakingMinutes(s), 0);
   return {
     totalMinutes: Math.round(total / 60),
     speakingMinutes: Math.round(speaking),
+    // Listening practice records scores and gaps but never a duration, so there
+    // is genuinely no measured figure to return. Reporting 0 is the honest
+    // answer; the planner treats it as "no evidence of listening" and protects
+    // the ear, which is the safe direction to be wrong in.
+    listeningMinutes: 0,
     sessionCount: recent.length,
   };
+}
+
+/**
+ * Minutes of real speech one session contributed.
+ *
+ * saveSession records `speakingSeconds` — voiced production time, measured from
+ * the learner's own audio. It did NOT record `durationSeconds` or `kind`, which
+ * is what this used to read: `Number(s.durationSeconds)` was always 0 and
+ * `s.kind === 'speaking'` was never true, so every session silently fell through
+ * to a `turns * 0.6` guess. A session with 60 turns and long pauses scored ~36
+ * minutes of speaking, so the planner's 20-minute regularity floor read a
+ * learner who had spoken for 10 minutes as comfortably on target.
+ *
+ * The turn heuristic is kept only as a fallback for history written before
+ * `speakingSeconds` existed.
+ */
+function sessionSpeakingMinutes(session) {
+  const recorded = Number(session?.speakingSeconds);
+  if (Number.isFinite(recorded) && recorded > 0) return recorded / 60;
+  return (Number(session?.turns) || 0) * 0.6;
 }
 
 /** How often recent successes needed help (0..1). Drives independence push. */
@@ -111,7 +137,7 @@ export function plannerState(options = {}) {
     recentPlans: read.recentPlans || recentPlansFromTrials(read.trials || getSelectionTrial()),
     assistanceDependence: assistanceDependence(errorEntries),
     speakingMinutes7d: minutes7.speakingMinutes,
-    listeningMinutes7d: read.listeningMinutes ?? Math.round(minutes7.totalMinutes * 0.2),
+    listeningMinutes7d: read.listeningMinutes ?? minutes7.listeningMinutes,
     easyWinEligible: easyWinEligible(localDayIndex()),
     hasListeningContent: options.hasListeningContent !== false,
     hasScenario: options.hasScenario !== false,

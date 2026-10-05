@@ -55,9 +55,14 @@ export function progressEvidenceStatements(input = {}) {
 
   // 2. Vocabulary that survived delayed recall — from the learner-error
   // model's delayed successes (one clean delayed pass is the strong signal).
+  // `lastEvidence: 'delayed'` is a clock fact; a delayed pass taken with support
+  // still sets it, and it was being reported to the learner as a strength they
+  // had earned unaided. The sibling filter a few lines above already requires
+  // `independent !== false` — this one now does too.
   const vocabDelayed = errorEntries.filter((e) => (
     e?.category === 'vocabulary'
     && e.lastEvidence === 'delayed'
+    && e.independent !== false
     && inWindow(e.lastSuccessAt, now, windowDays)
   ));
   if (vocabDelayed.length >= 1) {

@@ -25,7 +25,8 @@ import {
   assistanceTier,
   evidenceStrength,
 } from '../learnerErrors.js';
-import { recordLearningEvidence } from './learningEvidenceStore.js';
+import { recordLearningEvidence, getLearningEvidenceState } from './learningEvidenceStore.js';
+import { nextEvidenceLane } from '../learningEvidence.js';
 
 // Legacy sources the one-time migration folds into the unified model. These
 // read/write helpers live here (not storage.js) so the store is the single
@@ -201,12 +202,39 @@ export function recordLearnerSuccess(success, options = {}) {
     // it. A mode name never can: the old `mode: 'held-out…'` prefix trusted a
     // string, which is why the transfer lane stayed empty for every learner who
     // did not join the opt-in study.
-    const phase = strength === 'delayed'
-      ? 'delayed'
-      : success.transferVerified === true
-        ? 'transfer'
-        : 'intervention';
+    //
+    // Which LANE this pass belongs in is positional — the first one the cycle
+    // has not yet satisfied — not a verdict from the clock. The clock used to
+    // decide it, measuring from the entry's FIRST mistake, which never moves:
+    // any weakness the learner returned to the next day was therefore older
+    // than the delay floor, so every later success was filed as `delayed`, the
+    // intervention and transfer lanes stayed empty for good, and the recovery
+    // loop never started. `delayed: true` from a caller still wins outright,
+    // because that path checked the clock itself.
+    const owed = nextEvidenceLane(getLearningEvidenceState(), {
+      skill: success.category,
+      targetKey: success.key || success.topicId || success.itemId,
+      label: success.label,
+      at,
+    });
     const assistance = assistanceTier(success);
+    // A pass is transfer evidence only when the runner VERIFIED a genuinely
+    // new-context task AND the learner produced it unaided; a verified claim
+    // lands in the transfer lane whatever the cycle still owes, because it is
+    // real new-context evidence. Everything else is filed in the lane the cycle
+    // is waiting for — except a SUPPORTED pass taken at the transfer check
+    // itself, which is practice and is filed as such. The follow-up UI allows
+    // exactly that (revealing the transcript and still passing), and it must
+    // never be counted as having demonstrated transfer.
+    const isVerifiedTransfer = success.transferVerified === true
+      && assistance === 'none'
+      && Boolean(success.encounterId);
+    const phase = success.delayed === true
+      ? 'delayed'
+      : isVerifiedTransfer
+        ? 'transfer'
+        : (owed === 'transfer' && assistance !== 'none' ? 'intervention' : owed);
+    const independent = assistance === 'none' && Boolean(success.encounterId) && !success.assisted && !success.hinted;
     recordLearningEvidence({
       phase,
       skill: success.category,
@@ -225,10 +253,7 @@ export function recordLearnerSuccess(success, options = {}) {
       difficulty: success.difficulty,
       delayHours: strength === 'delayed' && delayHours != null ? Math.round(delayHours) : undefined,
       assistance,
-      // Independent means: the learner's own production, no support, and a
-      // real encounter identity. Structurally-assisted modes (retype, choice)
-      // can never claim independence, whatever the caller believed.
-      independent: assistance === 'none' && Boolean(success.encounterId) && !success.assisted && !success.hinted,
+      independent,
       source: success.source || 'learner-success',
       sourceReliability: Number(success.confidence) >= 0.8 ? 'high' : Number(success.confidence) >= 0.5 ? 'medium' : 'unknown',
       markerConfidence: Number.isFinite(Number(success.confidence)) ? Number(success.confidence) : null,

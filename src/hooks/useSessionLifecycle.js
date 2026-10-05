@@ -24,7 +24,7 @@
 // rules themselves live in lib/sessionRestore.js (unit-tested without React).
 import { useEffect, useRef, useState } from 'react';
 import { getScenarios } from '../lib/data';
-import { getActiveSession, setActiveSession, clearActiveSession } from '../lib/storage';
+import { getActiveSession, setActiveSession, clearActiveSession, activeLearnerId } from '../lib/storage';
 import { warmScenarios } from '../lib/vocabAsync';
 import { syncLanguage } from '../lib/i18n';
 import { savedSessionOf, planRestore } from '../lib/sessionRestore';
@@ -42,6 +42,8 @@ export default function useSessionLifecycle() {
   // Set when the learner switches language mid-boot: the boot-time restore
   // must not resurrect a session that switchLanguage just invalidated.
   const switchedRef = useRef(false);
+  // Which household member the in-flight transcript belongs to.
+  const ownerRef = useRef(activeLearnerId());
 
   useEffect(() => {
     let on = true;
@@ -70,12 +72,42 @@ export default function useSessionLifecycle() {
     return () => { on = false; };
   }, [saved]);
 
+  // The scenario registry resolves asynchronously (DE/ES cold start). If the
+  // learner navigates away first, the `finally` below must not set state.
+  const unmountedRef = useRef(false);
+  useEffect(() => {
+    unmountedRef.current = false;
+    return () => { unmountedRef.current = true; };
+  }, []);
+
   // Persist the in-flight session on every change — but only once hydration
   // is complete. A session with no turns yet still clears the slot so a
   // stale transcript never reappears; that rule simply cannot fire during
   // the hydration window anymore.
   useEffect(() => {
     if (phase !== 'ready' || !scenario) return; // registry still resolving (DE/ES cold start)
+    // Whose session is this? The persist path routes by the ACTIVE member at
+    // write time, so a household switch that happened underneath this hook
+    // would write the previous member's transcript into the new member's
+    // namespace — one learner's French conversation handed to another, who
+    // then restores it on next load. Profile switches members without
+    // unmounting App, so nothing else in here was told. Checked at the write
+    // point itself: the next turn the learner takes changes `history`, this
+    // effect runs, and it drops the foreign transcript instead of persisting
+    // it.
+    const current = activeLearnerId();
+    if (current !== ownerRef.current) {
+      ownerRef.current = current;
+      setPhase('loading');
+      setHistory([]);
+      setScenario(null);
+      warmScenarios().finally(() => {
+        if (unmountedRef.current) return;
+        setPhase('ready');
+        setScenario(getScenarios()[0] || null);
+      });
+      return;
+    }
     if (history.length > 0) setActiveSession(scenario.id, history);
     else clearActiveSession();
   }, [phase, scenario, history]);

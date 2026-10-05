@@ -98,6 +98,68 @@ const KEYS = {
 
 export { KEYS };
 
+// The type each stored value has, used when RESTORING a backup or sync payload.
+//
+// Import used to check only that the text parsed as JSON, so any JSON installed
+// cleanly — including `null` and `{}` where an array or a map was expected. That
+// is not caught by `read`, which only deletes a value that fails to PARSE. The
+// two consequences that actually bite:
+//
+//   fp.xpLog = null      -> logDailyXp does `log[today] = ...` and throws.
+//   fp.sessionHistory={} -> getSessions sees a non-array, re-runs the legacy
+//                           migration on EVERY call, and overwrites real
+//                           history with the <=10-entry mirror.
+//
+// This table records the types readers genuinely assume, not a guess at every
+// key. Anything not listed restores as before: the point is to reject the values
+// with a proven bad failure, never to start second-guessing good backups.
+const SHAPE = {
+  [KEYS.sessions]: 'array',
+  [KEYS.sessionHistory]: 'array',
+  [KEYS.studyEvents]: 'array',
+  [KEYS.reviewEvents]: 'array',
+  [KEYS.pulseHistory]: 'array',
+  [KEYS.habits]: 'array',
+  [KEYS.notebook]: 'array',
+  [KEYS.metrics]: 'array',
+  [KEYS.starred]: 'array',
+  [KEYS.cultureSeen]: 'array',
+  [KEYS.realworldSeen]: 'array',
+  [KEYS.avatarsOwned]: 'array',
+  [KEYS.errorNotebook]: 'array',
+  [KEYS.xpLog]: 'object',
+  [KEYS.timeLog]: 'object',
+  [KEYS.reviewLog]: 'object',
+  [KEYS.srs]: 'object',
+  [KEYS.grammar]: 'object',
+  [KEYS.settings]: 'object',
+  [KEYS.prefs]: 'object',
+  [KEYS.household]: 'object',
+  [KEYS.streak]: 'object',
+  [KEYS.active]: 'object',
+  [KEYS.weaknessMemory]: 'object',
+  [KEYS.learnerErrors]: 'object',
+};
+
+/**
+ * Whether `raw` (a stored JSON string) holds a value the reader for `key` can
+ * work with. `null` is rejected for every key: it is the one value no reader
+ * survives, since they all assign to or iterate the result.
+ */
+export function hasExpectedShape(key, raw) {
+  let value;
+  try {
+    value = JSON.parse(raw);
+  } catch {
+    return false; // not JSON at all
+  }
+  if (value === null) return false;
+  const shape = SHAPE[key];
+  if (shape === 'array') return Array.isArray(value);
+  if (shape === 'object') return typeof value === 'object' && !Array.isArray(value);
+  return true;
+}
+
 let storageFull = false;
 
 // True when the last write tripped the quota — surfaced in Settings/DevPanel
@@ -184,12 +246,24 @@ function claimLegacyFor(key, memberId) {
   const reg = learnerRegistry();
   if (!reg.claims || typeof reg.claims !== 'object') reg.claims = {};
   if (reg.claims[key]) return;
-  reg.claims[key] = memberId;
   let raw = null;
   try { raw = localStorage.getItem(key); } catch { raw = null; }
   if (raw != null) {
-    try { localStorage.setItem(learnerKey(key, memberId), raw); } catch { /* quota */ }
+    try {
+      localStorage.setItem(learnerKey(key, memberId), raw);
+    } catch {
+      // Quota. Claiming a learner namespace roughly DOUBLES that member's
+      // footprint, so this is exactly the moment it is most likely to fail —
+      // and it used to be swallowed here while the claim was still recorded
+      // below. `if (reg.claims[key]) return;` then short-circuited every later
+      // attempt, so the legacy data became unreachable forever: reads returned
+      // empty, and the next save wrote empty over good history. Leaving the
+      // claim unrecorded means the copy is retried on the next read, by which
+      // time the caller may have made room. The data stays reachable either way.
+      return;
+    }
   }
+  reg.claims[key] = memberId;
   saveLearnerRegistry(reg);
 }
 
@@ -210,14 +284,36 @@ function learnerRead(key, fallback) {
   const memberId = activeLearnerId();
   if (!memberId) return readRaw(key, fallback);
   claimLegacyFor(key, memberId);
-  return readRaw(learnerKey(key, memberId), fallback);
+  const direct = readRaw(learnerKey(key, memberId), undefined);
+  if (direct !== undefined) return direct;
+  // The namespaced value was missing OR unparseable — readRaw deletes the
+  // corrupt one. The docstring promised a fallback to the legacy key and the
+  // code had none, so an interrupted write (or a second tab, or devtools)
+  // permanently stranded a perfectly good copy still sitting at the legacy key:
+  // reads returned the fallback, the next save wrote empty, and the notebook
+  // was gone.
+  //
+  // But ONLY when this member owns that legacy value. A second household member
+  // has no namespaced copy and no claim, and falling back unconditionally would
+  // hand them the first member's pre-household XP — exactly the isolation the
+  // claim registry exists to enforce.
+  const owner = learnerRegistry().claims?.[key];
+  if (owner && owner !== memberId) return fallback;
+  const legacy = readRaw(key, undefined);
+  if (legacy !== undefined) {
+    try {
+      localStorage.setItem(learnerKey(key, memberId), JSON.stringify(legacy));
+    } catch { /* still full — the value is still readable at the legacy key */ }
+    return legacy;
+  }
+  return fallback;
 }
 
 function learnerWrite(key, value) {
   const memberId = activeLearnerId();
-  if (!memberId) { writeRaw(key, value); return; }
+  if (!memberId) return writeRaw(key, value);
   claimLegacyFor(key, memberId);
-  writeRaw(learnerKey(key, memberId), value);
+  return writeRaw(learnerKey(key, memberId), value);
 }
 
 /** The one public read: learner-aware for learner-owned keys. */
@@ -251,39 +347,60 @@ export function purgeLearnerData(memberId) {
 
 /** Raw write: no learner routing. */
 function writeRaw(key, value) {
+  const encoded = JSON.stringify(value);
   try {
-    localStorage.setItem(key, JSON.stringify(value));
-  } catch {
-    // Storage full or unavailable: try to make room by halving the growing
-    // event logs, then retry once. Never lose the current key's data without
-    // attempting this.
-    if (!storageFull) storageFull = true;
-    if (PRUNEABLE_KEYS.includes(key)) {
-      try {
-        const half = readRaw(key, null);
-        if (Array.isArray(half) && half.length > 8) {
-          localStorage.setItem(key, JSON.stringify(half.slice(-Math.floor(half.length / 2))));
-          return;
-        }
-      } catch { /* give up quietly */ }
-    }
-    for (const k of PRUNEABLE_KEYS) {
-      if (k === key) continue;
-      try {
-        const arr = readRaw(k, null);
-        if (Array.isArray(arr) && arr.length > 16) {
-          localStorage.setItem(k, JSON.stringify(arr.slice(-Math.floor(arr.length / 2))));
-          try { localStorage.setItem(key, JSON.stringify(value)); return; } catch { /* still full */ }
-        }
-      } catch { /* keep pruning */ }
-    }
+    localStorage.setItem(key, encoded);
+    return true;
+  } catch { /* storage full or unavailable: recover below */ }
+  if (!storageFull) storageFull = true;
+
+  // This key is its own event stream: keep the newest half rather than losing
+  // the fresh entries the learner just produced.
+  if (PRUNEABLE_KEYS.includes(key)) {
+    try {
+      const half = readRaw(key, null);
+      if (Array.isArray(half) && half.length > 8) {
+        localStorage.setItem(key, JSON.stringify(half.slice(-Math.floor(half.length / 2))));
+        return true;
+      }
+    } catch { /* give up quietly */ }
   }
+
+  // Free room in the other prunable logs, then retry. The retry runs after
+  // EVERY prune attempt, including attempts that found nothing to halve — the
+  // retry is the only thing that can rescue this write, so skipping it whenever
+  // no other log was long enough dropped the write silently: a learner
+  // completed a conversation, saveSession "succeeded", and the session was gone
+  // with nothing surfaced to anyone.
+  for (const k of PRUNEABLE_KEYS) {
+    if (k === key) continue;
+    try {
+      const arr = readRaw(k, null);
+      if (Array.isArray(arr) && arr.length > 16) {
+        localStorage.setItem(k, JSON.stringify(arr.slice(-Math.floor(arr.length / 2))));
+      }
+    } catch { /* keep pruning */ }
+    try {
+      localStorage.setItem(key, encoded);
+      return true;
+    } catch { /* still full */ }
+  }
+
+  // Nothing left to reclaim. The write really is lost — report that rather than
+  // letting callers assume it landed, so `storageFullWarning()` stays honest.
+  return false;
 }
 
-/** The one public write: learner-aware for learner-owned keys. */
+/**
+ * The one public write: learner-aware for learner-owned keys.
+ *
+ * Returns whether the value actually landed. A caller that discards the result
+ * behaves exactly as before, so this is purely additive — but a save can now
+ * report a genuine quota loss instead of every caller assuming it saved.
+ */
 export function write(key, value) {
-  if (LEARNER_KEY_SET.has(key)) { learnerWrite(key, value); return; }
-  writeRaw(key, value);
+  if (LEARNER_KEY_SET.has(key)) return learnerWrite(key, value);
+  return writeRaw(key, value);
 }
 
 /** Learner-aware removal (the DELETE half of the read/write pair). */

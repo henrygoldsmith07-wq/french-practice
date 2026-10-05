@@ -147,8 +147,9 @@ export function recordMistake(graph, entry) {
 // hours after the mistake is a SHORT_DELAY, full stop.
 //
 // Classes (stored per retest as evidenceClass):
-//   REHEARSAL            correction was just on screen — never evidence,
-//                        never raises mastery
+//   REHEARSAL            not evidence of learning — either the correction was
+//                        just on screen, or the answer was wrong. Never raises
+//                        mastery; a wrong one costs a flat -10
 //   SHORT_DELAY          correct, but < DELAYED_MIN_DAYS since the baseline —
 //                        weak positive signal, never counts toward retirement
 //   DELAYED              correct, >= DELAYED_MIN_DAYS, same context family
@@ -254,6 +255,12 @@ export function recordRetest(graph, { id, at, correct, context = null, immediate
   if (m.asrUncertain && !correct) return graph;
 
   if (evidenceClass === 'REHEARSAL') {
+    // Every wrong retest lands here, because classifyRetest folds a wrong
+    // answer into REHEARSAL — a wrong answer is never evidence of learning,
+    // however long ago the baseline was. There used to be a second branch below
+    // charging -20 to wrong answers that were not rehearsals, but nothing could
+    // ever reach it, so the header comment documented a penalty the code never
+    // applied. The flat -10 is the real behaviour; the comment now says so.
     m.mastery = clamp(m.mastery + (correct ? 0 : -10));
     return graph;
   }
@@ -262,6 +269,9 @@ export function recordRetest(graph, { id, at, correct, context = null, immediate
     return graph;
   }
   if (!correct) {
+    // Unreachable by construction (see above): every wrong retest is classified
+    // REHEARSAL above. Kept as a guard so that if classifyRetest ever gains a
+    // wrong-but-delayed class, the fallback is still a penalty and not a gain.
     m.mastery = clamp(m.mastery - 20);
     return graph;
   }
@@ -343,7 +353,7 @@ export function weakestMistakes(graph, limit = 3) {
  * P2 retention analytics over GENUINE graph data — empty-safe, never
  * synthesises. Recurrence here = a wrong retest or a fresh occurrence
  * after prior delayed evidence; delay = time since that evidence.
- * Constants like +35/+12/-20 are hypotheses until these curves justify them.
+ * Constants like +35/+12/-10 are hypotheses until these curves justify them.
  */
 export function mistakeGraphStats(graph) {
   const nodes = (Array.isArray(graph) ? graph : []).filter((m) => !m.asrUncertain);

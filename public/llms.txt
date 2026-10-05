@@ -25,7 +25,7 @@
 - Knowledge stats: a weighted knowledge score, an 8-week growth chart and
   stat tiles (words known, grammar mastered, lessons done, units passed,
   average checkpoint, CEFR level).
-- Vocabulary: <!-- counts:vocabPacks -->5<!-- /counts:vocabPacks --> curriculum packs covering <!-- counts:vocabEntries -->3,020<!-- /counts:vocabEntries --> words, scheduled with FSRS spaced
+- Vocabulary: <!-- counts:vocabPacks -->5<!-- /counts:vocabPacks --> curriculum packs covering <!-- counts:vocabEntries -->2,637<!-- /counts:vocabEntries --> words, scheduled with FSRS spaced
   repetition, plus a personal notebook, custom word-list import, and a
   frequency-ranked offline dictionary with IPA and text-to-speech.
 - Skills: speaking drills (pronunciation coach, minimal pairs, accent

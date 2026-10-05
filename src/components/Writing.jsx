@@ -1,4 +1,4 @@
-import { lazy, Suspense, useState } from 'react';
+import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { langName, activeLanguage } from '../lib/i18n';
 import { hasCapabilityNow } from '../lib/capabilities';
 import { randomPoolSentence, toWords, diffWords, displayHits } from '../lib/sentences';
@@ -193,17 +193,26 @@ function Completion({ apiKey, mockMode, level, onXp }) {
   const [result, setResult] = useState(null);
   const [error, setError] = useState(null);
 
+  // Judging is a network round-trip, and the learner can leave mid-request.
+  // The old `submit` then applied the verdict and awarded XP on an unmounted
+  // tree — React warned about the setState, and more to the point the XP was
+  // granted for an attempt whose result the learner never saw.
+  const aliveRef = useRef(true);
+  useEffect(() => () => { aliveRef.current = false; }, []);
+
   const submit = async () => {
     setChecking(true);
     setError(null);
     try {
       const r = await judgeCompletion(apiKey, { starter: starter.fr, completion: completion.trim(), level, mock: mockMode });
+      if (!aliveRef.current) return;
       onXp(r.natural ? 5 : 2);
       setResult(r);
     } catch (e) {
+      if (!aliveRef.current) return;
       setError(friendlyError(e));
     }
-    setChecking(false);
+    if (aliveRef.current) setChecking(false);
   };
 
   const next = () => {

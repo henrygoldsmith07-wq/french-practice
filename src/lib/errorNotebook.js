@@ -12,8 +12,15 @@ import { read, write, KEYS } from './storageCore.js';
 // physical locations. storageCore read/write keeps the byte-identical raw key
 // when no household is active, and the one-shot claim carries pre-existing
 // data into the member namespace.
-function readRaw(){ return read(KEYS.errorNotebook, []); }
-function writeRaw(v){ write(KEYS.errorNotebook, v.slice(0,200)); }
+// Every other store in the app guards its read with Array.isArray (seenStore,
+// researchStore, studyStore) because the value can arrive wrong-shaped from a
+// restored backup. This one did not, so a `{}` under fp.errorNotebook made
+// `list.find` throw inside addErrorNotebook, out through the Writing screen.
+const readRaw = () => {
+  const v = read(KEYS.errorNotebook, []);
+  return Array.isArray(v) ? v : [];
+};
+const writeRaw = (v) => write(KEYS.errorNotebook, v.slice(0, 200));
 
 export function getErrorNotebook(){ return readRaw(); }
 

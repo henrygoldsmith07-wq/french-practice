@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import useRecorder from '../hooks/useRecorder';
 import { transcribe, friendlyError } from '../lib/groq';
 import { speak } from '../lib/tts';
@@ -151,7 +151,21 @@ function Sitting({ run, setRun, apiKey, mockMode, busy, setBusy, onAbort }) {
   // Speaking time accumulates across push-to-talk bursts — the shortfall
   // figure has to count real speech, not the wall clock, or every thoughtful
   // pause would read as a lost mark.
+  //
+  // A burst must be banked exactly once. Releasing the button outside it fires
+  // `mouseup`, and then leaving fires `mouseleave`, and both handlers were bound
+  // to the same render's `recording` value — so the elapsed time was added
+  // twice. The latch makes the second call a no-op regardless of which handler
+  // got there first, and also survives the touch path.
+  const burstLatched = useRef(false);
+  const startBurst = useCallback(() => {
+    if (burstLatched.current) return;
+    burstLatched.current = true;
+    startRec();
+  }, [startRec]);
   const finishBurst = useCallback(() => {
+    if (!burstLatched.current) return;
+    burstLatched.current = false;
     stopRec();
     setSpoken((s) => s + elapsed);
   }, [stopRec, elapsed]);
@@ -248,17 +262,17 @@ function Sitting({ run, setRun, apiKey, mockMode, busy, setBusy, onAbort }) {
           </div>
 
           <button
-            onMouseDown={startRec}
+            onMouseDown={startBurst}
             onMouseUp={finishBurst}
             onMouseLeave={() => recording && finishBurst()}
-            onTouchStart={(e) => { e.preventDefault(); startRec(); }}
+            onTouchStart={(e) => { e.preventDefault(); startBurst(); }}
             onTouchEnd={(e) => { e.preventDefault(); finishBurst(); }}
             onKeyDown={(e) => {
               // Keyboard parity: hold Space/Enter to speak, release to stop —
               // without this the speaking paper is impossible by keyboard.
               if ((e.key === ' ' || e.key === 'Enter') && !e.repeat && !recording) {
                 e.preventDefault();
-                startRec();
+                startBurst();
               }
             }}
             onKeyUp={(e) => {

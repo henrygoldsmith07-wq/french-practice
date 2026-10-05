@@ -56,13 +56,16 @@ export function buildWeeklyReview(input = {}) {
     if (inWindow(day, since, until)) practisedSeconds += Number(seconds) || 0;
   }
   const sessions = (input.sessions || []).filter((s) => s && inWindow(s.date || '', since, until));
-  // Speaking minutes: sessions with turns are speaking work; ~45 s per turn
-  // is a conservative estimate when no duration was recorded. Only used when
-  // the time log has nothing for the week, so the estimate is never additive
-  // with real measurements.
+  // Speaking minutes. saveSession records `speakingSeconds` (voiced production
+  // time from the learner's own audio); it never recorded `durationSeconds` or
+  // `kind`, which is what this read, so the measured branch was unreachable and
+  // every week fell back to a turns-based estimate. Use the real measurement
+  // when it exists and keep the estimate only for history written before it.
+  // Only used when the time log has nothing for the week, so the estimate is
+  // never additive with real measurements.
   const speakingEstimates = sessions.map((s) => {
-    const duration = Number(s.durationSeconds) || 0;
-    if (duration) return s.kind === 'speaking' ? duration / 60 : 0;
+    const recorded = Number(s.speakingSeconds);
+    if (Number.isFinite(recorded) && recorded > 0) return recorded / 60;
     return (Number(s.turns) || 0) * 0.75;
   });
   const speakingMinutes = Math.round(

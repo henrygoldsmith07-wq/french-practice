@@ -37,6 +37,7 @@ import {
   activeLearnerId,
   isLearnerKey,
   storageFullWarning,
+  hasExpectedShape,
 } from './storageCore.js';
 import {
   getStudyState, saveStudyState,
@@ -124,14 +125,31 @@ export function exportProgress() {
   }
   // Learner namespaces: every household member's namespaced state travels
   // under `learners`, so import restores each member's ownership intact.
+  //
+  // The secret has to be filtered HERE as well as in the flat loop above.
+  // KEYS.apiKey is a learner-owned key, so in any household the Groq key lives
+  // at `fp.learner.<memberId>.fp.groqKey` — which this scan copied verbatim.
+  // account.js then base64d it into the sync code and cloudAccount pushed it to
+  // /api/sync in cleartext, straight through the "never export the secret" rule
+  // two lines above. The filter is by key VALUE, because that is what appears
+  // after the namespace prefix.
+  //
+  // The member group must exclude the dot. `[^]+` is greedy, so for the key
+  // `fp.learner.m-x1y2.fp.groqKey` it matched memberId `m-x1y2.fp` and rest
+  // `groqKey` — the value the secret filter is testing for — and the filter
+  // then missed every time. Member ids are generated without dots and
+  // `learnerKey()` joins with a single dot, so `[^.]+` is exact.
+  const secretValues = new Set([KEYS.apiKey]);
+  const isSecret = (keyName) => secretValues.has(keyName);
   const learners = {};
   try {
     for (let i = 0; i < localStorage.length; i++) {
       const k = localStorage.key(i);
-      const m = k && k.match(/^fp\.learner\.([^]+)\.(.+)$/);
+      const m = k && k.match(/^fp\.learner\.([^.]+)\.(.+)$/);
       if (!m) continue;
       const memberId = m[1];
       const rest = m[2];
+      if (isSecret(rest)) continue;
       learners[memberId] = learners[memberId] || {};
       learners[memberId][rest] = localStorage.getItem(k);
     }
@@ -147,11 +165,12 @@ export function importProgress(payload) {
     throw new Error('That doesn’t look like a Le Studio backup file.');
   }
   const allowed = new Set(Object.values(KEYS));
+  const secretKeys = new Set([KEYS.apiKey]);
   let restored = 0;
   for (const [key, raw] of Object.entries(payload.data)) {
-    if (key === KEYS.apiKey || !allowed.has(key)) continue; // ignore unknown/secret keys
+    if (secretKeys.has(key) || !allowed.has(key)) continue; // ignore unknown/secret keys
+    if (!hasExpectedShape(key, raw)) continue; // parseable but wrong-typed values crash readers
     try {
-      JSON.parse(raw); // validate it's the stored JSON shape
       localStorage.setItem(key, raw);
       restored += 1;
     } catch { /* skip malformed entry */ }
@@ -162,8 +181,9 @@ export function importProgress(payload) {
       if (!memberId || typeof entries !== 'object') continue;
       for (const [rest, raw] of Object.entries(entries)) {
         if (typeof raw !== 'string') continue;
+        if (secretKeys.has(rest)) continue; // never import a secret from another device
+        if (!hasExpectedShape(rest, raw)) continue;
         try {
-          JSON.parse(raw);
           localStorage.setItem(`fp.learner.${memberId}.${rest}`, raw);
           restored += 1;
         } catch { /* skip malformed */ }
@@ -283,6 +303,10 @@ function normaliseReviewEvent(event, index = 0) {
 }
 
 const REVIEW_EVENT_CAP = 2000;
+// Session history is the largest store in localStorage and is fully rewritten
+// on every save, so it is bounded. Far more than the planner's 7/30-day windows
+// and the year recap ever read.
+const SESSION_HISTORY_CAP = 500;
 
 export const getReviewEvents = () => {
   const raw = read(KEYS.reviewEvents, []);
@@ -662,11 +686,18 @@ export function saveSession(summary) {
     date: new Date().toISOString(),
   };
   sessions.push(saved);
-  // Canonical history is intentionally uncapped. The legacy last-10 key is
-  // NOT mirrored any more: rewriting the full history on every save doubled
-  // the largest store's quota cost for a compat nobody needs (the app has
-  // moved to its own repo; exports carry the canonical key).
-  write(KEYS.sessionHistory, sessions);
+  // Canonical history is capped, newest kept. It was previously uncapped on the
+  // reasoning that the legacy last-10 key was never mirrored; that left the
+  // single largest store growing forever with no bound, rewritten in full on
+  // every save. Two concrete costs: localStorage is a hard ~5 MB quota with no
+  // eviction, so the writes eventually fail, and each save serialises the whole
+  // array. 500 sessions is years of daily practice — well past the 7/30-day
+  // planner windows and the year recap — so nothing that reads history is
+  // deprived of data it could still use.
+  const kept = sessions.length > SESSION_HISTORY_CAP
+    ? sessions.slice(-SESSION_HISTORY_CAP)
+    : sessions;
+  write(KEYS.sessionHistory, kept);
   recordStudyEvent({
     type: 'session.completed',
     sessionId: saved.id,

@@ -104,9 +104,14 @@ export default function PhraseDrills({ onXp, initialPool = 'all', onBack }) {
 
 function DrillRun({ kind, poolMode, starred, onXp, onStarChange, onBack }) {
   const seed = useMemo(() => Date.now(), []);
+  // The queue is frozen for the whole run. It used to be recomputed whenever
+  // `starred` changed, and starring a phrase mid-drill — which the run itself
+  // invites — rebuilt the pool and shifted every remaining index, so the drill
+  // silently skipped a card and repeated another.
   const queue = useMemo(
     () => buildDrillPool({ mode: poolMode, starred, limit: 10, seed }),
-    [poolMode, starred, seed],
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- a run's queue is fixed; see above
+    [poolMode, seed],
   );
   const [idx, setIdx] = useState(0);
   const [guess, setGuess] = useState('');
