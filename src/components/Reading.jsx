@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { READING_KINDS, READING_TEXTS, getText } from '../lib/reading';
 import { allEntries } from '../lib/vocab';
 import { translateWord, friendlyError } from '../lib/groq';
@@ -168,21 +168,31 @@ function useWordLookup(text, apiKey, mockMode) {
     return g;
   }, [text]);
 
+  // A lookup is an async request for ONE word, but the learner can tap several
+  // in quick succession. Without a sequence check a slow reply for word A
+  // arrives after the popover has already moved to word B and overwrites it —
+  // the popover then shows B's spelling with A's translation.
+  const seqRef = useRef(0);
+
   const onWord = async (raw, sentence) => {
     const word = raw.replace(/[«»".,;:!?()]/g, '').trim();
     const key = normalizeWord(word);
     if (!key) return;
+    seqRef.current += 1;
+    const seq = seqRef.current;
     const local = gloss[key] || VOCAB_DICT[key] || getCachedWord(key);
     if (local) {
-      setLookup({ word, translation: local, loading: false });
+      if (seq === seqRef.current) setLookup({ word, translation: local, loading: false });
       return;
     }
     setLookup({ word, translation: '', loading: true });
     try {
       const t = await translateWord(apiKey, { word, context: sentence, mock: mockMode });
+      if (seq !== seqRef.current) return; // a newer tap already won
       if (t) cacheWord(key, t);
       setLookup({ word, translation: t, loading: false });
     } catch (e) {
+      if (seq !== seqRef.current) return;
       setLookup({ word, translation: friendlyError(e), loading: false });
     }
   };

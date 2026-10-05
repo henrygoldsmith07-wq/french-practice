@@ -78,7 +78,13 @@ export function weaknessLifecycle(entry, { now = Date.now(), cycle = null } = {}
       ? WEAKNESS_LIFECYCLE.RECURRED
       : WEAKNESS_LIFECYCLE.DEMONSTRATED;
   } else if (status === 'recovering') {
-    if (lastEvidence === 'delayed' || independent >= 2) {
+    // `lastEvidence === 'delayed'` is a statement about the CLOCK — how much time
+    // passed since the first mistake — not about whether the learner needed
+    // help. The delayed follow-up UI lets the learner reveal the transcript and
+    // still pass, so a scaffolded answer landed here as 'delayed' and the copy
+    // read "You used this correctly later, with no help." Independence has to
+    // be checked explicitly, exactly as the branch below already does.
+    if ((lastEvidence === 'delayed' && independent >= 1) || independent >= 2) {
       state = WEAKNESS_LIFECYCLE.DELAYED_CONFIRMATION;
     } else if (successes >= 2 && independent >= 1) {
       // A transfer check is only meaningful once the learner has produced it

@@ -9,6 +9,8 @@
 // Every event is small, dated and non-identifying: what happened, at what
 // step, and how far through. No content payloads.
 
+import { localDayKey } from './localDay.js';
+
 export const INSTRUMENTATION_VERSION = 1;
 
 export const EVENT_TYPES = Object.freeze({
@@ -135,7 +137,11 @@ export function weeklyRetention(events = [], { weeks = 4, now = Date.now() } = {
   const since = now - weeks * 7 * 86400000;
   for (const e of events) {
     const at = new Date(e.at || 0).getTime();
-    if (Number.isFinite(at) && at >= since) daySet.add(new Date(at).toISOString().slice(0, 10));
+    // Local calendar day, not UTC: a learner practising at 22:00 in New York
+    // was credited to the NEXT day, which is exactly the signal a retention
+    // window must not distort. Every other day-keyed surface in the app
+    // (xpLog, timeLog, streaks) rolls over at local midnight.
+    if (Number.isFinite(at) && at >= since) daySet.add(localDayKey(at));
   }
   return { activeDays: [...daySet].sort(), weeks };
 }

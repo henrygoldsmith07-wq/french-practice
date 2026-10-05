@@ -41,12 +41,35 @@ export default function useRecorder({ onComplete }) {
   const cleanup = useCallback(() => {
     const m = mediaRef.current;
     if (!m) return;
+    // Stop the recorder BEFORE releasing the tracks. MediaRecorder fires
+    // `onstop` when its stream ends, and that handler builds a blob and calls
+    // `onComplete` — which transcribes the audio. Without this, navigating away
+    // mid-recording tore the stream down, fired onstop, and billed a full LLM
+    // transcription for audio the learner never submitted. Disarming the
+    // handler first makes teardown independent of which path we take.
+    if (m.recorder) {
+      m.recorder.onstop = null;
+      if (m.recorder.state !== 'inactive') {
+        try { m.recorder.stop(); } catch { /* already stopping */ }
+      }
+    }
     cancelAnimationFrame(m.raf);
     clearInterval(m.timer);
     m.stream?.getTracks().forEach((t) => t.stop());
     m.ctx?.close().catch(() => {});
     mediaRef.current = null;
     analyserRef.current = null;
+  }, []);
+
+  // Starting is async, so the hook can unmount while getUserMedia is still
+  // pending — the learner's permission prompt outlives the screen. Without this
+  // the mic stream that arrives afterwards is never stored in mediaRef, so
+  // cleanup no-ops and the microphone stays open with the tab's recording light
+  // on, until the browser eventually reclaims it.
+  const unmountedRef = useRef(false);
+  useEffect(() => {
+    unmountedRef.current = false;
+    return () => { unmountedRef.current = true; };
   }, []);
 
   useEffect(() => cleanup, [cleanup]);
@@ -82,9 +105,18 @@ export default function useRecorder({ onComplete }) {
       return;
     }
 
+    // The permission prompt can outlive the screen. If the learner left while
+    // it was open, release the stream immediately instead of building a
+    // recorder nobody will ever see.
+    if (unmountedRef.current || mediaRef.current) {
+      stream.getTracks().forEach((t) => t.stop());
+      startingRef.current = false;
+      return;
+    }
+
     try {
-    const ctx = new (window.AudioContext || window.webkitAudioContext)();
-    const source = ctx.createMediaStreamSource(stream);
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      const source = ctx.createMediaStreamSource(stream);
     const gain = ctx.createGain();
     gain.gain.value = 1.15;
 

@@ -8,6 +8,8 @@
 //
 // Output is a list of learner-friendly capability statements, each in one of
 // three honest states:
+
+import { learningCycleStatus, LEARNING_STATES } from './learningEvidence.js';
 //   demonstrated     — seen used independently, in more than one situation
 //   developing       — some real performance, not reliable yet
 //   insufficient     — not enough attempts yet ("keep practising" copy)
@@ -144,8 +146,16 @@ function scoreCapability(def, evidence = {}) {
     (c.transfers || []).filter((e) => e.independent !== false).length
     + (c.delayed || []).filter((e) => e.independent !== false).length
   ), 0);
+  // A cycle only counts as demonstrated when the model's OWN status says so.
+  // This used to check only "has a transfer row AND a delayed row", which is
+  // satisfied by a cycle whose delayed pass was taken with the transcript open:
+  // learningCycleStatus correctly called that `needs-confirmation` (it requires
+  // an INDEPENDENT delayed pass), while this branch reported the capability as
+  // `demonstrated` and YourFrench rendered "You have used this on your own — in
+  // new situations and later on." Two modules, one set of events, opposite
+  // answers. Defer to the one that already encodes the independence rule.
   const demonstratedCycles = cycles.filter((c) => (
-    (c.transfers || []).length > 0 && (c.delayed || []).length > 0
+    learningCycleStatus(c) === LEARNING_STATES.DEMONSTRATED
   )).length;
 
   // Raw performance signals: successes vs mistakes, how much help was needed.

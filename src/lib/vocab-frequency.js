@@ -120,6 +120,12 @@ export function dedupeByTerm(words) {
 const LEADING_ARTICLE = {
   de: /^(der|die|das)\s+/i,
   es: /^(el|la|los|las)\s+/i,
+  // French themed entries carry their article ("la gare") and sometimes elide
+  // it ("l'école"), while the frequency dictionary stores the bare stem. Only
+  // DEFINITE articles are stripped, matching the DE/ES rules: stripping an
+  // indefinite one would strip the leading word of a themed phrase ("un peu" ->
+  // "peu") and silently delete an unrelated frequency card.
+  fr: /^(?:le|la|les)\s+|^(?:l['’])\s*/i,
 };
 
 export function dropThemedDuplicates(themedPacks, freqPacks, lang) {

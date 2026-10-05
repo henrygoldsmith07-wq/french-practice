@@ -154,6 +154,21 @@ export default function App() {
     persistSettings(s);
   };
 
+  // Merge ONE setting into the current state, for callers that resolve later.
+  // The path import below is async and unbounded: it closed over the render-time
+  // `settings` object and then wrote `{ ...settings, level }` back, so any
+  // change the learner made while the chunk was in flight — theme, daily goal —
+  // was silently reverted AND persisted as reverted. Reading through a ref
+  // means the merge always applies to what is current.
+  const settingsRef = useRef(settings);
+  useEffect(() => { settingsRef.current = settings; }, [settings]);
+  const patchSettings = (patch) => {
+    const next = { ...settingsRef.current, ...patch };
+    settingsRef.current = next; // a second patch in the same tick sees this one
+    setSettings(next);
+    persistSettings(next);
+  };
+
   const handleApiKeyChange = (key) => {
     setApiKey(key);
     if (key && settings.mockMode) updateSettings({ ...settings, mockMode: false });
@@ -239,7 +254,7 @@ export default function App() {
         if (!result.changed) return;
         setPath({ ...result.path });
         if (result.levelChange === 'up') {
-          updateSettings({ ...settings, level: result.path.cefr });
+          patchSettings({ level: result.path.cefr });
         }
       })
       .catch(() => { /* offline-first: path resumes on next successful load */ });

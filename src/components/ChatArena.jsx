@@ -117,8 +117,17 @@ export default function ChatArena({ apiKey, mockMode, ttsRate, level, onTtsRate,
   const flightRef = useRef(0);
   const hintSeqRef = useRef(0);
 
-  // Leaving the Arena must silence the partner mid-sentence.
-  useEffect(() => () => stopSpeaking(), []);
+  // Leaving the Arena must silence the partner mid-sentence, and must orphan
+  // any turn still in flight. Silencing alone was not enough: `flightRef` was
+  // only bumped on a scenario switch, so a turn whose `evaluateTurn` resolved
+  // after unmount passed the `stale()` check and went on to append to App's
+  // shared history, award XP, and speak the partner's reply aloud on whatever
+  // screen the learner had moved to.
+  useEffect(() => () => {
+    flightRef.current += 1;
+    hintSeqRef.current += 1;
+    stopSpeaking();
+  }, []);
 
   // Honour Home's 5/10/15 min presets: countdown only, never auto-sends speech.
   //

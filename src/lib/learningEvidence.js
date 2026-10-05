@@ -309,6 +309,42 @@ function latestSuccessful(events) {
   return [...(events || [])].reverse().find((e) => e.correct === true) || null;
 }
 
+/**
+ * The lane a success belongs in: the FIRST one this cycle has not yet
+ * satisfied, walking the same path `dueLearningChecks` walks.
+ *
+ * This used to come from evidenceStrength's clock, which measures from the
+ * entry's FIRST mistake and never advances — `recordLearnerSuccess` leaves
+ * `lastErrorAt` alone, and rightly so, because that timestamp is what the
+ * weakness record is FOR. The consequence was that once a weakness was older
+ * than DELAYED_MIN_HOURS, every later success was filed as `delayed`, so the
+ * intervention and transfer lanes stayed empty permanently.
+ *
+ * That is not a cosmetic loss. `dueLearningChecks` returns nothing at all for a
+ * cycle with no intervention (it `continue`s before reaching the transfer and
+ * delayed branches), and `learningCycleStatus` reaches DEMONSTRATED only with an
+ * independent transfer AND an independent delayed pass. So for any weakness the
+ * learner came back to the next day — the ordinary case — the whole
+ * baseline → intervention → transfer → delayed loop never started, nothing was
+ * ever owed, and the loop silently reported `needs-confirmation` forever.
+ *
+ * Lanes are therefore positional, not absolute. An explicit `delayed: true` from
+ * a caller stays authoritative: the scheduled-retest path checks the clock
+ * itself before setting it.
+ */
+export function nextEvidenceLane(state, evidence) {
+  const base = createLearningEvidenceState(state);
+  const target = targetOf(evidence);
+  const cycle = base.cycles.find((c) => c.target.id === target.id);
+  if (!cycle) return 'intervention';
+  const lastRecurrence = cycle.recurrences.at(-1)?.at || cycle.startedAt;
+  const intervention = latestSuccessful(after(cycle.interventions, lastRecurrence));
+  if (!intervention) return 'intervention';
+  const transfer = latestSuccessful(after(cycle.transfers, intervention.at));
+  if (!transfer) return 'transfer';
+  return 'delayed';
+}
+
 export function dueLearningChecks(state, now = Date.now()) {
   const base = createLearningEvidenceState(state);
   const due = [];
@@ -316,6 +352,9 @@ export function dueLearningChecks(state, now = Date.now()) {
     const status = learningCycleStatus(cycle, now);
     if (status === LEARNING_STATES.DEMONSTRATED) continue;
     const lastRecurrence = cycle.recurrences.at(-1)?.at || cycle.startedAt;
+    // Repair and transfer steps settle on a correct pass of their own — that is
+    // the lane's own contract, and these are the two lanes the follow-up runner
+    // writes deliberately.
     const intervention = latestSuccessful(after(cycle.interventions, lastRecurrence));
     if (!intervention) continue;
     const transfer = latestSuccessful(after(cycle.transfers, intervention.at));
@@ -330,7 +369,18 @@ export function dueLearningChecks(state, now = Date.now()) {
       });
       continue;
     }
-    const delayed = latestSuccessful(after(cycle.delayed, transfer.at));
+    // The DELAYED step is different in kind: it is the one check whose whole
+    // purpose is unaided retention, so it is settled only by an INDEPENDENT
+    // pass. It used to settle on any `correct === true` row, so taking the
+    // delayed check with the transcript open — which the follow-up UI explicitly
+    // allows and reports as `assistance: 'scaffolded'` — permanently cancelled
+    // the debt, while learningCycleStatus still required an independentDelayed
+    // for DEMONSTRATED. The learner got "nothing owed" and "never demonstrated"
+    // at once and was never asked again.
+    const delayed = independentSuccesses(
+      after(cycle.delayed, transfer.at),
+      { minStrength: 0.5, now },
+    ).at(-1) || null;
     const dueAt = Date.parse(transfer.at) + DELAYED_MIN_HOURS * 3600000;
     if (!delayed && now >= dueAt) {
       due.push({

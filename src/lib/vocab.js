@@ -6,7 +6,7 @@
 import { FLASHCARDS } from './data.js';
 import { EXTRA_VOCAB_PACKS } from './vocab-extra.js';
 import { CORE_VOCAB_PACKS } from './vocab-core.js';
-import { FREQUENCY_PACKS, getFrequencyPacksFor } from './vocab-frequency.js';
+import { FREQUENCY_PACKS, getFrequencyPacksFor, dropThemedDuplicates } from './vocab-frequency.js';
 import { contentLang } from './content/active.js';
 import { CURRICULUM_PACKS_LOWER } from './content/curriculum-vocab-core.js';
 import { CURRICULUM_PACKS_UPPER } from './content/curriculum-vocab-upper.js';
@@ -341,7 +341,18 @@ export const CURRICULUM_PACKS = [...CURRICULUM_PACKS_LOWER, ...CURRICULUM_PACKS_
 // Typed packs, then the frequency decks as they arrive from the asset. Built
 // per call so a resolved asset shows up in the sync view without re-import.
 const FR_ALL_PACKS = [...CURRICULUM_PACKS, ...FR_VOCAB_PACKS];
-const frPacks = () => [...FR_ALL_PACKS, ...FREQUENCY_PACKS];
+// The same composition rule DE/ES already use (see content/de-packs.js): a word
+// a themed pack teaches properly — article, worked example, sometimes a `note`
+// with the conjugated forms — must not ALSO ship as a bare frequency gloss.
+// French was the one language still missing this, and it was the worst case:
+// 242 words like "parler" and "pouvoir" appeared twice, and the frequency copy
+// was always the weaker, example-less one. Ids are assigned before this filter
+// runs, so every surviving card keeps the id its review history is already
+// keyed to — no learner's schedule is disturbed.
+const frPacks = () => [
+  ...FR_ALL_PACKS,
+  ...dropThemedDuplicates(FR_ALL_PACKS, FREQUENCY_PACKS, 'fr'),
+];
 
 // The active language's packs. DE/ES return their packs once the registry has
 // resolved — which the App prefetch does at boot — and [] in the brief
