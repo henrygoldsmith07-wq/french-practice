@@ -43,7 +43,7 @@ const DEFAULTS = {
 const SECTIONS = ['Language', 'Level', 'Goal', 'Speak'];
 const SECTION_OF = [0, 1, 2, 3];
 
-export default function Onboarding({ open, initialLanguage, onComplete, onSkip, onStartConversation }) {
+export default function Onboarding({ open, initialLanguage, aiAvailable = false, onComplete, onSkip, onStartConversation }) {
   const [step, setStep] = useState(0);
   const [dir, setDir] = useState('fwd');
   // Seed from the ACTIVE language, not the French default: replaying
@@ -78,6 +78,16 @@ export default function Onboarding({ open, initialLanguage, onComplete, onSkip, 
 
   const lang = getLanguage(d.language);
   const phrase = FIRST_PHRASE[d.language] || FIRST_PHRASE.fr;
+  // AI availability decides what the first session really is. `aiAvailable`
+  // is passed in from App (which already resolves it) rather than imported
+  // from lib/relay here: importing that module into this lazily-loaded chunk
+  // put a `const` read in the chunk's temporal dead zone and crashed
+  // first-run onboarding outright. Keep this component free of it.
+  //
+  // It MUST be declared before `steps`: the step bodies below reference it
+  // while the array literal is evaluated, and a later declaration is a TDZ
+  // crash at render, not a lint error.
+  const aiReady = aiAvailable === true;
   const steps = [
     {
       title: 'Which language?',
@@ -143,7 +153,9 @@ export default function Onboarding({ open, initialLanguage, onComplete, onSkip, 
             <div className="mt-3 flex justify-center"><SpeakButton text={phrase.text} label="Listen" /></div>
           </div>
           <p className="text-sm leading-relaxed text-ink2">
-            Demo mode is ready now. Name, avatar, reminders, habits, topics and lesson length can wait until you need them.
+            {aiReady
+              ? 'Your AI conversation partner is ready — you’ll get real corrections on your speaking as you go. Name, avatar, reminders and lesson length can wait until you need them.'
+              : 'Demo mode is ready now, with scripted replies and no live AI. Add an AI key in Settings whenever you want real-time corrections. Name, avatar, reminders, habits, topics and lesson length can wait until you need them.'}
           </p>
           {!isFullSupport(d.language) && (
             <div className="rounded-2xl border border-line bg-surface2 px-4 py-3 text-left" data-testid="beta-note">
@@ -155,7 +167,11 @@ export default function Onboarding({ open, initialLanguage, onComplete, onSkip, 
             </div>
           )}
           <div className="rounded-2xl border border-line bg-surface2 px-4 py-3 text-left">
-            {['No API key required', 'No account or sign-in', 'Your data stays on this device'].map((item) => (
+            {[
+              aiReady ? 'AI feedback included — no key needed' : 'Works with no key in demo mode',
+              'No account or sign-in',
+              'Your data stays on this device',
+            ].map((item) => (
               <p key={item} className="inline-flex w-full items-center gap-2 text-xs text-ink">
                 <Check size={13} className="shrink-0 text-ink2" /> {item}
               </p>
@@ -172,7 +188,7 @@ export default function Onboarding({ open, initialLanguage, onComplete, onSkip, 
       goTo(step + 1);
       return;
     }
-    onComplete({ ...d, mock: true, apiKey: '' });
+    onComplete({ ...d, mock: !aiReady, apiKey: '' });
     onStartConversation?.();
   };
 

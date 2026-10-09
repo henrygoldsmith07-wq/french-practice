@@ -2,6 +2,8 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 
+import { SECURITY_HEADERS } from './scripts/lib/security-headers.mjs';
+
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   base: './',
@@ -38,5 +40,11 @@ export default defineConfig({
     watch: {
       ignored: ['**/test-results/**', '**/playwright-report/**'],
     },
+  },
+  // The production CSP (vercel.json) is applied to dev and preview too, so the
+  // Playwright suite exercises the real policy. A header that only exists in
+  // production is a header nobody has ever run.
+  preview: {
+    headers: SECURITY_HEADERS,
   },
 });

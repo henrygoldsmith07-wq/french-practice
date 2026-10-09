@@ -2,6 +2,10 @@ export const RELAY_ROUTES = Object.freeze({
   chat: Object.freeze({ operation: 'chat', upstreamPath: 'chat/completions' }),
   audio: Object.freeze({ operation: 'audio', upstreamPath: 'audio/transcriptions' }),
   health: Object.freeze({ operation: 'health' }),
+  // The free, no-key entry point: a first-time visitor exchanges one request
+  // for a short-lived, relay-signed trial token and then uses the relay as any
+  // authenticated caller would. See server/relay-trial.js.
+  trial: Object.freeze({ operation: 'trial' }),
 });
 
 export const MODEL_LIMITS = Object.freeze({
@@ -106,9 +110,11 @@ export function resolveRelayRoute(req) {
     ['/api/groq/chat/completions', RELAY_ROUTES.chat],
     ['/api/groq/audio/transcriptions', RELAY_ROUTES.audio],
     ['/api/groq/healthz', RELAY_ROUTES.health],
+    ['/api/groq/trial', RELAY_ROUTES.trial],
     ['/chat/completions', RELAY_ROUTES.chat],
     ['/audio/transcriptions', RELAY_ROUTES.audio],
     ['/healthz', RELAY_ROUTES.health],
+    ['/trial', RELAY_ROUTES.trial],
   ]);
   return routes.get(pathname) || null;
 }

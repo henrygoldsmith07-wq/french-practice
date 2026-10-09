@@ -14,6 +14,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { loadRelayConfig } from './relay-config.js';
 import { createAuthenticator } from './relay-auth.js';
 import { createInMemoryQuotaStore, createUpstashQuotaStore, quotaIdentityKey } from './relay-quota.js';
+import { issueTrialToken, verifyTrialToken, TRIAL_DEFAULTS } from './relay-trial.js';
 import {
   mediaType,
   RELAY_ROUTES,
@@ -261,6 +262,52 @@ function createRuntime(options = {}) {
     : null);
   const authenticate = options.authenticate || (configResult.ok ? createAuthenticator(config, { fetchImpl, now, logger }) : null);
 
+  // Trial configuration. Trials are a product decision, so the operator can
+  // turn them off (RELAY_TRIAL_ENABLED=false) without touching anything else,
+  // and the daily/rate ceilings are their own knobs rather than reusing the
+  // signed-in limits.
+  const trialSecret = String(options.trialSecret || env.RELAY_TRIAL_SECRET || '').trim();
+  const trialEnabled = configResult.ok
+    && options.trialEnabled !== false
+    && String(env.RELAY_TRIAL_ENABLED ?? 'true').trim().toLowerCase() !== 'false'
+    && trialSecret.length >= 32;
+  const trialLimits = {
+    dailyLimit: Number(env.RELAY_TRIAL_DAILY_LIMIT) > 0 ? Number(env.RELAY_TRIAL_DAILY_LIMIT) : TRIAL_DEFAULTS.dailyLimit,
+    rateLimitPerMinute: Number(env.RELAY_TRIAL_RATE_LIMIT_PER_MINUTE) > 0 ? Number(env.RELAY_TRIAL_RATE_LIMIT_PER_MINUTE) : TRIAL_DEFAULTS.rateLimitPerMinute,
+  };
+
+  /**
+   * Resolve the caller's identity for quota purposes.
+   *
+   * A relay-minted trial token is accepted exactly like a signed-in JWT, but
+   * is charged against the trial tier. That separation is the abuse control:
+   * rotating device ids cannot spend a signed-in allowance, and disabling
+   * trials costs a first-time visitor nothing but the convenience.
+   */
+  async function resolveIdentity(req) {
+    const headerValue = header(req, 'authorization');
+    if (typeof headerValue === 'string' && /^Bearer \S+$/.test(headerValue)) {
+      const token = headerValue.slice('Bearer '.length);
+      const trialClaims = verifyTrialToken(token, { ...config, trialSecret }, { now: Number(now()) });
+      if (trialClaims) {
+        return {
+          ok: true,
+          userId: `trial:${trialClaims.sub}`,
+          authType: 'trial',
+          dailyLimit: trialLimits.dailyLimit,
+          rateLimitPerMinute: trialLimits.rateLimitPerMinute,
+        };
+      }
+    }
+    const auth = await authenticate(req);
+    if (!auth.ok) return auth;
+    return {
+      ...auth,
+      dailyLimit: config.dailyLimit,
+      rateLimitPerMinute: config.rateLimitPerMinute,
+    };
+  }
+
   async function handle(req, res) {
     const started = now();
     const id = requestId();
@@ -290,16 +337,37 @@ function createRuntime(options = {}) {
       if (!auth.ok) return errorResponse(res, auth.status || 401, 'unauthorized');
       return sendJson(res, 200, { ok: true, relay: 'groq' });
     }
+    // The free, no-key entry point: a first-time visitor asks for a trial
+    // token and then uses the relay exactly as a signed-in learner would.
+    // Issuing a token is cheap and stores nothing, so it is rate-limited by
+    // the same per-IP-origin guards as every other route rather than by a
+    // quota bucket.
+    if (route === RELAY_ROUTES.trial) {
+      if (req.method !== 'POST') return errorResponse(res, 405, 'method_not_allowed');
+      if (!trialEnabled) {
+        logger({ event: 'trial_unavailable', requestId: id });
+        return errorResponse(res, 503, 'trial_unavailable');
+      }
+      const minted = issueTrialToken({ ...config, trialSecret }, { now: Number(now()) });
+      logger({ event: 'trial_issued', requestId: id, subject: minted.subject.slice(0, 8) });
+      return sendJson(res, 200, {
+        token: minted.token,
+        tier: 'trial',
+        expiresAt: minted.expiresAt,
+        dailyLimit: trialLimits.dailyLimit,
+        rateLimitPerMinute: trialLimits.rateLimitPerMinute,
+      });
+    }
     if (req.method !== 'POST') return errorResponse(res, 405, 'method_not_allowed');
     if (contentLengthTooLarge(req, config.maxBodyBytes)) return errorResponse(res, 413, 'request_too_large');
 
     const type = mediaType(header(req, 'content-type'));
     if (type !== 'application/json') return errorResponse(res, 415, 'content_type_not_supported');
 
-    const auth = await authenticate(req);
-    if (!auth.ok) {
-      logger({ event: 'request_rejected', requestId: id, reason: auth.code || 'unauthorized' });
-      return errorResponse(res, auth.status || 401, 'unauthorized');
+    const identity = await resolveIdentity(req);
+    if (!identity.ok) {
+      logger({ event: 'request_rejected', requestId: id, reason: identity.code || 'unauthorized' });
+      return errorResponse(res, identity.status || 401, 'unauthorized');
     }
 
     const rawBody = await readBody(req, config.maxBodyBytes);
@@ -312,13 +380,13 @@ function createRuntime(options = {}) {
       : validateAudioRequest(body, config);
     if (!validation.ok) return errorResponse(res, 400, validation.code);
 
-    const key = quotaIdentityKey(config.quotaNamespaceSecret, auth.userId);
+    const key = quotaIdentityKey(config.quotaNamespaceSecret, identity.userId);
     let quota;
     try {
       quota = await store.consume({
         key,
-        rateLimit: config.rateLimitPerMinute,
-        dailyLimit: config.dailyLimit,
+        rateLimit: identity.rateLimitPerMinute,
+        dailyLimit: identity.dailyLimit,
         nowMs: Number(now()),
       });
     } catch {
@@ -327,7 +395,12 @@ function createRuntime(options = {}) {
     }
     addQuotaHeaders(res, config, quota, Number(now()));
     if (!quota.allowed) {
-      logger({ event: 'request_rejected', requestId: id, reason: quota.reason === 'rate' ? 'rate_limited' : 'daily_quota_exhausted' });
+      logger({
+        event: 'request_rejected',
+        requestId: id,
+        tier: identity.authType,
+        reason: quota.reason === 'rate' ? 'rate_limited' : 'daily_quota_exhausted',
+      });
       return errorResponse(res, 429, quota.reason === 'rate' ? 'rate_limited' : 'daily_quota_exhausted', quota.retryAfterSeconds);
     }
 
@@ -365,6 +438,7 @@ export function createRelayHandler(options = {}) {
 
 export { loadRelayConfig } from './relay-config.js';
 export { createInMemoryQuotaStore, createUpstashQuotaStore, QUOTA_SCRIPT } from './relay-quota.js';
+export { issueTrialToken, verifyTrialToken, TRIAL_DEFAULTS } from './relay-trial.js';
 export { RELAY_ROUTES, resolveRelayRoute, validateAudioRequest, validateChatRequest } from './relay-validation.js';
 
 let defaultRuntime;

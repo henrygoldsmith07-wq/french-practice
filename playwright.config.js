@@ -60,8 +60,30 @@ export default defineConfig({
   //
   // `npm run build` also runs the secret guard and the performance budget, so
   // an E2E run can no longer be green against a bundle the budget rejects.
+  //
+  // GUARD: `reuseExistingServer` adopts ANY server already on the port, which
+  // once made the whole suite run against an unrelated app on 5173 and report
+  // 13 phantom failures that looked like real regressions. The guard below
+  // refuses to start when the port is already serving something that is not
+  // Le Studio. Set PW_SKIP_SERVER_GUARD=1 only when you are certain.
+  //
+  // PW_TEST_RELAY=1 compiles the bundle WITH VITE_GROQ_RELAY_URL so the specs
+  // that prove the hosted, no-key path (e2e/first-session-no-key.spec.js)
+  // actually exercise it. Without it the build has no relay, and the honest
+  // answer is the demo-mode fallback — so those specs would fail for the wrong
+  // reason. The webServer OWNS the build, so the flag has to reach it here.
+  //
+  // NOTE: the relay build goes through scripts/build-with-relay.mjs rather than
+  // an inline `VAR=value vite build`, because that prefix is POSIX-only and
+  // Playwright shells out via cmd.exe on Windows, where it is a syntax error.
   webServer: {
-    command: 'npm run build && npm run preview -- --host 127.0.0.1 --port 5173 --strictPort',
+    command: [
+      `node scripts/e2e-server-guard.mjs http://127.0.0.1:5173${process.env.PW_SKIP_SERVER_GUARD === '1' ? ' --unused' : ''}`,
+      process.env.PW_TEST_RELAY === '1'
+        ? 'node scripts/build-with-relay.mjs'
+        : 'npm run build',
+      'npm run preview -- --host 127.0.0.1 --port 5173 --strictPort',
+    ].join(' && '),
     url: 'http://127.0.0.1:5173',
     reuseExistingServer: !process.env.CI,
     // The build dominates startup on a cold runner. 180s was tight once the

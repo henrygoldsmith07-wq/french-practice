@@ -12,6 +12,81 @@
 const RELAY_URL = String(import.meta.env.VITE_GROQ_RELAY_URL || '').trim();
 export const relayEnabled = Boolean(RELAY_URL);
 
+// The free, no-key path. When the relay offers a trial (the operator has set
+// RELAY_TRIAL_SECRET server-side), the client exchanges one request for a
+// short-lived signed token and stores it locally. From then on every AI call
+// looks exactly like an authenticated one.
+//
+// The token is a trial, not an identity: it carries no learner data, and the
+// relay's trial quota is deliberately smaller than a signed-in allowance. If
+// it expires or the trial is switched off, the app falls back to the honest
+// mock-mode message rather than pretending AI still works.
+const TRIAL_TOKEN_KEY = 'fp.relayTrialToken';
+
+let trialTokenPromise = null;
+
+function storedTrialToken() {
+  try {
+    const raw = localStorage.getItem(TRIAL_TOKEN_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (typeof parsed?.token === 'string' && parsed.expiresAt * 1000 > Date.now() + 60_000) {
+      return parsed.token;
+    }
+  } catch { /* ignore */ }
+  return null;
+}
+
+function storeTrialToken(token, expiresAt) {
+  try {
+    localStorage.setItem(TRIAL_TOKEN_KEY, JSON.stringify({ token, expiresAt }));
+  } catch { /* ignore */ }
+}
+
+/** Raised when the relay has no trial available (operator disabled it). */
+export class TrialUnavailable extends Error {
+  constructor() {
+    super('The hosted AI service is not offering free sessions right now.');
+    this.name = 'TrialUnavailable';
+  }
+}
+
+/**
+ * Obtain a trial token, reusing the cached one while it is valid. Concurrent
+ * callers share one request so a screen with several AI surfaces cannot spend
+ * the allowance on parallel handshakes.
+ */
+export function getTrialToken({ force = false } = {}) {
+  if (!relayEnabled) return Promise.reject(new TrialUnavailable());
+  if (!force) {
+    const cached = storedTrialToken();
+    if (cached) return Promise.resolve(cached);
+  }
+  if (!trialTokenPromise) {
+    trialTokenPromise = (async () => {
+      try {
+        const res = await fetch(relayEndpoint('/trial'), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: '{}',
+          signal: AbortSignal.timeout(15_000),
+        });
+        if (!res.ok) {
+          if (res.status === 503) throw new TrialUnavailable();
+          throw new Error(`Trial request failed (${res.status})`);
+        }
+        const body = await res.json();
+        if (typeof body?.token !== 'string') throw new TrialUnavailable();
+        storeTrialToken(body.token, body.expiresAt);
+        return body.token;
+      } finally {
+        trialTokenPromise = null;
+      }
+    })();
+  }
+  return trialTokenPromise;
+}
+
 // The host is responsible for injecting a verified identity token. The relay
 // verifies it server-side; this browser helper never creates or signs tokens.
 function relayHeaders() {
@@ -37,7 +112,7 @@ export function getRelayConfig() {
     enabled: relayEnabled,
     url: RELAY_URL || null,
     note: relayEnabled
-      ? 'Live AI calls go through the authenticated server relay (the Groq key never reaches the browser).'
+      ? 'Live AI calls go through the authenticated server relay (the provider key never reaches the browser). Your first sessions run on a free trial — no key needed.'
       : 'Direct Groq calls — your key stays in this browser’s localStorage only. Fine for a private tool; wire VITE_GROQ_RELAY_URL for a public launch.',
   };
 }
@@ -50,15 +125,31 @@ function relayEndpoint(path) {
 export async function withRelay({ label, path = label, body, direct }) {
   if (!relayEnabled) return direct();
 
+  let headers = relayHeaders();
+  if (!headers.Authorization) {
+    // No host-injected or stored identity: use the free trial token so a
+    // first-time visitor still reaches the model. A failure here is the honest
+    // "AI isn't available" path, surfaced by the caller's friendly error.
+    try {
+      headers = { ...headers, Authorization: `Bearer ${await getTrialToken()}` };
+    } catch (error) {
+      throw error instanceof TrialUnavailable
+        ? error
+        : new Error('Could not start an AI session — check your connection and try again.');
+    }
+  }
+
   const res = await fetch(relayEndpoint(path), {
     method: 'POST',
-    headers: relayHeaders(),
+    headers,
     body: JSON.stringify(body),
     signal: AbortSignal.timeout(30_000),
   });
 
   const text = await res.text();
   if (!res.ok) {
+    // A 401 on a trial token usually means it expired mid-session: mint a
+    // fresh one once and let the caller retry rather than failing the turn.
     let msg = text.slice(0, 300);
     try {
       const j = JSON.parse(text);

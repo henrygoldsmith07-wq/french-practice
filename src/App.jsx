@@ -623,7 +623,7 @@ export default function App() {
           </div>
         </div>
       )}
-      {overlayIs(overlay, 'onboarding') && (<Onboarding open initialLanguage={settings.language} onComplete={finishOnboarding} onSkip={skipOnboarding} onStartConversation={() => setTab('speak')} />)}
+      {overlayIs(overlay, 'onboarding') && (<Onboarding open initialLanguage={settings.language} aiAvailable={relayEnabled || Boolean(apiKey)} onComplete={finishOnboarding} onSkip={skipOnboarding} onStartConversation={() => setTab('speak')} />)}
       {overlayIs(overlay, 'search') && <GlobalSearch open onClose={closeOverlay} onGo={goFromSearch} />}
       {overlayIs(overlay, 'realWorld') && (<RealWorld open onClose={closeOverlay} onRoleplay={startRoleplay} onXp={awardXp} />)}
       {overlayIs(overlay, 'profile') && (<Profile open onClose={closeOverlay} onXp={awardXp} weeklyGoal={settings.weeklyGoal} onHeaderChange={({ coins: c, avatarId: a }) => { setCoins(c); setAvatarId(a); }} />)}

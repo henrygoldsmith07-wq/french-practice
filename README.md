@@ -1,28 +1,22 @@
 # Le Studio
 
-An adaptive language-practice studio — **French (Full)** today, with **German**
-and **Spanish** in **Beta** — built as a single-page React + Tailwind PWA.
-Le Studio is **local-first**: no account is required and learner state lives in
-the browser by default. Deployments may optionally enable Google sign-in plus an
-encrypted cross-device snapshot service; if that backend is absent or offline,
-ordinary learning continues locally. AI features (conversation partner,
-corrections, drills) use the learner's own provider key by default; a shared
-deployment can instead point the app at an authenticated relay that holds the
-provider key server-side.
+**The French speaking coach that finds the mistakes you keep making — and proves you've fixed them.**
 
-The product is organised around one idea: **Today**. A learner presses one
-button and gets a composed session — listen, speak, repair a weakness, recall —
-instead of choosing from a feature catalogue.
+Built for GCSE and A-level candidates (WJEC, AQA, Edexcel), and for anyone who
+wants to speak French better than they do today.
 
-## 1. What Le Studio is
+- **Live app:** https://le-studio-french.vercel.app
+- Runs in your browser. No account needed to start. Works offline once loaded.
 
-Le Studio practices real language use across speaking, listening, reading and
-writing, and models what a learner *can do* — not what they have tapped.
-The interface is English-first; practice material is in the target language,
-always with translations on hand. Core loop: **Today · Speak · Review ·
-Learn · Progress** — five tabs, with everything else folded underneath.
+## What it does
 
-## 2. The adaptive Today loop
+You speak French. Le Studio tells you, in plain English, **exactly what you
+keep getting wrong** — not a vague score out of 100 — and then shows you honest
+proof of when you've fixed it.
+
+A first session takes about three minutes: you pick a goal, say a few sentences
+out loud, and get real feedback immediately. You don't need an API key, and you
+don't need to sign in.
 
 Today is a single composed session, not a mode picker. A typical plan:
 listen to something, hold a short conversation, a **targeted repair** segment
@@ -34,66 +28,63 @@ practising, why it was chosen** (real evidence: recurring mistakes, due cards),
 internal ids, engine names or research vocabulary — copy is test-enforced
 (`tests/segment-explain.test.js`).
 
-## 3. How learner modelling works
+### The core loop
 
-Every scored activity feeds one shared **error model** (`src/lib/learnerErrors.js`,
-persisted via `src/lib/stores/learnerErrorStore.js`): a mistake classifies into
-a category + key, becomes an *active weakness*, and is prioritised by evidence
-strength: recurrence, repeated/cross-mode misses, recency, severity, delayed
-recall failure and assistance dependence. A one-off slip stays visible but is
-deliberately down-weighted until independent evidence confirms it. The model spans
-grammar, vocabulary, listening, pronunciation, speaking, writing and reading —
-a weakness found in one mode is repaired by whichever mode best targets it.
+1. **Speak.** Hold a real conversation with an AI partner that corrects your
+   grammar, vocabulary and pronunciation as you go, naming the specific
+   mistakes you repeat.
+2. **See the pattern.** Every correction becomes a *weakness* in one shared
+   error model, prioritised by how often it recurs, how many modes it appears
+   in, and whether you needed help.
+3. **Fix it.** Today's session is composed for you — the weakest thing gets
+   targeted repair, then a fresh-context check, then a delayed retest.
+4. **Prove it.** The **"Mistakes fixed" timeline** tracks each weakness from
+   the moment it was first spotted, through repair, an unseen retest and a
+   delayed re-check — and says plainly when something is still missing.
 
-Alongside that model, `src/lib/learningEvidence.js` records a learner-facing
-effectiveness loop that is deliberately separate from XP and from the opt-in
-research study: **baseline weakness → intervention → unseen transfer → delayed
-retest**. Repeated submissions of one encounter are deduplicated; assisted
-answers contribute less than independent ones; held-out, delayed, difficult and
-well-marked evidence carries more weight. Missing transfer or delayed evidence
-stays missing rather than being filled with an assumed failure or success.
+### Exam Speaking Mode
 
-Separate, deliberately smaller systems: the **mistake graph** (structural
-conversation mistakes with a retest ladder), the **weakness memory**
-(repair → spaced retest → recurrence), the **phoneme profile** (pronunciation
-attempts by sound), and the **FSRS-based SRS** for vocabulary scheduling.
-XP, streaks and coins track *activity* and are never inputs to proficiency.
+Timed speaking tasks shaped like the real WJEC, AQA and Edexcel papers —
+role-play, photo-card and general-conversation — with a real clock, an examiner
+persona, and marking against band descriptors that **leads with the time
+shortfall**, because running out of time is the mistake that costs the most
+marks.
 
-## 4. Speaking / listening / reading / writing
+These are **indicative practice papers, not official ones**. They carry
+`official: false`, a spec version and a `verifyAt` date telling you where to
+check the real thing. No grade is invented: the app shows a band, and only
+converts it to a grade against boundaries you enter yourself.
 
-- **Speak** — scenario voice chat with per-turn corrections and scores, a
-  fluency mode with a post-session debrief, pronunciation read-aloud scoring,
-  shadowing, and a 45-second improv drill. Audio is MediaRecorder + on-device
-  analysis; transcription and marking use the AI provider (or mock mode).
-- **Listening** — dictée, number drills, authored TTS tracks and provenance-gated
-  authentic recordings with comprehension work. The progression runs from slow
-  supported speech through verified native, speaker/accent variation,
-  spontaneous/noisy speech and explicitly tagged realistic conversation. TTS
-  attempts remain useful but are not counted as native-recording evidence. The
-  repository currently ships no verified native recording files; genuine pack
-  assets require source + licence/consent metadata and may need the network
-  unless already cached.
-- **Reading** — graded texts, an interactive story, tap-to-translate into a
-  personal notebook, comprehension quizzes that feed the error model.
-- **Writing** — copy drills, sentence completion, free writing and an essay
-  studio with structured AI feedback; every correction seeds a retype task.
+An exam-date countdown reshapes what Today gives you, so the weeks before a
+paper are spent on what that paper will actually ask.
 
-## 5. SRS and error recovery
+## What it deliberately doesn't do
 
-Vocabulary scheduling is **FSRS** (importing legacy SM-2 data), with a
-most-forgotten-first, interleaved due queue. Error recovery follows one
-documented loop:
+- **It never claims mastery from one correct answer.** A single good answer
+  leaves a weakness "improving" at most. "Demonstrated" needs a held-out
+  transfer *and* a genuinely delayed retest.
+- **It never fills in missing evidence.** If a transfer or delayed retest hasn't
+  happened, the timeline says so instead of guessing.
+- **It shows uncertainty.** Small samples wear wide intervals rather than false
+  precision.
+- **Assisted success counts for less.** If you needed a hint, the evidence is
+  weaker and says so.
+- **No external results are claimed** that the dataset doesn't contain. Empty
+  validation tracks read "no-data" — nothing is invented.
 
-> mistake → classify → prioritise → targeted repair → independent success →
-> fresh-context transfer → delayed retest → confirmation → recurrence detection
+## Privacy
 
-Evidence rules are conservative and tested: **one immediate correct answer
-never implies mastery**, repeated submission of one encounter cannot inflate
-evidence, assisted success cannot independently demonstrate mastery, and
-delayed/fresh-context evidence is stronger than training repetition. A mistake
-after repair reactivates the weakness and counts as recurrence. The learner-
-facing longitudinal states are **Active weakness → Improving → Needs
-confirmation → Demonstrated**, with **Recurred** reopening the cycle.
+- **Local-first.** No account is required. Progress, review history and your
+  weakness model stay in your browser by default.
+- **The AI key never touches your browser** on the hosted app. Your first
+  sessions run on a free trial quota; if you bring your own key it stays in this
+  browser only, and is never exported.
+- **Cloud sync is encrypted by default.** Saving to an account requires a
+  passphrase; the server holds data it cannot read. **If you forget the
+  passphrase that copy is gone** — there is no reset.
+- **A sync code is a secret.** Treat an encrypted `LS1:` code like a password.
+- **Mock Mode** makes the whole studio work with no AI at all, honestly labelled
+  as such.
 
 ### The two links that are actually run
 
@@ -217,32 +208,29 @@ are claimed beyond what the dataset contains.**
 
 ```bash
 npm install
-npm run dev            # local dev server
-npm test               # node:test unit suites
-npm run lint:content   # copy honesty lint
-npm run lint:code      # eslint (react-hooks + no-undef)
-npm run type-check     # tsc over critical domain logic
-npm run build          # secret guard → vite build → SW versioning → budget gate
-npm run validation:status
+npm run dev      # local dev server
+npm run check    # secret guard, public-URL + header sync, content lint, eslint, tests
+npm run build    # guard → build → service worker → size budget
+npm run e2e      # Playwright end-to-end
 ```
 
-Test counts and bundle sizes are deliberately **not** written here — they
-change with every commit and go stale fast. Run the commands above for the
-current numbers; the budgets below are the contract, the measured values are
-CI's job.
+The domain contracts (weakness model, evidence rules, security headers) are
+enforced by executed tests in `tests/domain-shapes.test.js` and
+`tests/security-headers.test.js` — see
+[docs/architecture.md](docs/architecture.md#type-checking--what-npm-run-type-check-actually-does)
+for why that is the contract rather than `checkJs`.
 
-- **Per-push CI** (`.github/workflows/french-practice.yml`): lint, tests,
-  type-check, build, size budget, and Playwright E2E on **Chromium + mobile
-  Chromium** (fast, single browser install).
-- **Scheduled cross-browser CI** (`.github/workflows/cross-browser.yml`): daily
-  **Firefox + WebKit** run targeting the risky engine-specific paths
-  (MediaRecorder, mic permissions, speech/audio, service worker/PWA, offline,
-  Today session, language switching). The config picks its project set from
-  `PW_CROSS_BROWSER=1`; `tests/e2e-config-consistency.test.js` pins the
-  workflow↔config agreement.
-- Playwright config: `playwright.config.js`; E2E specs in `e2e/`.
+- **Per-push CI** (`.github/workflows/french-practice.yml`): secret guard, public
+  URL/header sync, content lint, eslint, tests, type-check, build, size budget,
+  and Playwright E2E on Chromium + mobile Chromium.
+- **Daily cross-browser CI** (`.github/workflows/cross-browser.yml`): Firefox +
+  WebKit over the engine-specific paths (MediaRecorder, mic permissions,
+  service worker/PWA, offline, Today, language switching).
 
-## 12. Architecture overview
+Playwright's Chromium suite passes with **0 failures** (recent runs: 51–52
+passing; the exact count moves with the suite, so read the runner's summary).
+Locally, first confirm port 5173 is not already serving a *different* app — see
+[docs/architecture.md](docs/architecture.md#e2e-the-port-5173-trap-read-this-before-trusting-an-e2e-run).
 
 ```
 src/
@@ -273,35 +261,22 @@ api/
   sync.js                 optional account snapshot API with conflict checks
   _lib/                   Postgres/session/Google integration
 database/migrations/      optional account/sync schema
-server/                   optional authenticated AI relay + quota enforcement
+server/                   optional authenticated AI relay + quota enforcement,
+                          plus the free no-key trial path (relay-trial.js)
 e2e/                      Playwright specs
-scripts/                  budget gate, content lint, validation tooling
+scripts/                  budget gate, content lint, validation tooling,
+                          public-URL and security-header sync, E2E server guard
 ```
 
-**Store boundaries.** `storageCore.js` is the sanctioned physical layer for
-`localStorage`: canonical `fp.*` key map plus transparent per-learner
-namespacing (households), lazy claim migration and quota pruning. Product
-components never touch browser storage directly — `tests/storage-boundary.test.js`
-pins the boundary and keeps every remaining direct access inside storage
-infrastructure or a short, documented list of deliberate lib-level exceptions.
-Domain stores (`stores/*.js`) own their keys, shapes and caps and never import
-the facade (no cycles). `storage.js` remains a facade re-exporting the historical
-surface so older imports keep working; contract tests
-(`tests/storage-stores.test.js`) pin store↔facade agreement, the key map and
-the legacy-data migration.
+## Documentation
 
-**Performance budgets** (enforced post-build by `scripts/check-performance.mjs`):
-first-load JS (entry + statically imported chunks) **≤ 450 kB**, per-chunk
-ceiling 600 kB, 1800 kB total, plus static-closure budgets for **Today, Speak,
-Review, Learn and Progress**. The measured sizes are reported by the gate on
-every build — never hand-copied here. Beta-language frequency dictionaries are
-lazy TSV data assets rather than executable JS, so content volume does not
-consume the application-JS budget. Boot prefetching is signal-based
-(`src/lib/prefetch.js`): connection quality and the active language decide
-what warms up, so early-session transfer stays close to first-load on slow
-links and Beta languages never download French-authored chunks. Heavy content
-(vocab packs, grammar topics, listening tracks, scenario corpora) is shipped
-as per-language lazy chunks and must never enter the boot graph.
+- **[docs/architecture.md](docs/architecture.md)** — how it's built: the
+  capability matrix, storage boundaries, the error and evidence models, the
+  relay and quota design, performance budgets, CI.
+- **[VALIDATION.md](VALIDATION.md)** — the validation tracks, what each one
+  measures, and the rule that empty tracks stay empty.
+- **[docs/study-protocol.md](docs/study-protocol.md)** — the opt-in evidence
+  study (consent required; transcript-free).
 
 ## Licence
 

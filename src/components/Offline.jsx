@@ -4,7 +4,7 @@ import { LISTENING_TRACKS } from '../lib/listening';
 import { exportProgress, importProgress, getSyncId, getLastBackup, getSettings, getSrs } from '../lib/storage';
 import { allEntries } from '../lib/vocab';
 import { buildOfflinePack, offlinePackSize, offlinePackSummary } from '../lib/offlinePack';
-import { makeSyncCode, restoreSyncCode } from '../lib/account';
+import { makeSyncCode, restoreSyncCode, isEncryptedCode } from '../lib/account';
 import { fetchAccount, startGoogleSignIn, signOut as signOutAccount, push as pushRemote, pull as pullRemote, deleteRemote, remoteUpdatedAt } from '../lib/cloudAccount';
 import { X, Check, Download, Upload, BookOpen, Volume, RefreshCw, Copy, Key } from './icons';
 import { ICON_BTN_ROUND_SOFT, TOP_BAR } from '../components/classNames.js';
@@ -152,14 +152,20 @@ export default function Offline({ open, onClose, pwa }) {
   };
 
   const saveToAccount = async (force = false) => {
+    // Cloud sync stores a snapshot on someone else's server, so encryption is
+    // the DEFAULT, not an option: without a passphrase the upload would be a
+    // readable copy of the learner's whole progress. A passphrase is therefore
+    // required to save to an account at all.
+    if (!passphrase.trim()) {
+      setCloudMsg('Add a passphrase above first — it encrypts what is stored, and without one the server would hold a readable copy of your progress.');
+      return;
+    }
     setCloudBusy(true); setCloudMsg(null);
     const result = await pushRemote(passphrase, knownRemote, force);
     setCloudBusy(false);
     if (result.status === 'ok') {
       setKnownRemote(result.updatedAt);
-      setCloudMsg(result.encrypted
-        ? 'Saved to your account, encrypted with your passphrase.'
-        : 'Saved to your account. Add a passphrase above to encrypt it first.');
+      setCloudMsg('Saved to your account, encrypted with your passphrase.');
       return;
     }
     if (result.status === 'conflict') {
@@ -336,7 +342,7 @@ export default function Offline({ open, onClose, pwa }) {
 
             <p className="text-xs text-ink3 leading-relaxed">
               Your data stays on this device. To move it, create a <span className="font-semibold text-ink">sync code</span> here and paste it on another device. Add a passphrase to encrypt it so it’s safe to send to yourself. Your API key is never included.
-              {cloud.available ? ' Signing in below stores that same code for you, so you don’t have to carry it by hand.' : ''}
+              {cloud.available ? ' Signing in below stores that same code for you, so you don’t have to carry it by hand — a passphrase is required, and only this device can read what it stores.' : ''}
             </p>
 
             {cloud.available && (
@@ -378,15 +384,19 @@ export default function Offline({ open, onClose, pwa }) {
 
             {/* optional passphrase */}
             <label className="block">
-              <span className="text-[11px] font-semibold text-ink2">Passphrase (optional — encrypts the code)</span>
+              <span className="text-[11px] font-semibold text-ink2">Passphrase (required for account sync — encrypts the code)</span>
               <input
                 type="password"
                 value={passphrase}
                 onChange={(e) => setPassphrase(e.target.value)}
-                placeholder="Leave blank for an unencrypted code"
+                placeholder="Choose a passphrase only you know"
                 aria-label="Sync passphrase"
                 className="mt-1 w-full bg-surface border border-line rounded-xl px-3 py-2.5 text-sm text-ink placeholder:text-ink3 focus:outline-none focus:border-ink"
               />
+              <span className="mt-1.5 block text-[11px] leading-relaxed text-ink3">
+                It stretches your passphrase with PBKDF2 and locks the copy with AES-GCM, so the server holds data it cannot read.
+                <strong className="font-semibold text-ink2"> If you forget it, that copy is gone for good</strong> — there is no reset, and no one can recover it for you.
+              </span>
             </label>
 
             {/* create / copy code */}
@@ -396,6 +406,11 @@ export default function Offline({ open, onClose, pwa }) {
               </button>
               {code && (
                 <div className="space-y-1.5">
+                  <p className="text-[11px] leading-relaxed text-ink3">
+                    {isEncryptedCode(code)
+                      ? 'This code is locked with your passphrase. Keep it private — treat it like a password.'
+                      : 'This code is not encrypted. Add a passphrase above before saving it anywhere.'}
+                  </p>
                   <textarea
                     readOnly
                     value={code}

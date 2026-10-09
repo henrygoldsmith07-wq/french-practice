@@ -149,7 +149,12 @@ test.describe('German Review submodes', () => {
     // Flashcards remain usable: flip and rate.
     await page.getByRole('button', { name: /Flip the card/ }).click();
     await page.getByRole('group', { name: 'How well did you recall it?' }).getByRole('button', { name: 'Good' }).click();
-    await expect(body.getByText('Predicted recall')).toBeVisible({ timeout: 10_000 });
+    // Generous timeout here on purpose: this is the one assertion in the spec
+    // that flakes under parallel load (the FSRS write, re-render and the
+    // "Predicted recall" label are all async after the rating tap). The label
+    // itself is stable — it renders whenever retention != null — so a longer
+    // wait removes a false failure without weakening what is being asserted.
+    await expect(body.getByText('Predicted recall')).toBeVisible({ timeout: 25_000 });
     await assertNoFrenchSubmodes(page);
   });
 

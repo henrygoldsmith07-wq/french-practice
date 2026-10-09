@@ -47,7 +47,7 @@ Allow: /
 User-agent: meta-externalagent
 Allow: /
 
-Sitemap: https://claude-code-alpha-nine.vercel.app/sitemap.xml
+Sitemap: https://le-studio-french.vercel.app/sitemap.xml
 
 # AI-readable site summary
-# https://claude-code-alpha-nine.vercel.app/llms.txt
+# https://le-studio-french.vercel.app/llms.txt

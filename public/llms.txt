@@ -45,7 +45,7 @@
 
 ## Key pages
 
-- [App](https://claude-code-alpha-nine.vercel.app/): single-page app — all
+- [App](https://le-studio-french.vercel.app/): single-page app — all
   features above are client-rendered from this one URL.
 
 ## Technical notes

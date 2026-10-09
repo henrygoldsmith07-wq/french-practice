@@ -238,6 +238,19 @@ function after(events, at) {
   return (events || []).filter((e) => Date.parse(e.at) >= t);
 }
 
+// A "delayed" event only counts as delayed evidence when it really was: the
+// event must carry a delay of at least DELAYED_MIN_HOURS. Without this gate a
+// producer that merely tags phase='delayed' would hand the learner a
+// "demonstrated" claim from a same-session retest — the exact overclaim the
+// model exists to prevent.
+function isDelayedEvidence(event) {
+  if (event?.phase === 'delayed') {
+    return event.delayHours != null && event.delayHours >= DELAYED_MIN_HOURS;
+  }
+  // A non-'delayed' phase still counts when it explicitly reports a real gap.
+  return event?.delayHours != null && event.delayHours >= DELAYED_MIN_HOURS;
+}
+
 function independentSuccesses(events, { heldOut = false, minStrength = 0.45, now = Date.now() } = {}) {
   const seen = new Set();
   return (events || []).filter((e) => {
@@ -258,7 +271,9 @@ export function learningCycleStatus(cycle, now = Date.now()) {
   const floorAt = lastRecurrence || c.startedAt;
   const interventions = after(c.interventions, floorAt);
   const transfers = after(c.transfers, floorAt);
-  const delayed = after(c.delayed, floorAt);
+  // Only genuinely delayed retests count. A same-session retest tagged
+  // 'delayed' must never demonstrate mastery.
+  const delayed = after(c.delayed.filter(isDelayedEvidence), floorAt);
   const independentIntervention = independentSuccesses(interventions, { minStrength: 0.3, now });
   const independentTransfer = independentSuccesses(transfers, { heldOut: true, minStrength: 0.5, now });
   const independentDelayed = independentSuccesses(delayed, { minStrength: 0.5, now });
@@ -377,8 +392,12 @@ export function dueLearningChecks(state, now = Date.now()) {
     // the debt, while learningCycleStatus still required an independentDelayed
     // for DEMONSTRATED. The learner got "nothing owed" and "never demonstrated"
     // at once and was never asked again.
+    //
+    // It must ALSO be genuinely delayed: an event merely tagged
+    // phase 'delayed' without a real gap is not retention evidence, and
+    // accepting it is what let a same-session retest prove mastery.
     const delayed = independentSuccesses(
-      after(cycle.delayed, transfer.at),
+      after(cycle.delayed.filter(isDelayedEvidence), transfer.at),
       { minStrength: 0.5, now },
     ).at(-1) || null;
     const dueAt = Date.parse(transfer.at) + DELAYED_MIN_HOURS * 3600000;
