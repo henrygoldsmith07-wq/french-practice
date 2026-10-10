@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { recordExaminerMark, recordRealExamResult, recordSkillScore } from '../lib/storage';
+import { recordExaminerMark, recordRealExamResult, recordSkillScore, recordLearnerError, recordLearnerSuccess } from '../lib/storage';
+import { applyPaperFindings } from '../lib/exams/findings';
 import {
   gradeEstimate, examFeedback, benchmarkExaminer, validateAgainstResults,
   scoreTask, scorePaper, scoreExamTechnique,
@@ -31,6 +32,9 @@ export function Review({ run, scores, setScores, onRestart, onXp, onActivity }) 
   const [examinerGrade, setExaminerGrade] = useState('');
   const [actualGrade, setActualGrade] = useState('');
   const [validationMessage, setValidationMessage] = useState(null);
+  // What this paper taught the shared weakness model, so the finish screen can
+  // say it in plain language rather than showing a bare percentage.
+  const [modelUpdate, setModelUpdate] = useState(null);
 
   const taskScores = run.paper.sections.map((s) => scoreTask({
     boardId: run.paper.boardId,
@@ -63,10 +67,43 @@ export function Review({ run, scores, setScores, onRestart, onXp, onActivity }) 
         techniqueScore: technique.score,
         examMode,
       });
+      // Feed the same findings into the shared weakness model that conversation,
+      // writing and drills write to. Without this, a candidate who keeps losing
+      // marks on tense accuracy in the exam room gets a Today session built from
+      // conversation mistakes alone — the exam tells the model nothing.
+      const { weaknesses: examWeaknesses, successes: examSuccesses } = applyPaperFindings(
+        taskScores.map((s) => ({
+          taskId: s.taskId,
+          criteria: Object.entries(s.scores || {})
+            .filter(([, value]) => Number.isFinite(Number(value)))
+            .map(([criterion, score]) => ({ criterion, score: Number(score) })),
+        })),
+        {
+          context: { boardId: run.paper.boardId, tier: run.paper.tier, official: run.paper.official === true },
+          recordError: (finding) => recordLearnerError({
+            category: finding.category,
+            key: `exam:${finding.criterion}`,
+            label: finding.label,
+            mode: 'exam',
+            score: finding.score,
+            source: 'exam',
+            detail: `${run.paper.boardName} ${EXAM_MODES[examMode].label} — ${finding.taskId || 'exam task'}`,
+          }),
+          recordSuccess: (finding) => recordLearnerSuccess({
+            category: finding.category,
+            key: `exam:${finding.criterion}`,
+            label: finding.label,
+            mode: 'exam',
+            score: finding.score,
+            source: 'exam',
+          }),
+        },
+      );
       onActivity?.({ type: examMode, boardId: run.paper.boardId, score: paperScore.percent, techniqueScore: technique.score, mode: 'exam', label: `${run.paper.boardName} ${EXAM_MODES[examMode].label}`, encounterId: newEncounterId(), activityId: `${run.paper.boardId}:${examMode}` });
       onXp?.(30);
+      setModelUpdate({ weaknesses: examWeaknesses, successes: examSuccesses });
+      setAwarded(true);
     }
-    setAwarded(true);
   };
 
   const saveValidation = () => {
@@ -135,6 +172,29 @@ export function Review({ run, scores, setScores, onRestart, onXp, onActivity }) 
           {grade.indicativeBand && <p className="text-sm font-semibold">{grade.indicativeBand}</p>}
           <p className="text-xs text-ink2">{grade.note}</p>
         </section>
+
+        {modelUpdate && (modelUpdate.weaknesses.length || modelUpdate.successes.length) ? (
+          <section className="bg-surface border border-line rounded-2xl p-4 space-y-2">
+            <h3 className="text-[11px] font-bold uppercase tracking-wider text-ink2">Added to your weakness tracker</h3>
+            <p className="text-sm">
+              {modelUpdate.weaknesses.length
+                ? `This paper found ${modelUpdate.weaknesses.length === 1 ? 'a gap' : `${modelUpdate.weaknesses.length} gaps`} to work on — they are now queued for repair in your next session.`
+                : 'No new gaps from this paper. Your practice held up.'}
+            </p>
+            {modelUpdate.weaknesses.length > 0 && (
+              <ul className="text-xs text-ink2 space-y-1 list-disc pl-4">
+                {modelUpdate.weaknesses.map((w) => (
+                  <li key={w.criterion}>{w.label} — scored {w.score}%</li>
+                ))}
+              </ul>
+            )}
+            <p className="text-xs text-ink2">
+              {modelUpdate.successes.length
+                ? `${modelUpdate.successes.length === 1 ? 'One strength' : `${modelUpdate.successes.length} strengths`} also noted. One good paper never closes a weakness on its own.`
+                : 'Nothing strong enough here to count as evidence yet.'}
+            </p>
+          </section>
+        ) : null}
 
         <section className="bg-surface border border-line rounded-2xl p-4 space-y-3">
           <div className="flex items-baseline justify-between gap-3">
