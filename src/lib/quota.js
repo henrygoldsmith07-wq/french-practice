@@ -1,11 +1,17 @@
 // Client-side quota guard for Groq calls.
 // Mirrors what a server relay would enforce. When a relay is configured,
 // the server is the source of truth; this is the honest local preview.
+//
+// The counter is stored through storageCore, not raw localStorage, so it is
+// learner-owned: the allowance belongs to the member whose BYOK key is being
+// spent. It used to live at a bare `fp.quota` read straight from localStorage,
+// which made it one shared counter per device — in a household one learner's AI
+// practice silently exhausted the other's for the rest of the day.
+import { KEYS, read as readKey, write as writeKey } from './storageCore.js';
 
-const KEY = 'fp.quota';
 // VITE_AI_DAILY_LIMIT is the current name; VITE_GROQ_DAILY_LIMIT kept for
 // older deployments that already set it.
-const DEFAULT_LIMIT = Number(import.meta.env.VITE_AI_DAILY_LIMIT || import.meta.env.VITE_GROQ_DAILY_LIMIT || 80);
+const DEFAULT_LIMIT = Number(import.meta.env?.VITE_AI_DAILY_LIMIT || import.meta.env?.VITE_GROQ_DAILY_LIMIT || 80);
 
 function dayStamp(d = new Date()) {
   return d.toLocaleDateString('en-CA');
@@ -13,9 +19,8 @@ function dayStamp(d = new Date()) {
 
 function read() {
   try {
-    const raw = localStorage.getItem(KEY);
-    if (!raw) return { day: dayStamp(), count: 0, limit: DEFAULT_LIMIT };
-    const j = JSON.parse(raw);
+    const j = readKey(KEYS.quota, null);
+    if (!j || typeof j !== 'object') return { day: dayStamp(), count: 0, limit: DEFAULT_LIMIT };
     if (j.day !== dayStamp()) return { day: dayStamp(), count: 0, limit: j.limit ?? DEFAULT_LIMIT };
     return { day: j.day, count: j.count || 0, limit: j.limit ?? DEFAULT_LIMIT };
   } catch {
@@ -24,9 +29,7 @@ function read() {
 }
 
 function write(state) {
-  try {
-    localStorage.setItem(KEY, JSON.stringify(state));
-  } catch { /* ignore */ }
+  writeKey(KEYS.quota, state);
 }
 
 export function getQuota() {

@@ -24,7 +24,25 @@ export default function WritingRepairLoop({ corrections = [], onRepaired, onReco
   const checkRepair = (task) => {
     const typed = String(drafts[task.id] || '').trim();
     if (!typed) return;
-    const normalise = (s) => String(s).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ').trim();
+    // Compose canonically (see conjugationTrainer.checkForm for why), fold
+    // apostrophe shape, and ignore a trailing full stop. `accept` holds exactly
+    // one string — the corrected sentence, which is sitting on screen one line
+    // above the input — so the learner who copies it verbatim was told "Not
+    // quite" for typing `J'ai` instead of `J’ai`, or for including the period
+    // the model had written.
+    const normalise = (s) => String(s)
+      .normalize('NFC')
+      .toLowerCase()
+      .replace(/[’‘`]/g, "'")
+      // œ and oe are the same French letters; a keyboard without the ligature
+      // is not making an accent slip. AccentDrill and followUp already fold
+      // this, drills.js does not — the app was inconsistent with itself.
+      .replace(/œ/g, 'oe')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[.!?]+$/g, '')
+      .replace(/\s+/g, ' ')
+      .trim();
     const ok = task.accept.some((a) => normalise(a) === normalise(typed));
     if (ok && !repairedIds.includes(task.id)) {
       const next = [...repairedIds, task.id];

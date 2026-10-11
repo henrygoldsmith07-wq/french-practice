@@ -15,6 +15,12 @@
 
 const KEYS = {
   apiKey: 'fp.groqKey',
+  // The local daily AI allowance for the learner's own key. This lived outside
+  // KEYS as a raw `fp.quota`, which meant ONE shared counter for the whole
+  // device: in a household one learner's AI practice exhausted another's, even
+  // though each member has their own BYOK key. Learner-owned for the same
+  // reason the key itself is.
+  quota: 'fp.quota.v1',
   sessions: 'fp.sessions', // durable array of completed session summaries
   sessionHistoryMeta: 'fp.sessionHistory.v2', // migration marker for unbounded session history
   sessionHistory: 'fp.sessionHistory.v1', // canonical, uncapped completed-session history
@@ -161,10 +167,31 @@ export function hasExpectedShape(key, raw) {
 }
 
 let storageFull = false;
+const storageFullListeners = new Set();
 
 // True when the last write tripped the quota — surfaced in Settings/DevPanel
 // so "where did my progress go" has an answer.
+//
+// This flag had no consumers at all, which is why a write that was genuinely
+// lost (a finished conversation, a review record) left the learner with silent
+// data loss and no way to tell that from the app forgetting. It is now
+// observable: subscribe, and the notice can react to the moment it trips rather
+// than only to the state on a later render.
 export const storageFullWarning = () => storageFull;
+
+/** Subscribe to quota-loss events. Returns an unsubscribe function. */
+export function onStorageFull(fn) {
+  storageFullListeners.add(fn);
+  return () => { storageFullListeners.delete(fn); };
+}
+
+function markStorageFull() {
+  if (storageFull) return;
+  storageFull = true;
+  for (const fn of storageFullListeners) {
+    try { fn(true); } catch { /* a bad listener must not break the write path */ }
+  }
+}
 
 // Event streams that can be pruned when the quota is hit: recent history is
 // kept, older entries are dropped rather than losing fresh progress.
@@ -218,6 +245,9 @@ export const LEARNER_KEY_VALUES = [
   // the other's AI requests. Learner-owned also means "Clear key" removes the
   // real stored value rather than the empty legacy one.
   KEYS.apiKey,
+  // The local AI allowance is spent against that member's own key, so it is
+  // learner-owned too.
+  KEYS.quota,
 ];
 
 const LEARNER_KEY_SET = new Set(LEARNER_KEY_VALUES);
@@ -352,7 +382,7 @@ function writeRaw(key, value) {
     localStorage.setItem(key, encoded);
     return true;
   } catch { /* storage full or unavailable: recover below */ }
-  if (!storageFull) storageFull = true;
+  markStorageFull();
 
   // This key is its own event stream: keep the newest half rather than losing
   // the fresh entries the learner just produced.
@@ -403,9 +433,18 @@ export function write(key, value) {
   return writeRaw(key, value);
 }
 
-/** Learner-aware removal (the DELETE half of the read/write pair). */
+/**
+ * Learner-aware removal (the DELETE half of the read/write pair).
+ *
+ * The `LEARNER_KEY_SET` gate matters, and it was missing. `read` and `write`
+ * route only learner-owned keys, so a device-level key such as the AI quota
+ * (`fp.quota.v1`) is always stored at its flat path. This used to namespace
+ * EVERY key whenever a household member was active, so `remove()` on such a key
+ * deleted `fp.learner.<id>.fp.quota.v1` — which was never written — and left
+ * the real value in place.
+ */
 export function remove(key) {
-  const memberId = activeLearnerId();
+  const memberId = LEARNER_KEY_SET.has(key) ? activeLearnerId() : null;
   if (!memberId) { try { localStorage.removeItem(key); } catch { /* unavailable */ } return; }
   claimLegacyFor(key, memberId);
   try { localStorage.removeItem(learnerKey(key, memberId)); } catch { /* unavailable */ }

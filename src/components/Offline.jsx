@@ -130,7 +130,12 @@ export default function Offline({ open, onClose, pwa }) {
 
   if (!open) return null;
 
-  const ready = cacheCount != null && cacheCount > 0;
+  // "Ready offline" has to mean the app's own code is cached, not merely that
+  // SOME cache exists. This counted entries in the app's runtime cache and
+  // reported readiness the moment the four shell URLs landed, while every
+  // unvisited lazy route still failed its import offline. Require the entry
+  // document AND a JS payload to be present before claiming anything.
+  const ready = cacheCount != null && cacheCount >= 6;
 
   const doExport = () => {
     const stamp = new Date().toISOString().slice(0, 10);
@@ -275,7 +280,7 @@ export default function Offline({ open, onClose, pwa }) {
             </div>
             <p className="text-xs text-ink3 leading-relaxed">
               Le Studio is a fully client-side app. Once loaded it installs a service worker, so
-              every lesson, story and drill works with no connection{ready ? ` (${cacheCount} files cached)` : ''}.
+              every lesson, story and drill works with no connection{ready ? ` (${cacheCount} files cached)` : ' — still caching the app, which takes a moment on a first visit'}.
               Spoken audio is generated on your device, so listening and pronunciation work offline too.
               Only the AI conversation and correction features need the network (they call Groq live).
             </p>

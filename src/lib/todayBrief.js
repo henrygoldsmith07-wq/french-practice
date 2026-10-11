@@ -11,6 +11,7 @@ import { weaknessLifecycle, WEAKNESS_LIFECYCLE } from './weaknessLifecycle.js';
 import { buildCapabilityMap } from './capabilityModel.js';
 import { localDayKey } from './localDay.js';
 import { getLearnerErrors, getSettings, getStudyEvents } from './storage.js';
+import { BOARDS, TIER } from './exams/boards.js';
 
 const SEGMENT_SHORT = {
   warmup: 'Warm-up',
@@ -52,6 +53,18 @@ export function todayBrief(options = {}) {
   const skillLabel = skillShortLabel(state);
 
   const lines = [];
+  // The exam the learner is actually preparing for, from the exam identity
+  // ExamSetup persists the moment a board is picked (settings.examBoard /
+  // examTier). Named first so the whole brief reads as aimed at that exam; a
+  // learner who has never picked a board sees nothing (no exam, no line) —
+  // the brief must not invent a target.
+  const examBoardId = getSettings().examBoard;
+  const examBoard = examBoardId && BOARDS[examBoardId] ? BOARDS[examBoardId] : null;
+  const examTier = getSettings().examTier;
+  if (examBoard) {
+    const tierWord = examTier === TIER.FOUNDATION ? 'Foundation' : examTier === TIER.HIGHER ? 'Higher' : '';
+    lines.push(`${tierWord ? `${tierWord} tier, ` : ''}${examBoard.name}`);
+  }
   if (state.srsDue > 0) lines.push(`${state.srsDue} item${state.srsDue === 1 ? '' : 's'} due`);
   if (skillLabel) lines.push(`${skillLabel} needs work`);
   if (recurred) lines.push(`${recurred.label || recurred.key} recently recurred`);

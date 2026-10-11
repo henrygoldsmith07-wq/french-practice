@@ -20,6 +20,7 @@ import {
 import {
   fluencyDebriefFromHistory, normalizeFluencyReview,
 } from './fluencyReview.js';
+import { sessionScores } from './score.js';
 
 
 const BASE = 'https://integrate.api.nvidia.com/v1';
@@ -442,7 +443,13 @@ function normalizeExercises(json) {
     .map((e) => ({
       q: String(e.q),
       options: e.options.slice(0, 3).map(String),
-      answer: Math.min(Math.max(0, Number(e.answer) || 0), Math.min(2, e.options.length - 1)),
+      // Must be a WHOLE index. The clamp bounded the value but left a
+      // fractional one intact, and the quiz resolves the answer with
+      // `options.indexOf(item.answer)` — which returns -1 for 1.5. The learner
+      // then picked correctly, `i === ex.answer` was never true for any option,
+      // so they got no feedback, a score of 0/N and no XP for a right answer,
+      // and the unanswerable item was filed as evidence of their mistake.
+      answer: Math.trunc(Math.min(Math.max(0, Number(e.answer) || 0), Math.min(2, e.options.length - 1))),
       why: String(e.why || ''),
     }));
 }
@@ -619,8 +626,6 @@ ${LANG.id === 'fr' ? FR_GRAMMAR_TOPIC_LINE : ''}  "scores": { "grammar": 0-100, 
 }
 Scores are integers. "overall" = 0.30*grammar + 0.30*naturalness + 0.20*relevance + 0.20*fluency (rounded).
 For corrections: distinguish definite_error (clear grammar violation), likely_error (probable but could be dialect/register), stylistic_suggestion (valid but unnatural), acceptable_alternative (both correct, offer variant), uncertain (not sure — do not correct). Prefer fewer definite corrections over many uncertain ones.`;
-
-const REQUIRED_SCORES = ['grammar', 'naturalness', 'relevance', 'fluency', 'overall'];
 
 // Runtime authority for structured-output shape. A structurally invalid
 // response throws here so callers get friendlyError's retry copy instead of a
@@ -839,20 +844,31 @@ export async function sessionReport(apiKey, { scenario, history, level = 'B1', m
     { role: 'system', content: `${reportSystem()}\n\n${LEVEL_NOTES[level] || LEVEL_NOTES.B1}` },
     { role: 'user', content: `Scenario: ${scenario.title}\n\n${transcriptLines}` },
   ], { label: 'session-report', temperature: 0.5 });
-  const avg = json.average_scores || {};
-  for (const k of REQUIRED_SCORES) {
-    avg[k] = Math.max(0, Math.min(100, Math.round(Number(avg[k]) || 0)));
-  }
+  // The numbers are OURS, not the model's. `average_scores` used to be read
+  // straight off this response and it is the sole input to checkpoint pass/fail,
+  // CEFR promotion, the scenario queue and the adaptive level — so a model that
+  // returned `{}` produced a report reading "overall 0" and failed the learner,
+  // one that returned a JSON *string* threw a TypeError, and one that simply
+  // miscounted gave a different answer for the identical conversation. The
+  // model keeps the parts only it can write: the narrative. It was the only
+  // AI response in the app without a shape check, and the only thing needed
+  // here is a string and two string arrays.
+  const grade = String(json.session_grade || 'B');
+  const strings = (v, cap = 8) => (
+    Array.isArray(v) ? v.map((x) => String(x)).filter(Boolean).slice(0, cap) : []
+  );
   return {
-    session_grade: String(json.session_grade || 'B'),
-    average_scores: avg,
-    strengths: Array.isArray(json.strengths) ? json.strengths.map(String) : [],
-    stubborn_habits: Array.isArray(json.stubborn_habits) ? json.stubborn_habits.map(String) : [],
-    tomorrow_focus: String(json.tomorrow_focus || ''),
+    session_grade: grade,
+    // Overwritten by the caller with `sessionScores(history)`; kept here so a
+    // direct caller still gets a well-formed shape rather than undefined.
+    average_scores: sessionScores(history),
+    strengths: strings(json.strengths),
+    stubborn_habits: strings(json.stubborn_habits),
+    tomorrow_focus: typeof json.tomorrow_focus === 'string' ? json.tomorrow_focus : '',
   };
 }
 
-export { compositeScore } from './score.js';
+export { compositeScore, sessionScores } from './score.js';
 
 // ---- fluency-mode debrief (analysis AFTER the conversation, not during) ----
 

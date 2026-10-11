@@ -128,15 +128,36 @@ const LEADING_ARTICLE = {
   fr: /^(?:le|la|les)\s+|^(?:l['’])\s*/i,
 };
 
+// French themed entries are inconsistent about the INDEFINITE article: most
+// carry none ("pouvoir"), a handful carry it ("un bug", "une douzaine"), and
+// that is enough to make the word look new to the comparison above.
+//
+// Stripping `un|une|des` unconditionally would be wrong — it would reduce the
+// themed phrase "un petit peu" to "peu" and silently delete an unrelated
+// frequency card. So it is stripped ONLY when exactly one word follows it, which
+// leaves every multi-word phrase alone. Note that this still collapses "un peu"
+// to a bare "peu" if the deck ever carries one; that is acceptable, because the
+// themed card is the richer of the two (example sentence and IPA) and a learner
+// who meets "un peu" has met "peu". Verified against the shipped deck: it
+// removes exactly five cards — un bug, un morceau, un truc, une douzaine, une
+// dizaine — all genuine duplicates, 3020 → 2632 entries in total.
+const INDEFINITE_SINGLE = /^(?:un|une|des)\s+(\S+)$/i;
+
+const stemOf = (term, lang) => {
+  let t = String(term || '').trim();
+  const article = LEADING_ARTICLE[lang];
+  if (article) t = t.replace(article, '');
+  const indef = INDEFINITE_SINGLE.exec(t);
+  if (indef) t = indef[1];
+  return t.toLowerCase();
+};
+
 export function dropThemedDuplicates(themedPacks, freqPacks, lang) {
   const themed = themedPacks.flatMap((p) => p.entries || []);
   const exact = new Set(themed.map((e) => e.fr));
-  const article = LEADING_ARTICLE[lang];
-  const stemmed = article
-    ? new Set(themed.map((e) => e.fr.replace(article, '').toLowerCase()))
-    : null;
+  const stemmed = new Set(themed.map((e) => stemOf(e.fr, lang)));
   const isDuplicate = (term) => (
-    exact.has(term) || Boolean(stemmed && stemmed.has(term.replace(article, '').toLowerCase()))
+    exact.has(term) || stemmed.has(stemOf(term, lang))
   );
 
   return freqPacks

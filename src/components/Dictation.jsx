@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { allEntries } from '../lib/vocab';
 import { langCode as activeLangCode } from '../lib/i18n';
-import { randomPoolSentence as randomSentence, toWords, diffWords } from '../lib/sentences';
+import { randomPoolSentence as randomSentence, toWords, diffWordsEq } from '../lib/sentences';
 import { recordSkillScore, recordListeningGap, getSrs } from '../lib/storage';
 import { newEncounterId } from '../lib/evidenceIdentity';
 import { speak, stopSpeaking } from '../lib/tts';
@@ -10,6 +10,9 @@ import { dictationSpeed, diacriticStrict, DICTATION_LEVELS } from '../lib/dictat
 import { getMetrics, getReviewEvents } from '../lib/storage';
 import { listeningDifficultyLadder } from '../lib/learningAdaptation';
 import { SECTION_LABEL_SM } from '../components/classNames.js';
+
+// An accent-stripped comparison, for the levels the header labels "lenient".
+const foldAccents = (s) => String(s).normalize('NFD').replace(/\p{M}/gu, '');
 
 // Dictée: pure listening drill. The app speaks a French sentence the learner
 // cannot see; they type what they heard and get a word-level diff + accuracy
@@ -43,7 +46,16 @@ export default function Dictation({ ttsRate, level: cefr = 'B1', onXp, onActivit
 
   const check = () => {
     const target = toWords(sentence.text);
-    const hits = diffWords(target, toWords(input));
+    // The header told the learner "accents lenient" at levels 1–3 and "accents
+    // strict" from 4, but `strict` was computed and then passed NOWHERE:
+    // `diffWords` compares words exactly, so a beginner typing `ca va` for
+    // `ça va` lost the whole word and scored 0/3 on a sentence they had
+    // correctly transcribed. Either the label was a lie or the grading was;
+    // now the label is the behaviour.
+    const eq = strict
+      ? (a, b) => a === b
+      : (a, b) => foldAccents(a) === foldAccents(b);
+    const hits = diffWordsEq(target, toWords(input), eq);
     const matched = hits.filter(Boolean).length;
     const accuracy = Math.round((matched / Math.max(1, target.length)) * 100);
     const gained = Math.max(1, Math.round(accuracy / 10));

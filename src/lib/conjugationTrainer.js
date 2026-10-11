@@ -215,7 +215,17 @@ export function spokenSentence(prompt) {
 }
 
 const foldAccents = (s) => String(s).normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-const normalise = (s) => String(s).trim().toLowerCase().replace(/[’‘`]/g, "'").replace(/\s+/g, ' ');
+/**
+ * Canonical composition FIRST. "parlé" can reach us decomposed (e + U+0301)
+ * from an IME, a PDF paste or another platform's JSON. It is the same word, but
+ * it compared unequal to the composed form, so `checkForm` graded it 'near' —
+ * the app showed "You typed: parlé · Correct: parlé", two visibly identical
+ * strings — paid 1 XP instead of full credit, and recorded NEITHER an error nor
+ * a success, so the correct answer never advanced the learner-error entry that
+ * schedules the repair. NFC makes "identical" mean identical; accents are
+ * still graded deliberately by `foldAccents` below.
+ */
+const normalise = (s) => String(s).normalize('NFC').trim().toLowerCase().replace(/[’‘`]/g, "'").replace(/\s+/g, ' ');
 
 /**
  * Exact-but-humane check: case, spacing and apostrophe shape are forgiven;

@@ -74,4 +74,32 @@ describe('today brief', () => {
     const { todayOutcome } = await freshBrief();
     assert.equal(todayOutcome({ now: Date.now(), events: [] }), null);
   });
+
+  test('names the exam the learner picked, with its tier', async () => {
+    // freshBrief() resets localStorage, so seed the settings AFTER the module
+    // graph is in place. The exam identity lives in settings (examBoard /
+    // examTier), persisted by ExamSetup the moment a board is picked.
+    const { todayBrief } = await freshBrief();
+    const settingsMod = await import('../src/lib/stores/settingsStore.js');
+    settingsMod.setSettings({ ...settingsMod.getSettings(), examBoard: 'aqa-gcse', examTier: 'foundation' });
+    const brief = todayBrief({ entries: [], minutes: 15 });
+    assert.ok(
+      brief.lines.some((l) => /Foundation tier, AQA GCSE French/.test(l)),
+      `lines: ${JSON.stringify(brief.lines)}`,
+    );
+  });
+
+  test('a learner with no exam selection gets no exam line — the brief never invents a target', async () => {
+    const { todayBrief } = await freshBrief();
+    const brief = todayBrief({ entries: [], minutes: 15 });
+    assert.ok(!brief.lines.some((l) => /tier|GCSE|A-level|DELF/i.test(l)), `lines: ${JSON.stringify(brief.lines)}`);
+  });
+
+  test('a stale examBoard id the registry no longer knows is ignored, not rendered', async () => {
+    const { todayBrief } = await freshBrief();
+    const settingsMod = await import('../src/lib/stores/settingsStore.js');
+    settingsMod.setSettings({ ...settingsMod.getSettings(), examBoard: 'a-board-that-was-removed', examTier: 'higher' });
+    const brief = todayBrief({ entries: [], minutes: 15 });
+    assert.ok(!brief.lines.some((l) => /tier|GCSE|A-level|DELF/i.test(l)), `lines: ${JSON.stringify(brief.lines)}`);
+  });
 });

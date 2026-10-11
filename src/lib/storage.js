@@ -1,4 +1,4 @@
-// Learner-error model persistence lives in stores/learnerErrorStore.js;
+﻿// Learner-error model persistence lives in stores/learnerErrorStore.js;
 // the facade re-exports it (recordGrammarError and friends below still need
 // the migration priming via getLearnerErrorModel).
 import {
@@ -48,13 +48,13 @@ import {
   getImportedStudyBundles, saveImportedStudyBundles,
 } from './stores/studyStore.js';
 export { KEYS, readLearnerValue, purgeLearnerData, activeLearnerId, isLearnerKey, storageFullWarning };
-// Thin localStorage wrapper — the app's only persistence layer (no backend).
+// Thin localStorage wrapper â€” the app's only persistence layer (no backend).
 
 
 
 
 // A stable per-account id, created on first use. Because it exports/imports
-// with the snapshot, two devices restored from the same code share one id —
+// with the snapshot, two devices restored from the same code share one id â€”
 // the closest thing to an "account" without a backend.
 export function getSyncId() {
   let id = read(KEYS.syncId, null);
@@ -92,6 +92,8 @@ export function removeExamBoundarySet(id) {
   return next;
 }
 
+
+
 // ---- first-run onboarding gate ----
 // New visitors (no key, no XP, no sessions, no explicit flag) see the wizard.
 
@@ -119,7 +121,8 @@ export function exportProgress() {
   const data = {};
   for (const key of Object.values(KEYS)) {
     if (key === KEYS.apiKey) continue; // never export the secret
-    if (key === KEYS.sessions) continue; // legacy last-10 mirror — sessionHistory is canonical
+    if (key === KEYS.quota) continue; // today's AI spend is device state, not progress
+    if (key === KEYS.sessions) continue; // legacy last-10 mirror â€” sessionHistory is canonical
     const raw = localStorage.getItem(key);
     if (raw != null) data[key] = raw;
   }
@@ -128,7 +131,7 @@ export function exportProgress() {
   //
   // The secret has to be filtered HERE as well as in the flat loop above.
   // KEYS.apiKey is a learner-owned key, so in any household the Groq key lives
-  // at `fp.learner.<memberId>.fp.groqKey` — which this scan copied verbatim.
+  // at `fp.learner.<memberId>.fp.groqKey` â€” which this scan copied verbatim.
   // account.js then base64d it into the sync code and cloudAccount pushed it to
   // /api/sync in cleartext, straight through the "never export the secret" rule
   // two lines above. The filter is by key VALUE, because that is what appears
@@ -136,10 +139,10 @@ export function exportProgress() {
   //
   // The member group must exclude the dot. `[^]+` is greedy, so for the key
   // `fp.learner.m-x1y2.fp.groqKey` it matched memberId `m-x1y2.fp` and rest
-  // `groqKey` — the value the secret filter is testing for — and the filter
+  // `groqKey` â€” the value the secret filter is testing for â€” and the filter
   // then missed every time. Member ids are generated without dots and
   // `learnerKey()` joins with a single dot, so `[^.]+` is exact.
-  const secretValues = new Set([KEYS.apiKey]);
+  const secretValues = new Set([KEYS.apiKey, KEYS.quota]);
   const isSecret = (keyName) => secretValues.has(keyName);
   const learners = {};
   try {
@@ -162,10 +165,10 @@ export function exportProgress() {
 
 export function importProgress(payload) {
   if (!payload || payload.app !== 'le-studio' || typeof payload.data !== 'object') {
-    throw new Error('That doesn’t look like a Le Studio backup file.');
+    throw new Error('That doesnâ€™t look like a Le Studio backup file.');
   }
   const allowed = new Set(Object.values(KEYS));
-  const secretKeys = new Set([KEYS.apiKey]);
+  const secretKeys = new Set([KEYS.apiKey, KEYS.quota]); // secret, or transient device state
   let restored = 0;
   for (const [key, raw] of Object.entries(payload.data)) {
     if (secretKeys.has(key) || !allowed.has(key)) continue; // ignore unknown/secret keys
@@ -195,7 +198,7 @@ export function importProgress(payload) {
 
 // theme: null = follow the OS preference; 'dark' | 'light' once toggled
 // level: CEFR level used to calibrate the LLM; dailyGoal: XP target per day
-// Settings, prefs AND the provider key live in stores/settingsStore.js — the
+// Settings, prefs AND the provider key live in stores/settingsStore.js â€” the
 // store is authoritative (env fallback included); the facade re-exports so
 // every historical import keeps working without a duplicate implementation.
 import {
@@ -691,8 +694,8 @@ export function saveSession(summary) {
   // single largest store growing forever with no bound, rewritten in full on
   // every save. Two concrete costs: localStorage is a hard ~5 MB quota with no
   // eviction, so the writes eventually fail, and each save serialises the whole
-  // array. 500 sessions is years of daily practice — well past the 7/30-day
-  // planner windows and the year recap — so nothing that reads history is
+  // array. 500 sessions is years of daily practice â€” well past the 7/30-day
+  // planner windows and the year recap â€” so nothing that reads history is
   // deprived of data it could still use.
   const kept = sessions.length > SESSION_HISTORY_CAP
     ? sessions.slice(-SESSION_HISTORY_CAP)
@@ -742,24 +745,33 @@ export const dismissGettingStarted = () => write(KEYS.gettingStarted, '1');
 export const getGrammarErrors = () => read(KEYS.grammarErrors, {});
 
 export function recordGrammarError(topicId, { mode = 'conversation', score = null, label = null, detail = null } = {}) {
+  // `topicId` here is model-authored free text (`grammar_topic` off
+  // evaluateTurn), and it becomes a PERMANENT storage key: a `fp.grammarErrors`
+  // bucket, a learner-error entry, a grammar gap and a language-evidence row
+  // all keyed on whatever phrase the model chose, uncapped and unvalidated. A
+  // drifting model created a phantom top-level "grammar error" that outranked
+  // real ones in Analytics and was fed straight back into the tutor's prompt.
+  // Keep the id short and stable; a real topic id is always shorter than this.
+  const id = String(topicId == null ? '' : topicId).trim().slice(0, 64);
+  if (!id) return null;
   // See saveSession: initialise before mutating a legacy source that the
   // migration also knows how to import.
   getLearnerErrorModel();
   const all = getGrammarErrors();
-  all[topicId] = (all[topicId] || 0) + 1;
+  all[id] = (all[id] || 0) + 1;
   write(KEYS.grammarErrors, all);
   recordLearnerError({
     category: 'grammar',
-    key: topicId,
-    label: label || topicId,
+    key: id,
+    label: label || id,
     mode,
     score,
     source: 'grammar-classification',
     detail,
   });
-  recordGrammarGap(topicId, { source: 'conversation' });
-  recordLanguageEvidence(topicId, { outcome: 'slip', source: 'conversation' });
-  return all[topicId];
+  recordGrammarGap(id, { source: 'conversation' });
+  recordLanguageEvidence(id, { outcome: 'slip', source: 'conversation' });
+  return all[id];
 }
 
 export function getLearnerErrorModel() {
@@ -767,9 +779,9 @@ export function getLearnerErrorModel() {
 }
 
 // ---- persistent learner weakness memory (moat) ----
-// error occurs → repair → later scenario deliberately tests it → recurrence
+// error occurs â†’ repair â†’ later scenario deliberately tests it â†’ recurrence
 // Each entry tracks a grammar topic that has actually been mis-used in the Arena.
-// Tiny, bounded, and fully local — carries inside the fp.* snapshot export.
+// Tiny, bounded, and fully local â€” carries inside the fp.* snapshot export.
 const WEAKNESS_CAP = 30;
 const RETEST_LADDER_DAYS = [1, 3, 7, 14]; // spaced retests after a repair
 function clampTopicId(id) { return String(id || '').slice(0, 64); }
@@ -778,7 +790,7 @@ export const getWeaknessMemory = () => {
   if (!Array.isArray(raw)) return [];
   // Status is always DERIVED from the retest evidence at read time, never
   // trusted from storage. This is what makes the legacy migration safe: an
-  // old build could store status 'resolved' from two same-session passes —
+  // old build could store status 'resolved' from two same-session passes â€”
   // under the identity-aware rule that evidence is not independent, so the
   // entry reads back as 'recovering' (legacy data is preserved, but unknown
   // identity never invents independence).
@@ -793,7 +805,7 @@ function nextRetestDelay(repairCount) {
 // rule: a weakness resolves only from ONE genuine delayed independent recall
 // (a scheduled retest that came due) or from successful recalls of DISTINCT
 // encounters (different presentations, never re-answers of the same drill).
-// Legacy retest records carry no identity — they are real dated successes, so
+// Legacy retest records carry no identity â€” they are real dated successes, so
 // they keep the weakness 'recovering', but they can never be combined into a
 // resolution: unknown evidence must never invent independence. `recoverySeq`
 // bounds the window (a monotonic per-entry counter, immune to same-
@@ -801,7 +813,7 @@ function nextRetestDelay(repairCount) {
 // retests recorded AFTER the last error can count.
 function weaknessRecoveryStatus(e) {
   const fromSeq = e.recoverySeq || 0;
-  // Legacy records carry no seq — they predate the window counter entirely,
+  // Legacy records carry no seq â€” they predate the window counter entirely,
   // so they are always inside it (a pre-identity pass is real dated success
   // evidence; it keeps the weakness 'recovering' but can never resolve, see
   // below). Sealed windows only exclude records the counter has actually seen.
@@ -855,7 +867,7 @@ export function recordWeaknessRepair(topicId, { scenarioId = null, sessionId = n
     e.retestDueAt = new Date(Date.now() + nextRetestDelay(e.repairCount)).toISOString();
     // A repair is a same-session re-answer of the drill that produced the
     // error: real success evidence (it schedules the spaced retest), but its
-    // independence comes only from a DISTINCT encounterId — re-answers of
+    // independence comes only from a DISTINCT encounterId â€” re-answers of
     // the same encounter dedupe in weaknessRecoveryStatus.
     e.retests = [...(e.retests || []), { at: now, seq: (e.seq || 0) + 1, scenarioId, sessionId, encounterId, activityId, passed, delayed: false }].slice(-12);
     e.seq = (e.seq || 0) + 1;
@@ -965,11 +977,11 @@ const habitKey = (text) =>
 
 export const getHabits = () => read(KEYS.habits, []);
 
-// A compact profile of the learner for the AI tutor & characters — their name
+// A compact profile of the learner for the AI tutor & characters â€” their name
 // and preferences, plus the mistakes and weak grammar areas the app has
 // actually observed, so replies are personal and context-aware rather than
 // generic. Everything here is already stored locally.
-// ---- explicit learner model (7.9 → 9+) ----
+// ---- explicit learner model (7.9 â†’ 9+) ----
 // Aggregates vocab recall, grammar, pronunciation, hesitation, sentence patterns
 // into one inspectable snapshot. All pure, offline.
 export function getLearnerModel() {
@@ -1047,7 +1059,7 @@ export function getLearnerBrief() {
       modes: entry.modes,
     })),
     recyclingInstruction: errorGaps.length
-      ? `Recycle these persistent gaps naturally across the next practice: ${errorGaps.map((entry) => `${entry.category} — ${entry.label}`).join('; ')}.`
+      ? `Recycle these persistent gaps naturally across the next practice: ${errorGaps.map((entry) => `${entry.category} â€” ${entry.label}`).join('; ')}.`
       : null,
   };
 }
@@ -1073,7 +1085,10 @@ function recordHabits(habitTexts) {
 
 // ---- experience points (10 XP per point of overall turn score / 10) ----
 
-export const getXp = () => read(KEYS.xp, 0);
+// Never return a non-number. A `null` written by an older NaN bug (or by a
+// corrupted backup) must not reach the UI, where `xp.toLocaleString()` throws
+// and the whole app falls into the error boundary with no way back.
+export const getXp = () => (Number(read(KEYS.xp, 0)) || 0);
 
 export function getTodayXp() {
   const d = read(KEYS.xpDay, null);
@@ -1081,10 +1096,15 @@ export function getTodayXp() {
 }
 
 export function addXp(amount) {
-  const gained = Math.max(0, Math.round(amount));
-  const total = getXp() + gained;
+  // `Math.max(0, â€¦)` does not catch NaN â€” NaN survives it, `JSON.stringify(NaN)`
+  // writes the string "null", and the next load reads a real `null` back, which
+  // then throws in any UI that formats the total. A single non-fumeric award
+  // could brick the app permanently, so the award is validated at the boundary
+  // AND `getXp` heals a poisoned value rather than propagating it.
+  const gained = Number.isFinite(Number(amount)) ? Math.max(0, Math.round(Number(amount))) : 0;
+  const total = (Number(getXp()) || 0) + gained;
   write(KEYS.xp, total);
-  write(KEYS.xpDay, { day: dayStamp(), amount: getTodayXp() + gained });
+  write(KEYS.xpDay, { day: dayStamp(), amount: (Number(getTodayXp()) || 0) + gained });
   logDailyXp(gained);
   return total;
 }
@@ -1103,7 +1123,7 @@ function logDailyXp(gained) {
   write(KEYS.xpLog, log);
 }
 
-// XP earned Monday→today of the current week.
+// XP earned Mondayâ†’today of the current week.
 export function getWeekXp() {
   const log = getXpLog();
   const now = new Date();
@@ -1168,14 +1188,14 @@ export function recordLearningActivity(event = {}) {
     // Assistance provenance: a post-feedback revision (or any producer-
     // flagged supported answer) must never count as independent production
     // when it repairs a writing weakness. The whole label is forwarded, not
-    // just the legacy boolean — an event that says
+    // just the legacy boolean â€” an event that says
     // `assistance: 'scaffolded'` (TrackPlayer's revealed transcript, for one)
     // used to arrive here as an unassisted success.
     assisted: event.assisted === true ? true : undefined,
     assistance: event.assistance,
   };
-  // Every scored skill feeds the SAME recovery loop — reading and writing
-  // included — so a weakness surfaced in one mode is repaired by whichever
+  // Every scored skill feeds the SAME recovery loop â€” reading and writing
+  // included â€” so a weakness surfaced in one mode is repaired by whichever
   // mode best targets it. Same-session outcomes are marked delayed:false;
   // spaced modes (cards, retype, weakness retests) mark themselves delayed.
   const applyGap = (category, key, label) => {
@@ -1188,7 +1208,7 @@ export function recordLearningActivity(event = {}) {
     else recordLearnerSuccess(gap, { at });
   };
   if (event.type === 'dictation') {
-    applyGap('listening', 'dictation', 'Dictée listening accuracy');
+    applyGap('listening', 'dictation', 'DictÃ©e listening accuracy');
   } else if (event.type === 'listening') {
     applyGap('listening', `track:${event.trackId || 'listening'}`, event.label || event.trackId || 'Listening comprehension');
   } else if (event.type === 'pronunciation') {
@@ -1257,7 +1277,7 @@ export function toggleHabit(id, day = dayStamp()) {
 
 // ---- daily streak ----
 
-// Day key in the user's local time — streaks, XP days and challenges roll
+// Day key in the user's local time â€” streaks, XP days and challenges roll
 // over at local midnight, matching Word of the Day and the calendars.
 const dayStamp = (d = new Date()) => d.toLocaleDateString('en-CA');
 
@@ -1266,7 +1286,7 @@ export const getStreak = () => {
   if (!s.lastDay) return s;
   const yesterday = dayStamp(new Date(Date.now() - 86400000));
   const twoDaysAgo = dayStamp(new Date(Date.now() - 2 * 86400000));
-  // A single missed day can be covered by a streak freeze (consumed once —
+  // A single missed day can be covered by a streak freeze (consumed once â€”
   // afterwards lastDay reads as yesterday, so this branch won't re-fire).
   if (s.lastDay === twoDaysAgo && getFreezes() > 0) {
     write(KEYS.freezes, getFreezes() - 1);
@@ -1274,7 +1294,7 @@ export const getStreak = () => {
     write(KEYS.streak, repaired);
     return repaired;
   }
-  // Vacation mode: while active, missed days never break the streak —
+  // Vacation mode: while active, missed days never break the streak â€”
   // lastDay is quietly rolled forward to yesterday.
   const vac = read(KEYS.vacation, null);
   if (s.lastDay !== dayStamp() && s.lastDay !== yesterday && vac && vac >= yesterday) {
@@ -1371,7 +1391,7 @@ function bumpStreak() {
 
 // Same rule as Habit's weeklyStreak: weeks that meet the days-per-week target
 // extend the run, whatever the days. The current week is alive until it ends,
-// so an unmet current week simply isn't counted yet — never a break, never a
+// so an unmet current week simply isn't counted yet â€” never a break, never a
 // reset-to-zero. This is the product's headline rhythm; the daily count is
 // just a number underneath it.
 
@@ -1397,7 +1417,7 @@ export function getActiveDays() {
     for (const [day, xp] of Object.entries(getXpLog())) {
       if (xp > 0 && /^\d{4}-\d{2}-\d{2}$/.test(day)) days.add(day);
     }
-  } catch { /* logs unreadable — sessions below still count */ }
+  } catch { /* logs unreadable â€” sessions below still count */ }
   try {
     for (const [day, count] of Object.entries(read(KEYS.reviewLog, {}))) {
       if (count > 0 && /^\d{4}-\d{2}-\d{2}$/.test(day)) days.add(day);
@@ -1412,7 +1432,7 @@ export function getActiveDays() {
   return [...days].sort();
 }
 
-// Sunday-start week of a YYYY-MM-DD day — the same week rule as Habit, so the
+// Sunday-start week of a YYYY-MM-DD day â€” the same week rule as Habit, so the
 // "same weekly-target rule" claim is literally the same arithmetic.
 function sundayWeekStart(iso) {
   const [y, m, d] = iso.split('-').map(Number);
@@ -1451,7 +1471,7 @@ export function getWeeklyPractice(targetPerWeek, todayIso) {
     if (run > best) best = run;
   }
   // Grace mirrors the daily rule: the current week is still in progress, so
-  // an unmet current week doesn't break the run — it just isn't counted yet.
+  // an unmet current week doesn't break the run â€” it just isn't counted yet.
   let i = met.length - 1;
   if (i >= 0 && !met[i]) i -= 1;
   let current = 0;
@@ -1472,9 +1492,9 @@ export function getWeeklyPractice(targetPerWeek, todayIso) {
 // ISOLATION BOUNDARY (honest scope): today ONLY the streak is per-member.
 // The rest of the learner state (SRS, notebook, mistake graph, XP, grammar,
 // etc.) lives under shared fp.* keys and is therefore SHARED across household
-// members on this install. Fully namespacing every learner key by member —
+// members on this install. Fully namespacing every learner key by member â€”
 // with a safe migration that preserves existing single-user data and keeps
-// export/import working — is a deliberate, larger change tracked separately,
+// export/import working â€” is a deliberate, larger change tracked separately,
 // NOT something to bolt on silently (a naive re-key would orphan existing
 // users' data and break exportProgress/importProgress). Until then, household
 // mode is honest about being "separate streaks on a shared device", which is
@@ -1566,7 +1586,7 @@ const normFr = (s) =>
 
 export function saveToNotebook({ id, fr, en, note = '' }) {
   const nb = getNotebook();
-  // Dedupe on id *and* on normalised French text — manual adds mint fresh
+  // Dedupe on id *and* on normalised French text â€” manual adds mint fresh
   // ids each time, so text is the only reliable duplicate signal.
   const frKey = normFr(fr);
   if (nb.some((e) => e.id === id || (frKey && normFr(e.fr) === frKey))) return nb;
@@ -1732,11 +1752,11 @@ export function recordGrammarQuiz(topicId, score) {
 // The evidence-based scheduler: each card carries an ease factor (EF) that
 // grows when recall is easy and shrinks when it's hard, and the interval
 // compounds by EF once a card has graduated. This spaces reviews to land
-// just as a memory is about to fade — the most efficient way to retain.
+// just as a memory is about to fade â€” the most efficient way to retain.
 
 const DEFAULT_EASE = 2.5;
 const MIN_EASE = 1.3;
-// Map the four rating buttons to SM-2 quality grades (0–5).
+// Map the four rating buttons to SM-2 quality grades (0â€“5).
 const QUALITY = { again: 2, hard: 3, good: 4, easy: 5 };
 const VOCAB_SCORE = { again: 0, hard: 60, good: 85, easy: 100 };
 
@@ -1769,8 +1789,8 @@ export function rateCard(cardId, rating, opts={}) {
   };
   const srs = getSrs();
   const existing = srs[key];
-  // FSRS is the scheduler. It used to be gated on `existing?.S != null` — a
-  // condition only an FSRS card could satisfy — with every call site passing
+  // FSRS is the scheduler. It used to be gated on `existing?.S != null` â€” a
+  // condition only an FSRS card could satisfy â€” with every call site passing
   // that same condition back in as `opts.fsrs`. Nothing ever set S for the
   // first time, so the branch was unreachable and every card in the app was
   // silently scheduled by the SM-2 fallback below. Legacy SM-2 rows convert on
@@ -1792,7 +1812,7 @@ export function rateCard(cardId, rating, opts={}) {
       source: opts.source || 'srs',
       ...identity,
     });
-    // The review outcome is recorded ONCE — in logReview below, which owns the
+    // The review outcome is recorded ONCE â€” in logReview below, which owns the
     // `item:<card>` key shape and per-presentation provenance the evidence
     // tests pin. Recording it here too minted a SECOND weakness for the same
     // lapse under a different key, so one forgotten word inflated into two
@@ -1810,7 +1830,7 @@ export function rateCard(cardId, rating, opts={}) {
     interval = 0;
     ease = Math.max(MIN_EASE, ease - 0.2);
   } else {
-    // SM-2 ease update: EF' = EF + (0.1 − (5−q)(0.08 + (5−q)·0.02)).
+    // SM-2 ease update: EF' = EF + (0.1 âˆ’ (5âˆ’q)(0.08 + (5âˆ’q)Â·0.02)).
     const q = QUALITY[rating];
     ease = Math.max(MIN_EASE, ease + (0.1 - (5 - q) * (0.08 + (5 - q) * 0.02)));
     reps += 1;
@@ -1895,8 +1915,8 @@ function logReview({ cardId, rating, elapsedMs, skill, intervalDays, mode, itemL
     // ONE gap per FSRS card, keyed by the card's own key (bare id for
     // receptive, `id::productive` for productive) so recognition and
     // production stay distinct weaknesses. A parallel `item:` writer here
-    // used to record the same lapse twice — one forgotten word inflated into
-    // two entries — so this is now the single owner.
+    // used to record the same lapse twice â€” one forgotten word inflated into
+    // two entries â€” so this is now the single owner.
     key: event.mode === 'productive' ? `${event.itemId}::productive` : event.itemId,
     label: itemLabel || event.itemId,
     mode: 'cards',
@@ -1906,7 +1926,7 @@ function logReview({ cardId, rating, elapsedMs, skill, intervalDays, mode, itemL
     // NO blanket `delayed: true` here: evidenceStrength decides from the
     // clock (a review on a later local day than the miss is a delayed recall;
     // the same day is not). Claiming "delayed" for every review resolved a
-    // weakness from a single lucky answer minutes after the lapse — the one
+    // weakness from a single lucky answer minutes after the lapse â€” the one
     // thing the evidence rules forbid. A genuinely spaced review still
     // resolves in one pass, because its day really is later.
     // Provenance of the presentation that produced this review. Session id
@@ -1950,10 +1970,12 @@ export const markRemindedToday = () => write(KEYS.reminderDay, dayStamp());
 
 // ---- coins (earned alongside XP; spent on avatars) ----
 
-export const getCoins = () => read(KEYS.coins, 0);
+export const getCoins = () => (Number(read(KEYS.coins, 0)) || 0);
 
 export function addCoins(amount) {
-  const total = getCoins() + Math.max(0, Math.round(amount));
+  // Same NaN hazard as addXp â€” see the note there.
+  const gained = Number.isFinite(Number(amount)) ? Math.max(0, Math.round(Number(amount))) : 0;
+  const total = getCoins() + gained;
   write(KEYS.coins, total);
   return total;
 }
@@ -2108,7 +2130,7 @@ export {
 // metrics, bundle export/import, benchmark/assistance writes, listening
 // progression, authentic-audio packs) lives in stores/researchStoreHeavy.js
 // alongside placementValidation, progressionValidation, intelligibility,
-// evidenceStudy and studyProtocol — lazy screens (Analytics, DevPanel,
+// evidenceStudy and studyProtocol â€” lazy screens (Analytics, DevPanel,
 // StudyPanel, ExamSimulator, WritingStudio, ChatArena) import it directly so
 // the measurement stack never rides the boot graph.
 export {
@@ -2156,7 +2178,7 @@ export function saveLastPlacement(result) {
 /**
  * Placement-derived modality needs for the session allocator. The planner
  * prefers LIVE evidence from the learner-error model; this is the COLD-START
- * seed — a brand-new learner's first sessions follow their placement profile
+ * seed â€” a brand-new learner's first sessions follow their placement profile
  * before any error evidence exists. Null when no placement (or a pre-2.0
  * placement without skillNeeds) is stored.
  */

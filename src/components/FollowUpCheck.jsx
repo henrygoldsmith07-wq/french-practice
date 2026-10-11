@@ -101,9 +101,20 @@ function AuthoredBody({ task, onFinished }) {
   const [correct, setCorrect] = useState(0);
   const [done, setDone] = useState(false);
   // Shuffled once per item so the answer is not always first.
+  //
+  // `picked` must NOT be a dependency. It was, and the memo returned `null` the
+  // instant an option was chosen — which is the render the learner is looking
+  // at — so `item.q` threw on the first tap. That propagated to the ROOT
+  // error boundary and replaced the entire app with "Oups — something broke".
+  // Because it killed the component, `onFinished` never fired: no success was
+  // recorded and the due check stayed owed forever, so the authored
+  // grammar/writing transfer and delayed retest — the segment the whole repair
+  // loop exists for — could never be completed. Re-shuffling needs `idx` (a new
+  // item) or `done`, both of which are here; `picked` only controls which option
+  // is highlighted. Quiz.jsx gets this right.
   const options = useMemo(
-    () => (picked === null && !done ? shuffleOptions(items[Math.min(idx, items.length - 1)]) : null),
-    [items, idx, picked, done],
+    () => (done ? null : shuffleOptions(items[Math.min(idx, items.length - 1)])),
+    [items, idx, done],
   );
 
   useEffect(() => {
@@ -118,6 +129,7 @@ function AuthoredBody({ task, onFinished }) {
     return <p className="text-sm text-ink2 tabular-nums">{correct}/{items.length}</p>;
   }
   const item = options;
+  if (!item || !Array.isArray(item.options) || !item.options.length) return null;
   const choose = (i) => {
     if (picked !== null) return;
     setPicked(i);

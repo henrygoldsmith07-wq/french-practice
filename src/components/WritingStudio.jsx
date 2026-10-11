@@ -62,11 +62,25 @@ export default function WritingStudio({ depth, apiKey, mockMode, level, onXp, on
 
   const wordCount = useMemo(() => text.split(/\s+/).filter(Boolean).length, [text]);
 
+  // A review is in flight across two windows the sibling Writing.jsx already
+  // guards: the learner navigating away, and the "Change" button swapping the
+  // prompt mid-request (which replaces `encounterRef.current`). Either way the
+  // in-flight result belongs to a presentation that is no longer on screen —
+  // so XP, the metrics row, the corpus entry and the error-notebook writes
+  // were all applied for feedback nobody saw, stamped with the NEW encounter
+  // id, which mixes two presentations into one piece of evidence.
+  const aliveRef = useRef(true);
+  useEffect(() => () => { aliveRef.current = false; }, []);
+
   const submit = async () => {
     setReviewing(true);
     setError(null);
+    // Pin the encounter for THIS submission: it must not follow a later
+    // prompt change.
+    const encounterId = encounterRef.current;
     try {
       const r = await writingFeedback(apiKey, { text: text.trim(), prompt: prompt.fr, level, depth, mock: mockMode });
+      if (!aliveRef.current || encounterRef.current !== encounterId) return;
       const overall = r.scores.overall || 50;
       onXp(Math.max(2, Math.round(overall / 10)));
       recordSkillScore('writing', overall);
@@ -76,7 +90,7 @@ export default function WritingStudio({ depth, apiKey, mockMode, level, onXp, on
         label: essay ? 'Essay studio' : 'Free writing',
         // Same prompt (including post-feedback revisions) = same encounter;
         // revisions are flagged assisted so the model treats them honestly.
-        encounterId: encounterRef.current,
+        encounterId,
         activityId: essay ? 'essay-studio' : 'free-writing',
         assisted: revised || undefined,
       });
@@ -117,9 +131,10 @@ export default function WritingStudio({ depth, apiKey, mockMode, level, onXp, on
       }catch{}
       setReview(r);
     } catch (e) {
+      if (!aliveRef.current) return;
       setError(friendlyError(e));
     }
-    setReviewing(false);
+    if (aliveRef.current) setReviewing(false);
   };  const restart = (newPrompt) => {
     if (newPrompt) setPrompt(randomFrom(prompts, prompt));
     setText('');
