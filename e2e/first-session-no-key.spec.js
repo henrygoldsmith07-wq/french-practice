@@ -68,11 +68,18 @@ test.describe('honest fallback with no live AI', () => {
 
     const dialog = page.getByRole('dialog', { name: 'Getting started' });
     await expect(dialog).toBeVisible({ timeout: 15_000 });
-    await page.getByRole('button', { name: /^Continue/ }).click();
-    await page.getByRole('button', { name: /^Continue/ }).click();
-    await page.getByRole('button', { name: /^Continue/ }).click();
-
-    await expect(page.getByRole('heading', { name: /Ready to speak French/i })).toBeVisible();
+    // Advance to the final screen. Clicking a FIXED number of times is brittle
+    // — any new onboarding step (e.g. the spoken diagnostic) shifts the count.
+    // Walk forward until the closing screen is reached (bounded, so a stuck
+    // dialog fails loudly rather than looping).
+    const closing = page.getByRole('heading', { name: /Ready to speak French/i });
+    for (let i = 0; i < 8; i += 1) {
+      if (await closing.isVisible().catch(() => false)) break;
+      const cont = page.getByRole('button', { name: /^Continue/ });
+      if (!(await cont.isVisible().catch(() => false))) break;
+      await cont.click();
+    }
+    await expect(closing).toBeVisible();
 
     if (hasRelay) {
       // A relay build provides real AI with no key, so it must claim exactly that.

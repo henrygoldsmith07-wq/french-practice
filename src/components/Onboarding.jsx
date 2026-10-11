@@ -4,6 +4,7 @@ import { syncLanguage } from '../lib/i18n';
 import { SpeakButton } from './ui';
 import { ArrowRight, Check, ChevronLeft, Sparkles } from './icons';
 import Mascot from './Mascot';
+import DiagnosticStep from './DiagnosticStep';
 
 // Goals are language-aware: exam preparation is authored for French (UK
 // boards + DELF), so a Beta language never advertises it — the same picker
@@ -41,9 +42,11 @@ const DEFAULTS = {
 };
 
 const SECTIONS = ['Language', 'Level', 'Goal', 'Speak'];
-const SECTION_OF = [0, 1, 2, 3];
+// step index → which progress segment is active. The diagnostic and the final
+// "Ready to speak" screen are both part of the Speak section.
+const SECTION_OF = [0, 1, 2, 3, 3];
 
-export default function Onboarding({ open, initialLanguage, aiAvailable = false, onComplete, onSkip, onStartConversation }) {
+export default function Onboarding({ open, initialLanguage, aiAvailable = false, apiKey = null, onComplete, onSkip, onStartConversation }) {
   const [step, setStep] = useState(0);
   const [dir, setDir] = useState('fwd');
   // Seed from the ACTIVE language, not the French default: replaying
@@ -138,6 +141,20 @@ export default function Onboarding({ open, initialLanguage, aiAvailable = false,
             <span className="mt-0.5 block text-xs font-normal text-ink3">Start with an open conversation instead.</span>
           </button>
         </div>
+      ),
+    },
+    {
+      title: 'Say a few sentences',
+      subtitle: `A quick ${lang.name} check — it finds your first thing to fix`,
+      diagnostic: true,
+      body: (
+        <DiagnosticStep
+          apiKey={apiKey}
+          mockMode={!aiReady}
+          language={d.language}
+          level={d.level}
+          onResult={() => {}}
+        />
       ),
     },
     {
