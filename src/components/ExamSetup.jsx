@@ -33,7 +33,14 @@ export function Setup({
   // of which screen set it. Read once here; the date is not expected to change
   // mid-setup.
   const [examDate, setExamDate] = useState(() => getSettings().examDate ?? '');
-  const countdown = examCountdown(examDate || null);
+  // ExamSetup already holds the board registry, so it can resolve the board's
+  // oracy weight for the countdown. Today does NOT (it must not drag boards.js
+  // into its bundle), so there the countdown runs on the date alone.
+  const speakingWeightOf = (id) => BOARDS[id]?.speakingWeight;
+  const countdown = examCountdown(examDate || null, {
+    boardId: getSettings().examBoard ?? null,
+    speakingWeightOf,
+  });
   const qa = timingQa(boardId);
   const matchingBoundaries = boundarySets.filter((set) => (!set.boardId || set.boardId === boardId) && (!set.tier || set.tier === tier));
 

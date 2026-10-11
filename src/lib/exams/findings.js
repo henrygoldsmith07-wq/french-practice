@@ -19,7 +19,12 @@
 //   - Every record carries `source: 'exam'` and the paper's `official: false`
 //     provenance, so nothing here can be mistaken for an official result.
 
-import { TIER } from './boards.js';
+// NOTE: deliberately NO import of boards.js here. boards.js is ~25 KB of board
+// registry data the exam simulator already owns; importing it (even just to
+// re-export TIER) would drag the whole registry into Today's load graph —
+// todayPlan imports examCountdown — and blow Today's 100 KB surface budget. The
+// board's oracy weight is resolved through an injectable lookup instead, so the
+// registry only loads where a board is actually being edited.
 
 /** A criterion below this is a weakness worth feeding the model. */
 export const EXAM_WEAKNESS_FLOOR = 45;
@@ -155,11 +160,20 @@ export function applyPaperFindings(tasks = [], { recordError, recordSuccess, con
  * modalities the exam actually tests; further out it stays general. Returns
  * null when there is no date, so callers never invent urgency.
  *
+ * The board is an OPTIONAL second signal, grounded in real spec data: each
+ * board ships `speakingWeight`, the share of the paper that is oracy (GCSE
+ * 0.25, A-level 0.30). An oracy-heavy paper should lean harder on speaking at
+ * the SAME countdown band than a GCSE one, so the band's base weight is scaled
+ * by the board's oracy weight normalised against the GCSE baseline (0.25 → no
+ * change, 0.30 → a modest lift). No board, unknown board, or a board with no
+ * weight leaves the weight untouched — the countdown alone still works exactly
+ * as before, so this never invents urgency a board does not actually carry.
+ *
  * @param {string|Date|null} examDate
- * @param {object} [options] { now }
+ * @param {object} [options] { now, boardId, speakingWeightOf }
  * @returns {{days:number, band:string, speakWeight:number, note:string}|null}
  */
-export function examCountdown(examDate, { now = Date.now() } = {}) {
+export function examCountdown(examDate, { now = Date.now(), boardId = null, speakingWeightOf } = {}) {
   if (!examDate) return null;
   const at = examDate instanceof Date ? examDate.getTime() : Date.parse(examDate);
   if (!Number.isFinite(at)) return null;
@@ -184,7 +198,25 @@ export function examCountdown(examDate, { now = Date.now() } = {}) {
     note = 'Plenty of time: build the foundations the exam will test.';
   }
 
+  // Board oracy weight: scale the band's base weight by how much of THIS paper
+  // is spoken, normalised against the GCSE baseline so 0.25 is neutral and only
+  // an oracy-heavier paper (e.g. A-level 0.30) lifts the weight. Bounded so a
+  // stray data value can never blow the segment up; unknown/missing weight is a
+  // no-op. A neutral board therefore returns the exact prior number.
+  //
+  // The weight comes from an injectable lookup rather than a static boards.js
+  // import (see the module note): callers that already hold the board registry
+  // pass it in; callers that don't (Today) simply get the countdown alone, with
+  // no invented urgency — the board registry never enters their load graph.
+  const boardWeight = typeof speakingWeightOf === 'function'
+    ? speakingWeightOf(boardId)
+    : null;
+  if (Number.isFinite(boardWeight) && boardWeight > 0) {
+    const scale = 0.25 / boardWeight; // GCSE 0.25 → 1; 0.30 → ~0.83
+    speakWeight = Math.min(2.2, Math.max(1, speakWeight / scale));
+  }
+
   return { days, band, speakWeight, note };
 }
 
-export { CRITERION_LABEL, TIER };
+export { CRITERION_LABEL };

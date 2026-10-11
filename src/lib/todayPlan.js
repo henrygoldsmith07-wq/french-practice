@@ -69,6 +69,12 @@ export function buildTodayPlan(input) {
   // Exam-date pressure, computed once. examCountdown() is null-safe: a missing,
   // invalid or past date yields null, so no countdown means a standard session
   // and the countdown band/note never leak into the plan.
+  //
+  // The exam BOARD is deliberately NOT resolved here: doing so would pull the
+  // ~25 KB board registry into Today's load graph and blow its 100 KB surface
+  // budget. Today's countdown runs on the date alone — the board-tailored
+  // oracy weight is applied where the registry already lives (ExamSetup). This
+  // keeps Today lean and never invents urgency a board does not carry.
   const countdown = examCountdown(examDate, { now });
   const graph = getMistakeGraph();
 
