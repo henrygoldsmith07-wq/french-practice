@@ -1,12 +1,13 @@
 import { useState } from 'react';
 import {
-  getExaminerScripts, saveExamBoundarySet,
+  getExaminerScripts, saveExamBoundarySet, getSettings, setSettings,
 } from '../lib/storage';
 import {
   EXAM_MODE, EXAM_MODES, TIER, timingQa, BOARDS, boardList, specCaveat,
 } from '../lib/exams/boards.js';
 import { benchmarkExaminer } from '../lib/exams/simulator.js';
 import { parseBoundaryImport } from '../lib/exams/boundaries.js';
+import { examCountdown } from '../lib/exams/findings';
 import { GraduationCap } from './icons';
 
 // Shared time formatter (same shape as the simulator stage's local fmt).
@@ -27,6 +28,12 @@ export function Setup({
   examMode, setExamMode, boundarySets, boundarySetId, setBoundarySetId, onBoundarySaved, onStart, error,
 }) {
   const bench = benchmarkExaminer(getExaminerScripts());
+  // Exam date is self-persisting (read/written to settings directly) so the
+  // countdown that reshapes Today works from the moment it is set, regardless
+  // of which screen set it. Read once here; the date is not expected to change
+  // mid-setup.
+  const [examDate, setExamDate] = useState(() => getSettings().examDate ?? '');
+  const countdown = examCountdown(examDate || null);
   const qa = timingQa(boardId);
   const matchingBoundaries = boundarySets.filter((set) => (!set.boardId || set.boardId === boardId) && (!set.tier || set.tier === tier));
   return (
@@ -64,6 +71,34 @@ export function Setup({
               />
             </Field>
           )}
+
+          <Field label="When is your exam?">
+            <div className="space-y-1">
+              <input
+                type="date"
+                value={examDate}
+                onChange={(e) => {
+                  setExamDate(e.target.value);
+                  // Persist immediately so the countdown reshaping Today takes
+                  // effect now, and a partial setup still remembers the date.
+                  const next = { ...getSettings(), examDate: e.target.value || null };
+                  setSettings(next);
+                }}
+                className="bg-bg border border-line rounded-xl px-3 py-2 text-sm"
+                aria-label="Exam date"
+              />
+              {countdown ? (
+                <p className="text-xs text-ink2">
+                  <strong className="text-ink">{countdown.days} day{countdown.days === 1 ? '' : 's'} to go.</strong>{' '}
+                  {countdown.note}
+                </p>
+              ) : (
+                <p className="text-xs text-ink2">
+                  Set a date and Today will lean harder on speaking as the paper gets close. Leave it blank to keep the usual mix.
+                </p>
+              )}
+            </div>
+          </Field>
 
           <Field label="Exam format">
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
@@ -260,4 +295,4 @@ function BoundaryImport({ boardId, tier, sets, selectedId, onSelect, onSaved }) 
     </section>
   );
 }
-
+

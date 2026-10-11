@@ -239,12 +239,27 @@ test('short sessions drop micro-segments instead of scheduling 1-minute context 
   assert.ok(plan.skipped.includes('review'));
 });
 
-test('exam pressure routes speak through the exam-style note', () => {
+test('exam pressure lifts the speak segment above the standard mix', () => {
+  // The countdown must reshape the plan, not just the copy: `examSoon` used to
+  // swap a sentence while the minutes stayed identical, which is why the
+  // README's "countdown reshapes Today" was not actually true. Two modalities
+  // are needed for the split to be visible — a lone source absorbs the whole
+  // budget regardless of weight (the allocator gives the only runnable
+  // segment the full session), so retrieve is present to compete for time.
+  const plain = buildDailyCurriculum({ minutes: 20, srsDue: 8, suggestedScenarioId: 'cafe' });
+  const pressured = buildDailyCurriculum({ minutes: 20, srsDue: 8, examSoon: true, suggestedScenarioId: 'cafe' });
+  const plainSpeak = plain.segments.find((s) => s.id === 'speak')?.minutes ?? 0;
+  const pressuredSpeak = pressured.segments.find((s) => s.id === 'speak')?.minutes ?? 0;
+  assert.ok(pressuredSpeak > plainSpeak, `speak grew under exam pressure (${plainSpeak} → ${pressuredSpeak})`);
+});
+
+test('an exam countdown note becomes the speak segment\'s plain-language why', () => {
+  const note = 'Three weeks or less: speaking and timed practice lead.';
   const plan = buildDailyCurriculum({
-    minutes: 20, examSoon: true, suggestedScenarioId: 'cafe',
+    minutes: 20, suggestedScenarioId: 'cafe', examCountdownNote: note,
   });
   const speak = plan.segments.find((s) => s.id === 'speak');
-  assert.match(speak.why, /Exam-style/);
+  assert.match(speak.why, /Three weeks or less/);
 });
 
 test('retype-only repair state still produces a drill segment', () => {

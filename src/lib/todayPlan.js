@@ -11,6 +11,7 @@
 // blocks practice.
 
 import { buildDailyCurriculum } from './dailyCurriculum.js';
+import { examCountdown } from './exams/findings.js';
 import {
   dueRetests, EVIDENCE_ENGINE_VERSION,
 } from './mistakeGraph.js';
@@ -58,12 +59,17 @@ export function buildTodayPlan(input) {
     entries, scenariosReg, grammarReady, listeningTracks,
     studyModule = null, degradedLearning = false,
     conjCap = false, authoredCap = false, accentCap = false,
+    examDate = null,
     now = Date.now(),
   } = input || {};
   if (!open || entries === null || scenariosReg === null || !grammarReady || listeningTracks === null) return null;
   if (!degradedLearning && !studyModule && !input.studyFailed) return null;
 
   const studyApi = studyModule && !degradedLearning ? studyModule : null;
+  // Exam-date pressure, computed once. examCountdown() is null-safe: a missing,
+  // invalid or past date yields null, so no countdown means a standard session
+  // and the countdown band/note never leak into the plan.
+  const countdown = examCountdown(examDate, { now });
   const graph = getMistakeGraph();
 
   // Study enrolment is idempotent and consent-gated; a failure leaves `study`
@@ -193,6 +199,11 @@ export function buildTodayPlan(input) {
     skillNeeds: getSkillNeedsSafe(),
     evidenceDue: followUpDue,
     followUp,
+    // Exam-date pressure: reshapes the mix (not just copy) toward the paper.
+    // examCountdown() returns null for a missing/past/invalid date, so a
+    // learner with no exam set gets the standard session — no invented urgency.
+    speakBoost: countdown?.speakWeight ?? 1,
+    examCountdownNote: countdown?.note ?? '',
   });
   const planResolved = resolvePlanCapabilities(planBuilt, caps);
   if (!planResolved.segments.length) return null;

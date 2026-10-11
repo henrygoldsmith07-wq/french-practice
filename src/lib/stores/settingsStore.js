@@ -75,6 +75,7 @@ const DEFAULT_SETTINGS = {
   dyslexiaFont: false,
   highContrast: false,
   examBoard: null, // null | gcse-aqa | gcse-edexcel | a-level-aqa | delf-b1 | delf-b2
+  examDate: null, // ISO date string (YYYY-MM-DD) of the candidate's paper, or null
   correctionFrequency: 'adaptive', // adaptive | every-turn | important | end | off
 };
 export const getSettings = () => ({ ...DEFAULT_SETTINGS, ...read(KEYS.settings, {}) });

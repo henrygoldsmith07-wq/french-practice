@@ -107,7 +107,9 @@ function allocateMinutes(sources, total) {
  *   recentCorrections?: number,     // corrected sentences from last ~48h
  *   weaknessScenarioId?: string|null,
  *   suggestedScenarioId?: string|null,
- *   examSoon?: boolean,
+ *   examSoon?: boolean,          // (legacy copy flag; prefer examCountdownNote)
+ *   speakBoost?: number,         // exam-date pressure (1.0 → 1.8); scales speak weight
+ *   examCountdownNote?: string,  // learner-facing "why now" from the exam countdown
  *   listeningTrack?: {id,title,audioSrc?}|null,
  *   dayIndex?: number,
  *   skillNeeds?: { listen?: number, speak?: number, retrieve?: number },
@@ -122,6 +124,7 @@ export function buildDailyCurriculum(input = {}) {
     examSoon = false, listeningTrack = null,
     balanced = false, balancedDrillTopic = null,
     skillNeeds = null, evidenceDue = null, followUp = null,
+    speakBoost = 1, examCountdownNote = '',
   } = input;
   const total = Math.max(5, Math.min(45, Math.round(minutes)));
 
@@ -135,6 +138,17 @@ export function buildDailyCurriculum(input = {}) {
   // unmodulated — they are the loop's repair arm and follow the mistake
   // graph, not taste.
   const needs = skillNeeds && typeof skillNeeds === 'object' ? skillNeeds : {};
+  // Exam pressure: an exam-date countdown scales the productive (speak) weight
+  // up toward the paper. This is a genuine mix change, not copy: `examSoon`
+  // used to only swap a sentence while the time split stayed identical, so the
+  // advertised "countdown reshapes Today" never actually happened. `speakBoost`
+  // (1.0 far out → 1.8 inside three weeks) multiplies the speak weight; every
+  // other modality keeps its base so the session still covers the full loop.
+  // `examSoon` remains a supported boolean: passed on its own (no numeric
+  // boost) it gives a mild default pressure so a caller that only knows "an
+  // exam is coming" still leans speak. The real banded weight comes from
+  // speakBoost (see lib/todayPlan.js), which overrides this.
+  const boost = Math.max(1, speakBoost === 1 && examSoon ? 1.3 : (Number(speakBoost) || 1));
   // A due follow-up is stronger scheduling information than a generic skill
   // imbalance: it tells us recent learning needs another independent encounter.
   // It only changes modality time here; the generic segment is NOT recorded as
@@ -158,7 +172,7 @@ export function buildDailyCurriculum(input = {}) {
   };
   const effectiveWeights = balanced ? SEGMENT_WEIGHTS : {
     retrieve: modulate('retrieve'),
-    speak: modulate('speak'),
+    speak: modulate('speak') * boost,
     listen: modulate('listen'),
     drill: SEGMENT_WEIGHTS.drill,
     review: SEGMENT_WEIGHTS.review,
@@ -217,8 +231,8 @@ export function buildDailyCurriculum(input = {}) {
       payload: { scenarioId },
       why: (effWeaknessScenarioId
         ? 'Retests a structure you slipped on — in a fresh context.'
-        : examSoon
-          ? 'Exam-style speaking keeps production sharp.'
+        : examCountdownNote
+          ? examCountdownNote
           : 'Productive speech first: say things, get corrected.') + followUpSuffix('speak'),
     });
   }

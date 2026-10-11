@@ -5,6 +5,7 @@ import {
 import FollowUpCheck from './FollowUpCheck';
 import { takeawayPhrase } from '../lib/takeaway';
 import { buildTodayPlan } from '../lib/todayPlan';
+import { getSettings } from '../lib/storage';
 // Study glue is measurement infrastructure: it loads WITH the session (the
 // lazy ChatArena/HeldOutCheck chunks pull the same module), never with the
 // app — same discipline as the listening library. Plan construction GATES on
@@ -111,6 +112,7 @@ export default function TodaySession({ open, onClose, minutes = 20, apiKey, mock
     conjCap,
     authoredCap,
     accentCap,
+    examDate: getSettings().examDate ?? null,
   }),
   // deps: every async dependency's arrival (or failure, or retry) changes the
   // deps object → these primitives change → the plan replans no matter what
