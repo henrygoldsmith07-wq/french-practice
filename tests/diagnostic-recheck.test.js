@@ -150,3 +150,89 @@ test('the re-check result is recorded against the same weakness it names', async
   assert.ok(cycle, 'the pass lands on the weakness the diagnostic named');
   assert.ok(cycle.transfers.some((t) => t.correct), 'a clean re-check is real transfer evidence');
 });
+
+// ── the one clock: copy and scheduler agree by construction ─────────────────
+//
+// The onboarding copy used to say "3 days" while the scheduler fired at its own
+// 20h floor — a promise the engine ignored. The horizon is now derived ONCE, by
+// urgency, and both the displayed date and the fired date come from it.
+
+test('the re-check horizon is adaptive: a clear gap is looked at sooner than a mild one', async () => {
+  const { recheckHorizonHours, RECHECK_FLOOR_HOURS } = await import('../src/lib/diagnostic.js');
+  const clear = recheckHorizonHours(20); // a strong gap
+  const moderate = recheckHorizonHours(40);
+  const mild = recheckHorizonHours(70);
+  assert.ok(clear < moderate, 'a clear gap is re-checked sooner than a moderate one');
+  assert.ok(moderate < mild, 'a moderate gap is re-checked sooner than a mild one');
+  // Every band is a real gap, never a same-day retake, and never absurdly far.
+  for (const h of [clear, moderate, mild]) {
+    assert.ok(h >= RECHECK_FLOOR_HOURS, 'never below the 20h floor');
+    assert.ok(h <= 5 * 24, 'never beyond five days');
+  }
+});
+
+test('diagnoseSpeaking schedules the horizon the copy will show, above the floor', async () => {
+  globalThis.localStorage = memoryStorageDouble();
+  const { diagnoseSpeaking } = await import(`../src/lib/diagnostic.js?v=${Date.now()}`);
+  const { DELAYED_MIN_HOURS } = await import('../src/lib/learningEvidence.js');
+  const t0 = Date.now();
+  // A clear gap (accuracy 15, others high) → the "soon" band.
+  const out = diagnoseSpeaking(
+    { transcript: 'je suis allé', accuracy: 15, fluency: 90, vocabulary: 90, pronunciation: 90 },
+    { now: t0, recordError: () => ({ id: 'x', status: 'active' }) },
+  );
+  assert.ok(out.finding, 'a weakness is named');
+  assert.ok(out.recheckHours >= DELAYED_MIN_HOURS, 'the scheduled horizon respects the engine floor');
+  // The date the learner will be told IS the date the engine fires: the delta
+  // from now equals the returned horizon exactly.
+  const firedMs = Date.parse(out.recheckAt) - t0;
+  assert.equal(Math.round(firedMs / 3600000), out.recheckHours, 'copy date == engine date');
+  assert.match(out.note, /We'll check it again in \d+ day/, 'the copy states the same horizon');
+});
+
+test('the scheduler fires the diagnostic’s scheduled date, not a re-derived one', async () => {
+  const storage = await fresh();
+  const t0 = Date.now();
+  // A mild gap (score 70) schedules the LONG horizon (5 days). The scheduler
+  // must honor that stored date, not fire at the 20h floor.
+  storage.recordLearnerError({
+    category: 'grammar', key: 'diagnostic:accuracy', label: 'grammar and verb accuracy',
+    mode: 'diagnostic', source: 'spoken-diagnostic', score: 70,
+    sessionId: 's-diag', encounterId: 'diag-1',
+    detail: `recheck@${new Date(t0 + 5 * 24 * 3600000).toISOString()}`,
+  });
+  // Just past the 20h floor but well before the scheduled 5-day date: NOT due.
+  const afterFloor = t0 + (DELAYED_MIN_HOURS + 1) * 3600000;
+  assert.ok(
+    !storage.getLearningEvidenceOverview(afterFloor).due.some((d) => d.recheck),
+    'the mild gap is NOT owed at the floor — the scheduled 5-day date is honored',
+  );
+  // Past the scheduled date: now due.
+  const afterScheduled = t0 + 5 * 24 * 3600000 + 3600000;
+  assert.ok(
+    storage.getLearningEvidenceOverview(afterScheduled).due.some((d) => d.recheck),
+    'owed once the scheduled date passes',
+  );
+});
+
+test('a scheduled date can never fire before the floor', async () => {
+  const storage = await fresh();
+  const t0 = Date.now();
+  // A pathological schedule that tries to fire at 1h — clamped up to the floor.
+  storage.recordLearnerError({
+    category: 'grammar', key: 'diagnostic:accuracy', label: 'grammar',
+    mode: 'diagnostic', source: 'spoken-diagnostic', score: 20,
+    sessionId: 's-diag', encounterId: 'diag-1',
+    detail: `recheck@${new Date(t0 + 3600000).toISOString()}`,
+  });
+  const beforeFloor = t0 + 5 * 3600000;
+  assert.ok(
+    !storage.getLearningEvidenceOverview(beforeFloor).due.some((d) => d.recheck),
+    'a too-early schedule is clamped to the floor — never a same-day retake',
+  );
+  const afterFloor = t0 + (DELAYED_MIN_HOURS + 1) * 3600000;
+  assert.ok(
+    storage.getLearningEvidenceOverview(afterFloor).due.some((d) => d.recheck),
+    'owed at the floor even if the schedule asked for sooner',
+  );
+});

@@ -175,7 +175,13 @@ export default function DiagnosticStep({ apiKey, mockMode, language = 'fr', leve
 
 function DiagnosticResult({ result, onRetry }) {
   const { finding, recheckAt, note, offline } = result;
-  const days = recheckAt ? Math.max(0, Math.round((new Date(recheckAt).getTime() - Date.now()) / 86_400_000)) : 0;
+  // The date is the SAME one the scheduler fires (diagnoseSpeaking derives both
+  // from recheckHorizonHours), so "in N days" is exactly when it comes back.
+  // Round UP: a 2.1-day gap shown as "2 days" would fire a day later than the
+  // copy implies. `recheckHours` (when present) is the authoritative number.
+  const days = recheckAt
+    ? Math.max(1, Math.ceil((new Date(recheckAt).getTime() - Date.now()) / 86_400_000))
+    : 0;
   return (
     <div className="space-y-3" data-testid="diagnostic-result">
       {finding ? (

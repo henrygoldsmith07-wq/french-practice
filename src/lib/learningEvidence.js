@@ -53,6 +53,20 @@ const text = (value, max = 120) => {
   return str ? str.slice(0, max) : null;
 };
 
+// The spoken diagnostic schedules its re-check date adaptively and carries it
+// on the baseline event's detail as `recheck@<iso>` (see lib/diagnostic.js).
+// Parse it back so the scheduler fires the SAME date the learner was shown —
+// one clock, no drift between the promise and the engine. Returns null for any
+// other detail, so a normal mistake (or a malformed token) simply uses the
+// standard floor-based rule.
+const RECHECK_SCHEDULE_PREFIX = 'recheck@';
+function parseRecheckSchedule(detail) {
+  const raw = String(detail || '');
+  if (!raw.startsWith(RECHECK_SCHEDULE_PREFIX)) return null;
+  const at = Date.parse(raw.slice(RECHECK_SCHEDULE_PREFIX.length).trim());
+  return Number.isFinite(at) ? at : null;
+}
+
 function assistanceOf(event = {}) {
   if (event.assistance === 'assisted' || event.assisted === true) return 'assisted';
   if (event.assistance === 'scaffolded' || event.hinted === true) return 'scaffolded';
@@ -381,7 +395,15 @@ export function dueLearningChecks(state, now = Date.now()) {
     // definition, and gating first would skip it and never start the loop.
     const freshPositive = [...cycle.interventions, ...cycle.transfers, ...cycle.delayed]
       .some((e) => e.correct === true);
-    const freshDueAt = Date.parse(lastRecurrence) + DELAYED_MIN_HOURS * 3600000;
+    // The due date: the diagnostic can SCHEDULE an adaptive horizon (a clear
+    // gap is looked at sooner, a mild one later), carried on the baseline
+    // event's detail as `recheck@<iso>`. Honor it when present so the engine
+    // fires the SAME date the learner was shown; otherwise fall back to the
+    // floor measured from the event. Never earlier than the floor — a
+    // malformed or absent token just uses the standard rule.
+    const scheduledAt = parseRecheckSchedule(cycle.baseline.at(-1)?.detail);
+    const freshFloorAt = Date.parse(lastRecurrence) + DELAYED_MIN_HOURS * 3600000;
+    const freshDueAt = scheduledAt != null ? Math.max(scheduledAt, freshFloorAt) : freshFloorAt;
     if (!freshPositive && now >= freshDueAt) {
       due.push({
         type: 'transfer',
