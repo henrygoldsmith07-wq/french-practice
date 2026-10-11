@@ -62,7 +62,13 @@ async function completeOnboardingAs(page, languageCardName, expectedBetaName) {
   await dialog.getByRole('button', { name: /Skip goal for now/i }).click();
   await dialog.getByRole('button', { name: /Continue/ }).click();
 
-  // Step 4 — the Beta note must tell the truth about what's ready.
+  // Step 4 — the spoken diagnostic (optional). Walk past it: it is skippable,
+  // and clicking "Continue" advances without recording. Anchored on its heading
+  // so a slower engine never races the transition.
+  await expect(step(/Say a few sentences/)).toBeVisible();
+  await dialog.getByRole('button', { name: /Continue/ }).click();
+
+  // Step 5 — the Beta note must tell the truth about what's ready.
   const note = dialog.getByTestId('beta-note');
   await expect(note).toBeVisible();
   await expect(note).toContainText(`${expectedBetaName} · Beta`);
@@ -164,6 +170,9 @@ test.describe('German Beta journey', () => {
     await dialog.getByRole('button', { name: /Continue/ }).click();
     await dialog.getByRole('button', { name: /Continue/ }).click();
     await dialog.getByRole('button', { name: /Skip goal for now/i }).click();
+    await dialog.getByRole('button', { name: /Continue/ }).click();
+    // Walk past the skippable spoken diagnostic to reach the Beta note.
+    await dialog.getByText(/Say a few sentences/, { exact: false }).first().waitFor();
     await dialog.getByRole('button', { name: /Continue/ }).click();
     await expect(dialog.getByTestId('beta-note')).toContainText('German · Beta');
     // Escape closes the actual open overlay (onboarding is topmost now).

@@ -51,6 +51,9 @@ async function completeOnboardingAs(page, languageCardName) {
   await expect(dialog.getByRole('button', { name: /School & exams/i })).toHaveCount(0);
   await dialog.getByRole('button', { name: /Skip goal for now/i }).click();
   await dialog.getByRole('button', { name: /Continue/ }).click();
+  // Walk past the skippable spoken diagnostic to reach the Beta note.
+  await dialog.getByText(/Say a few sentences/, { exact: false }).first().waitFor();
+  await dialog.getByRole('button', { name: /Continue/ }).click();
   await expect(dialog.getByTestId('beta-note')).toContainText(/· Beta/);
   // Land on Today, not the conversation — submode journeys navigate themselves.
   await dialog.getByRole('button', { name: /Explore the studio|Skip/i }).click().catch(async () => {
