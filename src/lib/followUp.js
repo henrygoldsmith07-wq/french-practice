@@ -27,6 +27,7 @@ export const FOLLOW_UP_KINDS = Object.freeze({
   AUTHORED: 'authored-transfer',
   PRODUCTION: 'production-transfer',
   LISTENING: 'listening-transfer',
+  DIAGNOSTIC: 'diagnostic-recheck',
 });
 
 const asText = (value) => String(value || '').trim();
@@ -66,6 +67,29 @@ export function followUpTask(due, options = {}) {
   const dayIndex = Number.isFinite(Number(options.dayIndex)) ? Number(options.dayIndex) : localDayIndex();
   const limit = Math.max(1, Math.min(4, Number(options.limit) || 3));
   const targetId = target.id || `${skill}:${key}`;
+
+  // ── Diagnostic re-check: the first named weakness, looked at again ───────
+  // The spoken diagnostic names a weakness from one sample and owes a fresh
+  // look at it. Three of its four dimensions have an honest offline check, so
+  // the re-check is built from the SAME runners the repair loop already trusts
+  // (authored quiz lane for grammar, productive-use for vocabulary, unseen
+  // track for listening). Pronunciation is spoken and its only honest scorer
+  // needs the live ASR path — absent that, this returns null, exactly like the
+  // ordinary pronunciation follow-up, so nothing is ever promised that cannot
+  // be graded. `recheck` is set only by dueLearningChecks for a fresh baseline,
+  // so a normal repair debt can never fall into this branch. The recursive
+  // call carries `skipDiagnostic` so it builds the underlying task once and
+  // never re-enters here.
+  if (due?.recheck === true && options.skipDiagnostic !== true) {
+    const base = followUpTask({ type, target }, { ...options, skipDiagnostic: true });
+    if (!base) return null;
+    return {
+      ...base,
+      kind: FOLLOW_UP_KINDS.DIAGNOSTIC,
+      prompt: 'The very first thing we flagged. Here it is again.',
+      encounterId: `diagnostic:${targetId}:${type}:${dayIndex}`,
+    };
+  }
 
   // ── Authored grammar / writing: the library's SECOND lane ───────────────
   // Every authored topic ships `drills` (what the repair drill shows) and
@@ -220,6 +244,8 @@ export function proofFor(task) {
       return 'using the word unprompted in a new sentence shows it is reachable in production, not only in recognition';
     case FOLLOW_UP_KINDS.LISTENING:
       return 'understanding a recording the learner has never heard shows the ear holds up on new material, not just the practised one';
+    case FOLLOW_UP_KINDS.DIAGNOSTIC:
+      return 'a second look at the first thing we flagged shows whether the opening assessment was real, not a one-off sample';
     default:
       return 'practice only; no claim is made from this check';
   }
@@ -241,6 +267,8 @@ export function followUpCopy(task) {
       return task.type === 'delayed'
         ? 'You got this one before. Here is something else entirely.'
         : 'Listen to something new, then answer on what you understood.';
+    case FOLLOW_UP_KINDS.DIAGNOSTIC:
+      return 'The very first thing we flagged, back for a second look.';
     default:
       return 'A check you owe yourself.';
   }

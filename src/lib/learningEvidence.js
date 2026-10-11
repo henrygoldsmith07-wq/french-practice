@@ -367,6 +367,33 @@ export function dueLearningChecks(state, now = Date.now()) {
     const status = learningCycleStatus(cycle, now);
     if (status === LEARNING_STATES.DEMONSTRATED) continue;
     const lastRecurrence = cycle.recurrences.at(-1)?.at || cycle.startedAt;
+    // A fresh weakness that has never shown a single sign of repair owes a
+    // re-check: one baseline and nothing since is precisely "we said this was
+    // weak and never looked again". The diagnostic lands here — it records a
+    // baseline and nothing else — so without this the first named weakness
+    // would never become a runnable task and the loop would never start.
+    // Fresh means no positive evidence in the cycle at all: any later success
+    // is already handled by the lanes below. Delayed by DELAYED_MIN_HOURS so
+    // the learner meets the weakness again after a gap, never as a same-day
+    // re-take of the sample they just gave. The named 20h rule is reused, not
+    // re-invented, so one delay means the same thing everywhere. Checked BEFORE
+    // the intervention gate: a fresh baseline has no intervention by
+    // definition, and gating first would skip it and never start the loop.
+    const freshPositive = [...cycle.interventions, ...cycle.transfers, ...cycle.delayed]
+      .some((e) => e.correct === true);
+    const freshDueAt = Date.parse(lastRecurrence) + DELAYED_MIN_HOURS * 3600000;
+    if (!freshPositive && now >= freshDueAt) {
+      due.push({
+        type: 'transfer',
+        target: cycle.target,
+        cycleId: cycle.id,
+        dueAt: new Date(freshDueAt).toISOString(),
+        overdueHours: Math.max(0, (now - freshDueAt) / 3600000),
+        sourceModality: (cycle.baseline.at(-1) || {}).modality,
+        recheck: true,
+      });
+      continue;
+    }
     // Repair and transfer steps settle on a correct pass of their own — that is
     // the lane's own contract, and these are the two lanes the follow-up runner
     // writes deliberately.
