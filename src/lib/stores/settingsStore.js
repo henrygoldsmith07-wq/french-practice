@@ -74,7 +74,8 @@ const DEFAULT_SETTINGS = {
   largeText: false,
   dyslexiaFont: false,
   highContrast: false,
-  examBoard: null, // null | gcse-aqa | gcse-edexcel | a-level-aqa | delf-b1 | delf-b2
+  examBoard: null, // null | a board id from lib/exams/boards.js BOARDS (e.g. 'wjec-gcse-3830'), or null
+  examTier: null, // null | 'foundation' | 'higher' — the tier for the chosen board
   examDate: null, // ISO date string (YYYY-MM-DD) of the candidate's paper, or null
   correctionFrequency: 'adaptive', // adaptive | every-turn | important | end | off
 };

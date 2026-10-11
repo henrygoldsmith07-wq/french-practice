@@ -36,6 +36,18 @@ export function Setup({
   const countdown = examCountdown(examDate || null);
   const qa = timingQa(boardId);
   const matchingBoundaries = boundarySets.filter((set) => (!set.boardId || set.boardId === boardId) && (!set.tier || set.tier === tier));
+
+  // Persist the chosen board+tier to settings the moment it is picked, exactly
+  // like the exam date. These used to live only in ExamSimulator's component
+  // state, so the learner's exam identity was thrown away on navigation and
+  // `settings.examBoard` stayed null forever — a stored-but-unreachable setting
+  // that the exam-diagnostic journey and Today could never use. Persisting here
+  // makes the choice durable and readable app-wide. Merged onto current settings
+  // so a concurrent examDate (or any other pref) is never clobbered.
+  const persistExamIdentity = (id, chosenTier) => {
+    const valid = BOARDS[id] ? id : null;
+    setSettings({ ...getSettings(), examBoard: valid, examTier: chosenTier || null });
+  };
   return (
     <div className="h-full overflow-y-auto nice-scroll px-[22px] py-6">
       <div className="max-w-[820px] mx-auto space-y-5">
@@ -51,7 +63,14 @@ export function Setup({
               {boardList().map((b) => (
                 <button
                   key={b.id}
-                  onClick={() => { setBoardId(b.id); if (!b.tiers.length) setTier(TIER.HIGHER); }}
+                  onClick={() => {
+                    setBoardId(b.id);
+                    // A board with no tiers is a single-tier qualification, so it
+                    // carries Higher implicitly.
+                    const nextTier = b.tiers.length ? tier : TIER.HIGHER;
+                    if (!b.tiers.length) setTier(TIER.HIGHER);
+                    persistExamIdentity(b.id, nextTier);
+                  }}
                   className={`text-left rounded-xl border px-3 py-2 text-sm transition ${boardId === b.id || (BOARDS[boardId]?.aliasFor === b.id) ? 'border-ink bg-ink text-bg' : 'border-line hover:border-ink2'}`}
                 >
                   <span className="block font-medium">{b.name}</span>
@@ -67,7 +86,7 @@ export function Setup({
               <Segmented
                 options={board.tiers.map((t) => ({ id: t, label: t === TIER.FOUNDATION ? 'Foundation' : 'Higher' }))}
                 value={tier}
-                onChange={setTier}
+                onChange={(t) => { setTier(t); persistExamIdentity(boardId, t); }}
               />
             </Field>
           )}

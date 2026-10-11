@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import useRecorder from '../hooks/useRecorder';
 import { transcribe, friendlyError } from '../lib/groq';
 import { speak } from '../lib/tts';
-import { getExamBoundarySets } from '../lib/storage';
+import { getExamBoundarySets, getSettings } from '../lib/storage';
 import { BOARDS,
   EXAM_MODE,
   EXAM_MODES,
@@ -38,8 +38,20 @@ const fmt = (s) => {
 };
 
 export default function ExamSimulator({ apiKey, mockMode, onXp, onActivity }) {
-  const [boardId, setBoardId] = useState(() => resolveWjecGcse().id);
-  const [tier, setTier] = useState(TIER.HIGHER);
+  // Seed board/tier from the persisted exam identity so a choice made in a
+  // previous session (or another screen) is honoured here. ExamSetup writes
+  // settings.examBoard/examTier the moment the learner picks; falling back to
+  // the WJEC default only when nothing is stored keeps first-run behaviour
+  // unchanged while making the choice durable across navigation.
+  const savedExam = (() => {
+    try {
+      const s = getSettings();
+      const boardId = s.examBoard && BOARDS[s.examBoard] ? s.examBoard : null;
+      return { boardId, tier: s.examTier || null };
+    } catch { return { boardId: null, tier: null }; }
+  })();
+  const [boardId, setBoardId] = useState(() => savedExam.boardId || resolveWjecGcse().id);
+  const [tier, setTier] = useState(() => savedExam.tier || TIER.HIGHER);
   const [theme, setTheme] = useState('');
   const [mode, setMode] = useState('full');
   const [examMode, setExamMode] = useState(EXAM_MODE.SPEAKING);
@@ -595,4 +607,4 @@ function ConversationPrompts({ material }) {
     </div>
   );
 }
-
+
