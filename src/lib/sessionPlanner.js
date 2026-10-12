@@ -18,6 +18,10 @@
 // and listening.
 
 import { WEAKNESS_LIFECYCLE, weaknessLifecycle } from './weaknessLifecycle.js';
+import { resolveExamWeighting } from './examWeighting.js';
+import { SCORE_FACTORS, FACTOR_REASON, FACTOR_PENALTY } from './plannerFactors.js';
+
+export { SCORE_FACTORS };
 
 export const SEGMENT_KINDS = Object.freeze([
   'warmup', 'input', 'speak', 'repair', 'transfer', 'retrieve', 'review',
@@ -26,46 +30,7 @@ export const SEGMENT_KINDS = Object.freeze([
 /** Narrative order of the session. Segments absent from a plan are skipped. */
 export const SESSION_ARC = Object.freeze(['warmup', 'input', 'speak', 'repair', 'transfer', 'retrieve']);
 
-export const SCORE_FACTORS = Object.freeze({
-  recurrence: 'recurrence',
-  activeWeakness: 'active-weakness',
-  dueRetest: 'due-retest',
-  dueVocabulary: 'due-vocabulary',
-  independenceGap: 'independence-gap',
-  skillImbalance: 'skill-imbalance',
-  goalAlignment: 'goal-alignment',
-  transferDue: 'transfer-due',
-  delayedDue: 'delayed-due',
-  repetitionPenalty: 'repetition-penalty',
-  easyWin: 'easy-win',
-  fluencyBoost: 'fluency-boost',
-  listeningStarved: 'listening-starved',
-  speakingStarved: 'speaking-starved',
-});
-
 const round2 = (n) => Math.round(n * 100) / 100;
-
-// Human-readable factor explanations — the internal/dev inspection surface.
-// Learners only ever see the concise copy in segmentExplain.js; this is what
-// makes a planner decision auditable ("why THIS segment, today?").
-const FACTOR_REASON = {
-  [SCORE_FACTORS.recurrence]: 'has recurred after improving',
-  [SCORE_FACTORS.activeWeakness]: 'is an open weakness in recent work',
-  [SCORE_FACTORS.dueRetest]: 'a delayed retest is due on it',
-  [SCORE_FACTORS.dueVocabulary]: 'vocabulary is due for recall',
-  [SCORE_FACTORS.independenceGap]: 'has only been used correctly with help so far',
-  [SCORE_FACTORS.skillImbalance]: 'the skill has fallen behind the others',
-  [SCORE_FACTORS.goalAlignment]: 'matches what the learner said they want',
-  [SCORE_FACTORS.transferDue]: 'is ready to be tested in a new situation',
-  [SCORE_FACTORS.delayedDue]: 'is due for a check after the delay',
-  [SCORE_FACTORS.easyWin]: 'easy material for fluency and confidence',
-  [SCORE_FACTORS.fluencyBoost]: 'a confidence-building win is due',
-  [SCORE_FACTORS.listeningStarved]: 'listening practice has been quiet lately',
-  [SCORE_FACTORS.speakingStarved]: 'speaking time has been low lately',
-};
-const FACTOR_PENALTY = {
-  [SCORE_FACTORS.repetitionPenalty]: 'the same mode or target was used recently',
-};
 
 /**
  * What a clean pass on this segment would PROVE — the planner's forward
@@ -232,12 +197,18 @@ export function scoreCandidates(state = {}) {
       factors[SCORE_FACTORS.transferDue] = 1.0;
       evidence.push('a repaired weakness is ready for an independent check');
     }
-    // Open speaking/pronunciation pressure outranks the base value, so a
-    // corroborated speaking weakness actually buys the session's speech.
+    // A corroborated speaking weakness outranks the base value.
     const speakNeed = needOf('speak');
     if (speakNeed > 0) {
       factors[SCORE_FACTORS.skillImbalance] = 1.2 * speakNeed;
       evidence.push(`open speaking and pronunciation weaknesses are worth ${Math.round(speakNeed * 100)}% of their usual pull`);
+    }
+    // Exam weighting — bounds and the absent/stale-board rule live in
+    // examWeighting.js; this reads one factor and one reason line.
+    const examWeight = resolveExamWeighting(state.examBoard);
+    if (examWeight.factor !== 0) {
+      factors[SCORE_FACTORS.examWeighting] = examWeight.factor;
+      evidence.push(examWeight.reason);
     }
     const seen = recentTargets.get('speak') || 0;
     if (seen >= 2) {
@@ -348,14 +319,12 @@ export function scoreCandidates(state = {}) {
 /**
  * Every candidate gets an activity type; avoid three identical kinds running.
  *
- * Idempotent on purpose. `recentPlansFromTrials` feeds this the *already
- * mapped* names for the common case (a trial's `segments[0].id` is a segment
- * kind, but a trial recorded from a drill stores `payload.kind` — "dictation",
- * "accent-drill" — which fell through to `practice`). Every one of those
- * unmapped values fell through to the same bucket, so recent history compared
- * as a run of `practice` that never matched any candidate's type and the
- * "never three in a row" rule simply never fired on real plans. Mapping the
- * names to themselves costs nothing and makes the constraint real.
+ * Idempotent on purpose: `recentPlansFromTrials` feeds this the ALREADY mapped
+ * names for the common case (a trial recorded from a drill stores
+ * `payload.kind` — "dictation", "accent-drill" — which used to fall through to
+ * `practice`). Every unmapped value landed in the same bucket, so recent
+ * history read as a run of `practice` matching no candidate's type and the
+ * "never three in a row" rule never fired on real plans.
  */
 export function activityTypeOf(kind) {
   switch (kind) {

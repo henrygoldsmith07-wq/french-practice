@@ -449,3 +449,60 @@ describe('buildSessionPlan', () => {
       'recently repeated activity is penalised');
   });
 });
+
+describe("the learner's exam weighting steers the session", () => {
+  const board = (speakingWeight, name = 'A board') => ({ name, speakingWeight });
+  const speakScore = (state) => {
+    const cands = scoreCandidates({ hasListeningContent: false, hasScenario: true, ...state });
+    return cands.find((c) => c.kind === 'speak');
+  };
+
+  it('an oracy-heavy board pulls more speaking than a lighter one', () => {
+    // The shipped boards span 25%–30% speaking weight. That is a real,
+    // published difference in what the exam rewards, so the pull scales.
+    const light = speakScore({ examBoard: board(0.25, 'WJEC GCSE French') });
+    const heavy = speakScore({ examBoard: board(0.30, 'WJEC GCSE French (Made for Wales)') });
+    assert.ok(
+      heavy.score > light.score,
+      `a 30% board (${heavy.score}) should out-pull a 25% board (${light.score})`,
+    );
+    assert.equal(light.factors[SCORE_FACTORS.examWeighting], undefined, 'a 25% board is the baseline — no factor');
+    assert.ok(heavy.factors[SCORE_FACTORS.examWeighting] > 0, 'the heavier board earns a positive factor');
+    assert.ok(
+      heavy.evidence.some((e) => /weights speaking at 30%/.test(e)),
+      `the reason must name the weighting: ${JSON.stringify(heavy.evidence)}`,
+    );
+  });
+
+  it('never lets the exam outweigh a corroborated weakness', () => {
+    // A real, evidence-backed speaking weakness must still outrank the
+    // weighting: the exam is context, not a trump card.
+    const examOnly = speakScore({ examBoard: board(0.30, 'B') });
+    const weaknessToo = speakScore({
+      examBoard: board(0.30, 'B'),
+      skillNeeds: { speak: 1, listen: 0, retrieve: 0 },
+    });
+    assert.ok(
+      weaknessToo.factors[SCORE_FACTORS.skillImbalance] > examOnly.factors[SCORE_FACTORS.examWeighting],
+      'skillImbalance must dominate the exam factor',
+    );
+  });
+
+  it('does nothing when no board is chosen — an absent exam must not bias practice', () => {
+    const noBoard = speakScore({});
+    const baseline = speakScore({ examBoard: board(0.25) });
+    assert.equal(noBoard.factors[SCORE_FACTORS.examWeighting], undefined);
+    assert.equal(noBoard.score, baseline.score, 'no board and the lightest board behave identically');
+  });
+
+  it('ignores a nonsense weighting instead of guessing', () => {
+    const bad = speakScore({ examBoard: board('lots', 'X') });
+    assert.equal(bad.factors[SCORE_FACTORS.examWeighting], undefined, 'a non-numeric weight contributes nothing');
+  });
+
+  it('is bounded: the factor never exceeds ±0.4', () => {
+    const extreme = speakScore({ examBoard: board(0.95, 'X') });
+    assert.ok(Math.abs(extreme.factors[SCORE_FACTORS.examWeighting]) <= 0.4,
+      `factor ${extreme.factors[SCORE_FACTORS.examWeighting]} must stay bounded`);
+  });
+});
