@@ -31,7 +31,7 @@ import StudyPanel from './StudyPanel';
 import {
   EvidenceLedger, WeaknessMemory, EvidenceStudy, AdaptivePracticeEvidence,
   LearnerValidation, ErrorNotebookStats, LearnerErrorModel, SessionHistory,
-  ExamBenchmark, ErrorCategories,
+  ExamBenchmark, ErrorCategories, FixedTimeline,
 } from './AnalyticsEvidence';
 import { X, Clock, Layers, Book, Mic, Volume, BarChart, TrendingUp } from './icons';
 import { ICON_BTN_ROUND_SOFT, TOP_BAR } from '../components/classNames.js';
@@ -128,6 +128,8 @@ export default function Analytics({ open, onClose }) {
             summary={d.errorSummary}
             historyMeta={d.sessionHistoryMeta}
           />
+
+          <FixedTimeline />
 
           {/* charts over time */}
           <section className="space-y-2.5">

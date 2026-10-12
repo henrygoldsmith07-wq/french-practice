@@ -7,7 +7,7 @@ import { getSrs,
   getGrammarErrors,
   getExaminerScripts,
   getRealExamResults,
-  getIntelligibilityBenchmark, } from '../lib/storage';
+  getIntelligibilityBenchmark, getLearningEvidenceState, } from '../lib/storage';
 // Measurement-stack metrics/bundles: lazy research module (never the boot graph).
 import {
   getPlacementValidationMetrics, getProgressionValidationMetrics,
@@ -26,6 +26,8 @@ import {
   MIN_VARIANT_N, MIN_TRANSFER_N,
 } from '../lib/selectionCalibration';
 import { mistakeGraphStats } from '../lib/mistakeGraph';
+import { learningCycleSummary, LEARNING_STATES } from '../lib/learningEvidence';
+import { hasCapabilityNow } from '../lib/languages';
 import RecoveryBadge from './RecoveryBadge';
 
 // Analytics evidence sections, split out of Analytics.jsx so each concern
@@ -129,6 +131,62 @@ export function WeaknessMemory() {
   );
 }
 
+// The drill-down behind the Progress screen's "Fixed" headline: the journey of
+// each weakness the learner has genuinely fixed. The Progress screen names what
+// is fixed; this shows WHY it counts — the baseline miss, the unseen-context
+// use, and the retest after a real gap — so "fixed" is never a bare assertion.
+// Only DEMONSTRATED cycles appear (the model's strongest claim); anything still
+// improving stays off this list and remains a live weakness elsewhere.
+export function FixedTimeline() {
+  const rows = useMemo(() => {
+    if (!hasCapabilityNow('learning-path')) return [];
+    let state;
+    try { state = getLearningEvidenceState(); } catch { return []; }
+    const cycles = Array.isArray(state?.cycles) ? state.cycles : [];
+    return cycles
+      .map((cycle) => {
+        try { return learningCycleSummary(cycle); } catch { return null; }
+      })
+      .filter((s) => s && s.status === LEARNING_STATES.DEMONSTRATED)
+      .sort((a, b) => Date.parse(b.lastAt || 0) - Date.parse(a.lastAt || 0))
+      .slice(0, 6);
+  }, []);
+
+  if (!rows.length) return null;
+
+  return (
+    <section className="space-y-2.5">
+      <div>
+        <h3 className="text-[11px] font-bold uppercase tracking-wider text-ink2">Fixed &amp; proven</h3>
+        <p className="text-xs text-ink3 mt-1">Each of these you used correctly in a new situation and recalled after a delay — that is what "fixed" means here.</p>
+      </div>
+      <div className="space-y-2">
+        {rows.map((r) => {
+          const label = r.target?.label || r.target?.key || 'this';
+          const step = (done, text) => (
+            <div className="flex items-start gap-2">
+              <span className={`mt-[3px] w-3.5 h-3.5 rounded-full flex items-center justify-center text-[8px] font-bold shrink-0 ${done ? 'bg-success text-bg' : 'bg-surface2 text-ink3 border border-line'}`}>{done ? '✓' : ''}</span>
+              <span className={`text-xs leading-snug ${done ? 'text-ink' : 'text-ink3'}`}>{text}</span>
+            </div>
+          );
+          return (
+            <div key={r.id} className="bg-surface border border-line rounded-2xl p-4 space-y-2">
+              <div className="flex items-baseline justify-between gap-2">
+                <span className="text-sm font-semibold text-ink truncate">{label}</span>
+                <span className="shrink-0 text-[10px] font-bold px-2 py-0.5 rounded-full border border-success/40 bg-successsoft text-success">Fixed</span>
+              </div>
+              <div className="space-y-1.5">
+                {step(true, 'First flagged as a gap.')}
+                {step(true, `Used it on your own in ${r.heldOutSamples || 'a'} new situation${r.heldOutSamples === 1 ? '' : 's'}${r.latestTransferScore != null ? ` (${r.latestTransferScore}%)` : ''}.`)}
+                {step(true, `Recalled it after a delay${r.delayedSamples ? ` — ${r.delayedSamples} delayed check${r.delayedSamples === 1 ? '' : 's'}` : ''}${r.latestDelayedScore != null ? ` (${r.latestDelayedScore}%)` : ''}.`)}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
 
 function downloadFile(name, text, type = 'text/plain') {
   const url = URL.createObjectURL(new Blob([text], { type }));
