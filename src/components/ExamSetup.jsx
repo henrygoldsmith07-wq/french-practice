@@ -171,6 +171,7 @@ export function Setup({
             <select
               value={theme}
               onChange={(e) => setTheme(e.target.value)}
+              aria-label="Theme (optional)"
               className="w-full bg-bg border border-line rounded-xl px-3 py-2 text-sm"
             >
               <option value="">Any theme (as in the real exam)</option>
@@ -235,11 +236,16 @@ export function Setup({
   );
 }
 
+// A form row: a visible caption above the control. It must be a <div>, not a
+// <label> — a <label> wrapping buttons/selects makes every caption part of
+// each control's accessible name (every board card's name became the whole
+// board list). The date input is labelled directly via aria-label, so it
+// stays programmatically named without a wrapping label element.
 const Field = ({ label, children }) => (
-  <label className="block space-y-1.5">
-    <span className="text-[11px] font-bold uppercase tracking-wider text-ink2">{label}</span>
+  <div className="block space-y-1.5">
+    <span className="block text-[11px] font-bold uppercase tracking-wider text-ink2">{label}</span>
     {children}
-  </label>
+  </div>
 );
 
 function Segmented({ options, value, onChange }) {
@@ -301,7 +307,12 @@ function BoundaryImport({ boardId, tier, sets, selectedId, onSelect, onSaved }) 
       </div>
 
       {sets.length > 0 && (
-        <select value={selectedId} onChange={(e) => onSelect(e.target.value)} className="w-full bg-bg border border-line rounded-xl px-3 py-2 text-sm">
+        <select
+          value={selectedId}
+          onChange={(e) => onSelect(e.target.value)}
+          aria-label="Grade boundary set"
+          className="w-full bg-bg border border-line rounded-xl px-3 py-2 text-sm"
+        >
           <option value="">No boundary set — show percentage only</option>
           {sets.map((set) => <option key={set.id} value={set.id}>{set.series} · {set.source}</option>)}
         </select>
