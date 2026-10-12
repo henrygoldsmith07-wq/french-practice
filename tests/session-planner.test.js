@@ -506,3 +506,20 @@ describe("the learner's exam weighting steers the session", () => {
       `factor ${extreme.factors[SCORE_FACTORS.examWeighting]} must stay bounded`);
   });
 });
+
+describe('factor vocabulary stays complete after extraction', () => {
+  // The factor names and their human-readable reasons moved to
+  // plannerFactors.js so sessionPlanner.js could stay under its growth cap.
+  // A factor with no reason would render an empty explanation in the dev
+  // inspection surface, so every declared name must be covered.
+  it('every declared factor has a reason, positive or penalty', async () => {
+    const mod = await import('../src/lib/plannerFactors.js');
+    for (const name of Object.values(mod.SCORE_FACTORS)) {
+      const reason = mod.FACTOR_REASON[name] ?? mod.FACTOR_PENALTY[name];
+      assert.ok(
+        typeof reason === 'string' && reason.length > 0,
+        `factor ${name} has no explanation — the dev surface would render it blank`,
+      );
+    }
+  });
+});
