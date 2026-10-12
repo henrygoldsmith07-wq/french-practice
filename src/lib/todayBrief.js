@@ -81,9 +81,20 @@ export function todayBrief(options = {}) {
     ? settings.examBoardName
     : null;
   const examTier = settings.examTier;
-  if (examName) {
+    if (examName) {
     const tierWord = examTier === TIER_FOUNDATION ? 'Foundation' : examTier === TIER_HIGHER ? 'Higher' : '';
     lines.push(`${tierWord ? `${tierWord} tier, ` : ''}${examName}`);
+  }
+  // Exam proximity, from the SAME countdown the session uses (plannerState
+  // resolves it once). A learner with an exam approaching sees how close it is
+  // — that is why the session leans on speaking — while one without a date
+  // sees nothing (no invented urgency). `examName` must be present: a countdown
+  // without a named exam reads as a random deadline, not theirs.
+  if (examName && state.examCountdown) {
+    const cd = state.examCountdown;
+    lines.push(cd.days <= 1
+      ? `Exam ${cd.days === 0 ? 'is today' : 'is tomorrow'}`
+      : `${cd.days} days to your exam`);
   }
   if (state.srsDue > 0) lines.push(`${state.srsDue} item${state.srsDue === 1 ? '' : 's'} due`);
   if (skillLabel) lines.push(`${skillLabel} needs work`);
