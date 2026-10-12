@@ -61,7 +61,14 @@ test('the guard refuses a port that is serving a different app', async () => {
 });
 
 test('the guard accepts a server that is serving Le Studio', async () => {
-  const html = readFileSync(join(root, 'dist', 'index.html'), 'utf8');
+  // The guard's contract is the page TITLE (and optionally the canonical host),
+  // not the built bundle — so this test synthesises the shape rather than
+  // reading dist/index.html. Reading the build artifact made the test depend on
+  // `npm run build` having already run; CI runs `npm test` BEFORE the build
+  // step, so dist/ never existed there and this test failed on every push
+  // (while passing locally, where a previous build was lying around). A test
+  // that only passes on a warm working tree is not a gate.
+  const html = '<!doctype html><html><head><title>Le Studio — French Speaking Practice</title></head><body>x</body></html>';
   const server = await listen((req, res) => {
     res.writeHead(200, { 'content-type': 'text/html' });
     res.end(html);
