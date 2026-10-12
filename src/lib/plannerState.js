@@ -14,6 +14,11 @@ import { dueRetests } from './mistakeGraph.js';
 import { weaknessLifecycle, WEAKNESS_LIFECYCLE } from './weaknessLifecycle.js';
 import { dueLearningChecks } from './learningEvidence.js';
 import { localDayIndex, localDayKey } from './localDay.js';
+// examCountdown only — NOT boards.js. findings.js has no static boards.js
+// import (the oracy weight is an injectable lookup there), so this keeps the
+// ~25 KB registry off Today's load path, the same discipline PR #14 applied to
+// the board-record resolution below.
+import { examCountdown } from './exams/findings.js';
 
 const DAY = 86400000;
 
@@ -139,6 +144,13 @@ export function plannerState(options = {}) {
     ? (typeof settings.examBoardName === 'string' && settings.examBoardName ? settings.examBoardName : null)
     : null;
 
+  // Exam-date pressure, from the SAME examCountdown the session planner uses
+  // (exams/findings.js) so the dashboard brief and the real session agree on
+  // how close the paper is. Null when there is no date or it has passed — no
+  // invented urgency. `speakWeight` is the banded pull the planner turns into a
+  // speak factor; 1.0 means "no countdown pressure".
+  const countdown = examCountdown(settings.examDate || null, { now });
+
   return {
     now,
     weaknesses: errorEntries,
@@ -161,6 +173,12 @@ export function plannerState(options = {}) {
     // settings — no registry import (see the note above).
     examBoardName: settings.examBoard && examWeighting ? (settings.examBoardName || null) : null,
     examSpeakingWeight: examWeighting,
+    // Exam-date pressure (null when no/past date). The planner reads
+    // `countdown.speakWeight` as a speak factor, mirroring buildTodayPlan's
+    // speakBoost so the brief never promises a calmer mix than the session
+    // delivers as the paper approaches. Reads only settings.examDate — a plain
+    // value — so it stays off the registry load path like the board copies above.
+    examCountdown: countdown,
   };
 }
 

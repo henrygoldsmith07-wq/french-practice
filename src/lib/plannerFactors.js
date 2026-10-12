@@ -30,6 +30,7 @@ export const SCORE_FACTORS = Object.freeze({
   listeningStarved: 'listening-starved',
   speakingStarved: 'speaking-starved',
   examWeighting: 'exam-weighting',
+  examCountdown: 'exam-countdown',
 });
 
 /** Why a POSITIVE factor was applied, in the dev-inspection register. */
@@ -48,6 +49,7 @@ export const FACTOR_REASON = {
   [SCORE_FACTORS.listeningStarved]: 'listening practice has been quiet lately',
   [SCORE_FACTORS.speakingStarved]: 'speaking time has been low lately',
   [SCORE_FACTORS.examWeighting]: "the learner's exam weights this heavily",
+  [SCORE_FACTORS.examCountdown]: 'the exam is close, so speaking and timed practice lead',
 };
 
 /** Why a NEGATIVE factor was applied. */

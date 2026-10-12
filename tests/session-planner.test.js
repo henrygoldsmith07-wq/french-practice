@@ -513,6 +513,62 @@ describe("the learner's exam weighting steers the session", () => {
   });
 });
 
+describe('exam-date pressure steers the session brief like the live session', () => {
+  // The dashboard brief (todayBrief → buildSessionPlan) and the live session
+  // (TodaySession → buildTodayPlan) are distinct planners, but both read the
+  // same examCountdown band. A candidate close to their paper must see a
+  // speak-leaning brief AND a speak-leaning session — never a calm preview of
+  // an urgent one. The factor is the brief's mirror of buildTodayPlan's
+  // speakBoost.
+  const candsFor = (state) => {
+    // scoreCandidates is imported at the top of this file.
+    return scoreCandidates({ hasListeningContent: false, hasScenario: true, ...state })
+      .find((c) => c.kind === 'speak');
+  };
+  const countdown = (speakWeight, note = 'a note') => ({ speakWeight, note, days: 10, band: 'final-weeks' });
+
+  it('a close exam adds a positive speak factor; no exam adds none', () => {
+    const close = candsFor({ examCountdown: countdown(1.8) });
+    const none = candsFor({});
+    assert.ok(close.factors[SCORE_FACTORS.examCountdown] > 0, 'a near exam pulls speaking up');
+    assert.equal(none.factors[SCORE_FACTORS.examCountdown], undefined, 'no exam date adds no pressure');
+  });
+
+  it('the pressure scales with how close the paper is', () => {
+    const finalWeeks = candsFor({ examCountdown: countdown(1.8) });
+    const building = candsFor({ examCountdown: countdown(1.35) });
+    assert.ok(
+      finalWeeks.factors[SCORE_FACTORS.examCountdown] > building.factors[SCORE_FACTORS.examCountdown],
+      'closer to the paper pulls speaking harder',
+    );
+  });
+
+  it('a neutral speakWeight (1.0, no/past date) adds nothing', () => {
+    const neutral = candsFor({ examCountdown: countdown(1.0) });
+    assert.equal(neutral.factors[SCORE_FACTORS.examCountdown], undefined, 'no countdown pressure at weight 1.0');
+  });
+
+  it('is bounded below the corroborated-weakness factor, so evidence still leads', () => {
+    const withWeakness = candsFor({
+      examCountdown: countdown(1.8),
+      skillNeeds: { speak: 1, listen: 0, retrieve: 0 },
+    });
+    assert.ok(
+      withWeakness.factors[SCORE_FACTORS.skillImbalance] > withWeakness.factors[SCORE_FACTORS.examCountdown],
+      'a real speaking weakness still outranks the countdown',
+    );
+    assert.ok(withWeakness.factors[SCORE_FACTORS.examCountdown] <= 0.8, 'the factor is hard-bounded');
+  });
+
+  it('carries the countdown note as its reason line', () => {
+    const close = candsFor({ examCountdown: countdown(1.8, 'Three weeks or less: speaking leads.') });
+    assert.ok(
+      close.evidence.some((e) => /speaking leads/.test(e)),
+      `the reason must come from the countdown note: ${JSON.stringify(close.evidence)}`,
+    );
+  });
+});
+
 describe('factor vocabulary stays complete after extraction', () => {
   // The factor names and their human-readable reasons moved to
   // plannerFactors.js so sessionPlanner.js could stay under its growth cap.

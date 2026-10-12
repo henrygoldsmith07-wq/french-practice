@@ -212,6 +212,18 @@ export function scoreCandidates(state = {}) {
       factors[SCORE_FACTORS.examWeighting] = examWeight.factor;
       evidence.push(examWeight.reason);
     }
+    // Exam-date pressure — the same examCountdown band buildTodayPlan uses, so
+    // the dashboard brief and the real session agree on how close the paper is.
+    // speakWeight is 1.0 when there is no date or it has passed (no invented
+    // urgency); the excess above 1.0 becomes a bounded speak pull. Kept below
+    // the corroborated skillImbalance (1.2) so the learner's own evidence still
+    // leads — the countdown is context, never a trump card.
+    const speakWeight = state.examCountdown?.speakWeight;
+    if (Number.isFinite(speakWeight) && speakWeight > 1) {
+      const pressure = Math.min(0.8, (speakWeight - 1) * 1.2);
+      factors[SCORE_FACTORS.examCountdown] = Math.round(pressure * 100) / 100;
+      evidence.push(state.examCountdown.note || 'the exam is close, so speaking and timed practice lead');
+    }
     const seen = recentTargets.get('speak') || 0;
     if (seen >= 2) {
       factors[SCORE_FACTORS.repetitionPenalty] = -0.4 * (seen - 1);

@@ -1,9 +1,16 @@
 // Today's brief — the learner-facing answer to "what should I do right now?"
-// before the session opens. Built from the same planner the session uses, so
-// the dashboard can never promise a session Today won't deliver.
+// before the session opens. Composed from the session planner, aligned with the
+// live session so the dashboard never promises a shape Today won't deliver.
 //
 // One dominant CTA plus at most three short reason lines. No engine
 // terminology, no stats wall.
+//
+// NOTE ON THE TWO PLANNERS: the brief is composed here by buildSessionPlan
+// (the scoring planner), while the live session is composed by buildTodayPlan
+// (todayPlan.js). They are deliberately distinct, but they read the SAME exam
+// inputs — board identity (examBoard) and date pressure (examCountdown) — so a
+// candidate close to their paper sees a speak-leaning brief AND a speak-leaning
+// session, never a calm preview of an urgent session.
 
 import { buildSessionPlan } from './sessionPlanner.js';
 import { plannerState } from './plannerState.js';
