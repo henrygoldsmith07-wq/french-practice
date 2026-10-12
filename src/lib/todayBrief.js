@@ -11,7 +11,12 @@ import { weaknessLifecycle, WEAKNESS_LIFECYCLE } from './weaknessLifecycle.js';
 import { buildCapabilityMap } from './capabilityModel.js';
 import { localDayKey } from './localDay.js';
 import { getLearnerErrors, getSettings, getStudyEvents } from './storage.js';
-import { BOARDS, TIER } from './exams/boards.js';
+// Tier ids mirror TIER in lib/exams/boards.js. Duplicated as plain strings on
+// purpose: importing boards.js here would put the ~25 KB registry on Today's
+// load path (100 KB surface budget).
+const TIER_FOUNDATION = 'foundation';
+const TIER_HIGHER = 'higher';
+
 
 const SEGMENT_SHORT = {
   warmup: 'Warm-up',
@@ -54,16 +59,24 @@ export function todayBrief(options = {}) {
 
   const lines = [];
   // The exam the learner is actually preparing for, from the exam identity
-  // ExamSetup persists the moment a board is picked (settings.examBoard /
-  // examTier). Named first so the whole brief reads as aimed at that exam; a
-  // learner who has never picked a board sees nothing (no exam, no line) —
-  // the brief must not invent a target.
-  const examBoardId = getSettings().examBoard;
-  const examBoard = examBoardId && BOARDS[examBoardId] ? BOARDS[examBoardId] : null;
-  const examTier = getSettings().examTier;
-  if (examBoard) {
-    const tierWord = examTier === TIER.FOUNDATION ? 'Foundation' : examTier === TIER.HIGHER ? 'Higher' : '';
-    lines.push(`${tierWord ? `${tierWord} tier, ` : ''}${examBoard.name}`);
+  // ExamSetup persists the moment a board is picked. Named first so the whole
+  // brief reads as aimed at that exam; a learner who has never picked a board
+  // sees nothing (no exam, no line) — the brief must not invent a target.
+  //
+  // The board NAME is read from settings, not from boards.js. The registry is
+  // ~25 KB of spec data and this module sits on Today's load path, which has a
+  // 100 KB surface budget; ExamSetup resolves the name where the registry
+  // already lives and persists it beside examBoard. An id with no stored name
+  // (chosen before that field existed) falls back to nothing rather than to a
+  // label this module cannot verify.
+  const settings = getSettings();
+  const examName = settings.examBoard && typeof settings.examBoardName === 'string'
+    ? settings.examBoardName
+    : null;
+  const examTier = settings.examTier;
+  if (examName) {
+    const tierWord = examTier === TIER_FOUNDATION ? 'Foundation' : examTier === TIER_HIGHER ? 'Higher' : '';
+    lines.push(`${tierWord ? `${tierWord} tier, ` : ''}${examName}`);
   }
   if (state.srsDue > 0) lines.push(`${state.srsDue} item${state.srsDue === 1 ? '' : 's'} due`);
   if (skillLabel) lines.push(`${skillLabel} needs work`);

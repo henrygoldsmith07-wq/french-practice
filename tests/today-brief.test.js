@@ -77,11 +77,16 @@ describe('today brief', () => {
 
   test('names the exam the learner picked, with its tier', async () => {
     // freshBrief() resets localStorage, so seed the settings AFTER the module
-    // graph is in place. The exam identity lives in settings (examBoard /
-    // examTier), persisted by ExamSetup the moment a board is picked.
+    // graph is in place. ExamSetup persists the board id, tier AND the display
+    // name together; Today reads the name from settings, never the registry.
     const { todayBrief } = await freshBrief();
     const settingsMod = await import('../src/lib/stores/settingsStore.js');
-    settingsMod.setSettings({ ...settingsMod.getSettings(), examBoard: 'aqa-gcse', examTier: 'foundation' });
+    settingsMod.setSettings({
+      ...settingsMod.getSettings(),
+      examBoard: 'aqa-gcse',
+      examTier: 'foundation',
+      examBoardName: 'AQA GCSE French',
+    });
     const brief = todayBrief({ entries: [], minutes: 15 });
     assert.ok(
       brief.lines.some((l) => /Foundation tier, AQA GCSE French/.test(l)),
@@ -95,11 +100,14 @@ describe('today brief', () => {
     assert.ok(!brief.lines.some((l) => /tier|GCSE|A-level|DELF/i.test(l)), `lines: ${JSON.stringify(brief.lines)}`);
   });
 
-  test('a stale examBoard id the registry no longer knows is ignored, not rendered', async () => {
+  test('an exam with no stored name (chosen before the field existed) names nothing', async () => {
+    // Today cannot verify a label it was never given, so it shows none rather
+    // than guessing one from an id it cannot resolve without the registry.
     const { todayBrief } = await freshBrief();
     const settingsMod = await import('../src/lib/stores/settingsStore.js');
-    settingsMod.setSettings({ ...settingsMod.getSettings(), examBoard: 'a-board-that-was-removed', examTier: 'higher' });
+    settingsMod.setSettings({ ...settingsMod.getSettings(), examBoard: 'aqa-gcse', examTier: 'higher' });
     const brief = todayBrief({ entries: [], minutes: 15 });
     assert.ok(!brief.lines.some((l) => /tier|GCSE|A-level|DELF/i.test(l)), `lines: ${JSON.stringify(brief.lines)}`);
   });
 });
+

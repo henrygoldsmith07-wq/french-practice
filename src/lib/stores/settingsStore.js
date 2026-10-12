@@ -76,6 +76,16 @@ const DEFAULT_SETTINGS = {
   highContrast: false,
   examBoard: null, // null | a board id from lib/exams/boards.js BOARDS (e.g. 'wjec-gcse-3830'), or null
   examTier: null, // null | 'foundation' | 'higher' — the tier for the chosen board
+  // The oracy share of the chosen qualification, persisted by ExamSetup when the
+  // board is picked so Today can weight practice WITHOUT importing the 25 KB
+  // board registry (Today has a 100 KB surface budget). A derived copy of what
+  // the board says, re-resolved whenever the board changes — never the source of
+  // truth. null means "no weighting", exactly like no board.
+  examSpeakingWeight: null,
+  // The board's display name, persisted beside the weight for the same reason
+  // (Today must not import the 25 KB registry). Copy only — the name is derived
+  // from where the registry lives, never a second source of truth.
+  examBoardName: null,
   examDate: null, // ISO date string (YYYY-MM-DD) of the candidate's paper, or null
   correctionFrequency: 'adaptive', // adaptive | every-turn | important | end | off
 };

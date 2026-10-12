@@ -14,7 +14,6 @@ import { dueRetests } from './mistakeGraph.js';
 import { weaknessLifecycle, WEAKNESS_LIFECYCLE } from './weaknessLifecycle.js';
 import { dueLearningChecks } from './learningEvidence.js';
 import { localDayIndex, localDayKey } from './localDay.js';
-import { BOARDS } from './exams/boards.js';
 
 const DAY = 86400000;
 
@@ -127,11 +126,18 @@ export function plannerState(options = {}) {
 
   const goals = options.goals || prefs.favouriteTopics || [];
 
-  // The exam the learner is sitting, resolved once here so the planner never
-  // reaches into settings or the board registry itself. A stale board id (the
-  // registry renamed it) resolves to nothing rather than to a wrong board, so
-  // practice is never biased by an identity the app can no longer verify.
-  const examBoard = settings.examBoard && BOARDS[settings.examBoard] ? BOARDS[settings.examBoard] : null;
+  // The exam the learner is sitting, read as a STORED WEIGHT plus display name
+  // rather than a board record: boards.js is ~25 KB of spec data and this module
+  // sits on Today's load path (100 KB surface budget). ExamSetup resolves both
+  // where the registry already lives and persists them beside examBoard, so the
+  // planner reads plain values and the registry never enters the bundle. A
+  // learner whose board was chosen before the field existed has none — that
+  // reads as "no weighting", never as a wrong one.
+  const storedWeight = Number(settings.examSpeakingWeight);
+  const examWeighting = Number.isFinite(storedWeight) && storedWeight > 0 ? storedWeight : null;
+  const examBoardName = settings.examBoard && examWeighting
+    ? (typeof settings.examBoardName === 'string' && settings.examBoardName ? settings.examBoardName : null)
+    : null;
 
   return {
     now,
@@ -151,10 +157,10 @@ export function plannerState(options = {}) {
     hasScenario: options.hasScenario !== false,
     fieldNoteDue: Number(read.fieldNoteDue) || 0,
     level: settings.level || null,
-    // The board RECORD, not a pre-computed number: examWeighting.js owns what
-    // the weights mean, and a stale board id resolves to null here rather than
-    // to a wrong board.
-    examBoard,
+    // Board name + oracy weight, both persisted copies read straight from
+    // settings — no registry import (see the note above).
+    examBoardName: settings.examBoard && examWeighting ? (settings.examBoardName || null) : null,
+    examSpeakingWeight: examWeighting,
   };
 }
 
