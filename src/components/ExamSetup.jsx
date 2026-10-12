@@ -51,9 +51,24 @@ export function Setup({
   // that the exam-diagnostic journey and Today could never use. Persisting here
   // makes the choice durable and readable app-wide. Merged onto current settings
   // so a concurrent examDate (or any other pref) is never clobbered.
+  //
+  // The oracy WEIGHT is persisted too, and that is the reason Today can use it:
+  // boards.js is ~25 KB of spec data, and Today must not drag it into its load
+  // graph (100 KB surface budget). Storing the resolved number here — where the
+  // registry already lives — means every consumer reads a plain figure instead
+  // of importing the registry. Board/tier remain the identity; the weight is a
+  // derived, re-resolved-on-change copy of what the board says. A board with no
+  // weight persists nothing, which reads back as "no weighting".
   const persistExamIdentity = (id, chosenTier) => {
     const valid = BOARDS[id] ? id : null;
-    setSettings({ ...getSettings(), examBoard: valid, examTier: chosenTier || null });
+    const weight = Number(valid ? BOARDS[valid]?.speakingWeight : null);
+    setSettings({
+      ...getSettings(),
+      examBoard: valid,
+      examTier: chosenTier || null,
+      examSpeakingWeight: valid && Number.isFinite(weight) && weight > 0 ? weight : null,
+      examBoardName: valid && typeof BOARDS[valid].name === 'string' ? BOARDS[valid].name : null,
+    });
   };
   return (
     <div className="h-full overflow-y-auto nice-scroll px-[22px] py-6">

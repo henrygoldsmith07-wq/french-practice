@@ -107,7 +107,8 @@ function candidate(kind, target, factors, evidence = []) {
  *   hasListeningContent?: boolean,
  *   hasScenario?: boolean,
  *   fieldNoteDue?: number,
- *   examBoard?: object|null,             // resolved board record (examWeighting.js)
+ *   examSpeakingWeight?: number|null,  // the board's oracy share (ExamSetup)
+ *   examBoardName?: string|null,        // display name, for the reason line
  * }} state
  */
 export function scoreCandidates(state = {}) {
@@ -204,9 +205,9 @@ export function scoreCandidates(state = {}) {
       factors[SCORE_FACTORS.skillImbalance] = 1.2 * speakNeed;
       evidence.push(`open speaking and pronunciation weaknesses are worth ${Math.round(speakNeed * 100)}% of their usual pull`);
     }
-    // Exam weighting — bounds and the absent/stale-board rule live in
+    // Exam weighting — bounds and the absent/missing-weight rule live in
     // examWeighting.js; this reads one factor and one reason line.
-    const examWeight = resolveExamWeighting(state.examBoard);
+    const examWeight = resolveExamWeighting(state.examSpeakingWeight, state.examBoardName);
     if (examWeight.factor !== 0) {
       factors[SCORE_FACTORS.examWeighting] = examWeight.factor;
       evidence.push(examWeight.reason);
