@@ -10,6 +10,8 @@
 // exist the statement does not either — no zero-filled placeholders dressed
 // up as findings.
 
+import { learningCycleStatus, LEARNING_STATES } from './learningEvidence.js';
+
 const DAY = 86400000;
 
 function inWindow(at, now, days) {
@@ -27,7 +29,7 @@ function inWindow(at, now, days) {
  *   now?: number,
  *   windowDays?: number,
  * }} input
- * @returns {{strengths: string[], improving: string[], weak: string[]}}
+ * @returns {{strengths: string[], improving: string[], weak: string[], fixed: string[]}}
  */
 export function progressEvidenceStatements(input = {}) {
   const now = input.now || Date.now();
@@ -37,6 +39,7 @@ export function progressEvidenceStatements(input = {}) {
   const strengths = [];
   const improving = [];
   const weak = [];
+  const fixed = [];
 
   // 1. Independent use in new contexts, per target label.
   for (const cycle of cycles) {
@@ -100,10 +103,33 @@ export function progressEvidenceStatements(input = {}) {
     }
   }
 
+  // 6. FIXED — the headline promise, "you fixed this". A cycle the model has
+  // judged DEMONSTRATED means the learner produced the target independently in
+  // a NEW context AND passed an independent retest after a real gap: the
+  // strongest claim the evidence model makes. This reads the canonical status
+  // (learningCycleStatus) rather than re-deriving rules, so "fixed" here is
+  // exactly what the engine considers demonstrated — one authority, no drift.
+  // Only recent demonstrations are named, so the list is what you fixed lately,
+  // not an ever-growing ledger.
+  for (const cycle of cycles) {
+    const label = String(cycle.target?.label || cycle.target?.key || '').trim();
+    if (!label) continue;
+    let status;
+    try { status = learningCycleStatus(cycle, now); } catch { status = null; }
+    if (status !== LEARNING_STATES.DEMONSTRATED) continue;
+    const lastGood = [...(cycle.transfers || []), ...(cycle.delayed || [])]
+      .map((e) => Date.parse(e.at || 0))
+      .filter((t) => Number.isFinite(t))
+      .sort((a, b) => b - a)[0];
+    if (lastGood != null && !inWindow(new Date(lastGood).toISOString(), now, windowDays)) continue;
+    fixed.push(`Fixed ${label.toLowerCase()} — you use it on your own now, and it stuck after a delay.`);
+  }
+
   return {
     strengths: dedupe(strengths).slice(0, 4),
     improving: dedupe(improving).slice(0, 4),
     weak: dedupe(weak).slice(0, 4),
+    fixed: dedupe(fixed).slice(0, 4),
   };
 }
 

@@ -63,7 +63,64 @@ describe('progress evidence statements', () => {
 
   it('an empty learner state produces no fabricated statements', () => {
     const result = progressEvidenceStatements({ now: NOW });
-    assert.deepEqual(result, { strengths: [], improving: [], weak: [] });
+    assert.deepEqual(result, { strengths: [], improving: [], weak: [], fixed: [] });
+  });
+
+  it('names a DEMONSTRATED cycle as "fixed" — the headline promise', () => {
+    // A cycle with an independent held-out transfer AND an independent delayed
+    // retest past the 20h floor is the model's strongest claim: DEMONSTRATED.
+    // The events carry the provenance the real follow-up runner records
+    // (sourceReliability high, a marker confidence) so they clear the
+    // independent-strength gate the same way a genuine check does.
+    const { fixed } = progressEvidenceStatements({
+      now: NOW,
+      learningEvidence: {
+        cycles: [{
+          target: { label: 'past-tense narration' },
+          startedAt: at(30),
+          interventions: [{ at: at(25), correct: true, independent: true, encounterId: 'i1', score: 90, sourceReliability: 'high', markerConfidence: 0.9 }],
+          transfers: [{ at: at(10), correct: true, independent: true, heldOut: true, encounterId: 't1', score: 95, sourceReliability: 'high', markerConfidence: 0.9 }],
+          delayed: [{ at: at(2), correct: true, independent: true, heldOut: true, encounterId: 'd1', score: 92, delayHours: 48, sourceReliability: 'high', markerConfidence: 0.9 }],
+        }],
+      },
+    });
+    assert.ok(fixed.some((s) => s.toLowerCase().includes('fixed') && s.includes('past-tense narration')), JSON.stringify(fixed));
+  });
+
+  it('does NOT call a merely-improving cycle "fixed"', () => {
+    // A transfer but no independent delayed pass: NEEDS_CONFIRMATION, not
+    // DEMONSTRATED. "Fixed" must stay reserved for the real thing.
+    const { fixed } = progressEvidenceStatements({
+      now: NOW,
+      learningEvidence: {
+        cycles: [{
+          target: { label: 'adjective agreement' },
+          startedAt: at(30),
+          interventions: [{ at: at(25), correct: true, independent: true, encounterId: 'i1', score: 90, sourceReliability: 'high', markerConfidence: 0.9 }],
+          transfers: [{ at: at(10), correct: true, independent: true, heldOut: true, encounterId: 't1', score: 95, sourceReliability: 'high', markerConfidence: 0.9 }],
+          delayed: [],
+        }],
+      },
+    });
+    assert.equal(fixed.length, 0, JSON.stringify(fixed));
+  });
+
+  it('does not call a same-day retest "fixed" — the delay floor holds', () => {
+    // A "delayed" event with no real gap is not retention evidence; the cycle
+    // cannot reach DEMONSTRATED, so nothing is named fixed.
+    const { fixed } = progressEvidenceStatements({
+      now: NOW,
+      learningEvidence: {
+        cycles: [{
+          target: { label: 'negation' },
+          startedAt: at(5),
+          interventions: [{ at: at(4), correct: true, independent: true, encounterId: 'i1', score: 90, sourceReliability: 'high', markerConfidence: 0.9 }],
+          transfers: [{ at: at(3), correct: true, independent: true, heldOut: true, encounterId: 't1', score: 95, sourceReliability: 'high', markerConfidence: 0.9 }],
+          delayed: [{ at: at(1), correct: true, independent: true, encounterId: 'd1', score: 92, delayHours: 2, sourceReliability: 'high', markerConfidence: 0.9 }],
+        }],
+      },
+    });
+    assert.equal(fixed.length, 0, JSON.stringify(fixed));
   });
 
   it('never leaks internal terminology', () => {
@@ -80,7 +137,7 @@ describe('progress evidence statements', () => {
         { category: 'grammar', key: 'negation', label: 'negation', status: 'active', errorCount: 2, recurrenceCount: 1, modes: ['writing'] },
       ],
     });
-    for (const line of [...result.strengths, ...result.improving, ...result.weak]) {
+    for (const line of [...result.strengths, ...result.improving, ...result.weak, ...result.fixed]) {
       for (const bad of ['evidence', 'cycle', 'fp.', 'recurrence', 'transfer', 'engine', 'independent']) {
         assert.ok(!line.toLowerCase().includes(bad), `"${line}" leaks "${bad}"`);
       }

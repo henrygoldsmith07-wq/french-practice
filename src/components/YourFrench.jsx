@@ -62,12 +62,12 @@ export default function YourFrench({ level, onOpenDetails }) {
         evidence,
       };
     } catch {
-      return { overview: null, evidence: { strengths: [], improving: [], weak: [] } };
+      return { overview: null, evidence: { strengths: [], improving: [], weak: [], fixed: [] } };
     }
   }, [level]);
 
   const overview = data.overview;
-  const evidence = data.evidence || { strengths: [], improving: [], weak: [] };
+  const evidence = data.evidence || { strengths: [], improving: [], weak: [], fixed: [] };
   if (!overview) return null;
   const bootstrapping = overview.bootstrapping;
   const workingLevel = overview.level || level || getSettings().level;
@@ -87,6 +87,13 @@ export default function YourFrench({ level, onOpenDetails }) {
       </header>
 
       <div className="space-y-4">
+        {evidence.fixed.length > 0 && (
+          <Block
+            title="Fixed"
+            items={[]}
+            statements={evidence.fixed}
+          />
+        )}
         <Block
           title="Strong"
           hint={bootstrapping ? 'Once you have practised a bit, what you can reliably do shows up here.' : null}
