@@ -163,11 +163,16 @@ export function FixedTimeline() {
       <div className="space-y-2">
         {rows.map((r) => {
           const label = r.target?.label || r.target?.key || 'this';
-          const step = (done, text) => (
-            <div className="flex items-start gap-2">
-              <span className={`mt-[3px] w-3.5 h-3.5 rounded-full flex items-center justify-center text-[8px] font-bold shrink-0 ${done ? 'bg-success text-bg' : 'bg-surface2 text-ink3 border border-line'}`}>{done ? '✓' : ''}</span>
-              <span className={`text-xs leading-snug ${done ? 'text-ink' : 'text-ink3'}`}>{text}</span>
-            </div>
+          // Every step in a demonstrated cycle is complete by definition (the
+          // model only reaches DEMONSTRATED with an independent transfer AND an
+          // independent delayed pass), so there is no "not done" branch to draw
+          // — the checkmark is decorative and hidden from screen readers, and
+          // the journey is a real ordered list.
+          const step = (text) => (
+            <li className="flex items-start gap-2">
+              <span aria-hidden="true" className="mt-[3px] w-3.5 h-3.5 rounded-full flex items-center justify-center text-[8px] font-bold shrink-0 bg-success text-bg">✓</span>
+              <span className="text-xs leading-snug text-ink">{text}</span>
+            </li>
           );
           return (
             <div key={r.id} className="bg-surface border border-line rounded-2xl p-4 space-y-2">
@@ -175,11 +180,11 @@ export function FixedTimeline() {
                 <span className="text-sm font-semibold text-ink truncate">{label}</span>
                 <span className="shrink-0 text-[10px] font-bold px-2 py-0.5 rounded-full border border-success/40 bg-successsoft text-success">Fixed</span>
               </div>
-              <div className="space-y-1.5">
-                {step(true, 'First flagged as a gap.')}
-                {step(true, `Used it on your own in ${r.heldOutSamples || 'a'} new situation${r.heldOutSamples === 1 ? '' : 's'}${r.latestTransferScore != null ? ` (${r.latestTransferScore}%)` : ''}.`)}
-                {step(true, `Recalled it after a delay${r.delayedSamples ? ` — ${r.delayedSamples} delayed check${r.delayedSamples === 1 ? '' : 's'}` : ''}${r.latestDelayedScore != null ? ` (${r.latestDelayedScore}%)` : ''}.`)}
-              </div>
+              <ol className="space-y-1.5">
+                {step('First flagged as a gap.')}
+                {step(`Used it on your own in ${r.heldOutSamples || 'a'} new situation${r.heldOutSamples === 1 ? '' : 's'}${r.latestTransferScore != null ? ` (${r.latestTransferScore}%)` : ''}.`)}
+                {step(`Recalled it after a delay${r.delayedSamples ? ` — ${r.delayedSamples} delayed check${r.delayedSamples === 1 ? '' : 's'}` : ''}${r.latestDelayedScore != null ? ` (${r.latestDelayedScore}%)` : ''}.`)}
+              </ol>
             </div>
           );
         })}
