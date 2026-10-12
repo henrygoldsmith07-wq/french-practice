@@ -107,6 +107,7 @@ function candidate(kind, target, factors, evidence = []) {
  *   hasListeningContent?: boolean,
  *   hasScenario?: boolean,
  *   fieldNoteDue?: number,
+ *   examBoard?: object|null,             // resolved board record (examWeighting.js)
  * }} state
  */
 export function scoreCandidates(state = {}) {
