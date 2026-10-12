@@ -14,6 +14,7 @@ import { dueRetests } from './mistakeGraph.js';
 import { weaknessLifecycle, WEAKNESS_LIFECYCLE } from './weaknessLifecycle.js';
 import { dueLearningChecks } from './learningEvidence.js';
 import { localDayIndex, localDayKey } from './localDay.js';
+import { BOARDS } from './exams/boards.js';
 
 const DAY = 86400000;
 
@@ -125,6 +126,13 @@ export function plannerState(options = {}) {
   })();
 
   const goals = options.goals || prefs.favouriteTopics || [];
+
+  // The exam the learner is sitting, resolved once here so the planner never
+  // reaches into settings or the board registry itself. A stale board id (the
+  // registry renamed it) resolves to nothing rather than to a wrong board, so
+  // practice is never biased by an identity the app can no longer verify.
+  const examBoard = settings.examBoard && BOARDS[settings.examBoard] ? BOARDS[settings.examBoard] : null;
+
   return {
     now,
     weaknesses: errorEntries,
@@ -143,6 +151,10 @@ export function plannerState(options = {}) {
     hasScenario: options.hasScenario !== false,
     fieldNoteDue: Number(read.fieldNoteDue) || 0,
     level: settings.level || null,
+    // The board RECORD, not a pre-computed number: examWeighting.js owns what
+    // the weights mean, and a stale board id resolves to null here rather than
+    // to a wrong board.
+    examBoard,
   };
 }
 
