@@ -3,6 +3,7 @@ import { Modal, Spinner } from './ui';
 import Quiz from './Quiz';
 import { ProgressRing, RadarChart, TrendChart, renderShareCard } from './charts';
 import { sessionReport, quizFromConversation, friendlyError } from '../lib/groq';
+import { sessionScores } from '../lib/score';
 import { takeawayPhrase } from '../lib/takeaway';
 import { saveSession, getSessions, getStreak } from '../lib/storage';
 import { spokenProduction } from '../lib/speakingTime';
@@ -39,27 +40,47 @@ export default function SessionDashboard({ open, onClose, apiKey, mockMode, scen
     if (!open || report) return;
     let cancelled = false;
     (async () => {
+      // Spoken production summed from the turns themselves: voiced
+      // milliseconds per recording, deduped per presentation. Silence and
+      // the partner's playback never contributed in the first place.
+      const spoken = spokenProduction(history.map((t, i) => ({
+        voicedMs: t.voicedMs,
+        encounterId: t.encounterId || `turn-${i}`,
+        sessionId: t.sessionId,
+        at: t.at,
+      })));
+      // The SCORES are ours: computed from the turns this app already graded,
+      // never from the report model. Everything the learner actually did is
+      // already on hand, so the checkpoint, the streak and the history are
+      // saved whether or not the tutor answers.
+      const scores = sessionScores(history);
+
+      let r;
       try {
-        const r = await sessionReport(apiKey, { scenario, history, level, mock: mockMode });
-        if (cancelled) return;
-        setReport(r);
-        // Spoken production summed from the turns themselves: voiced
-        // milliseconds per recording, deduped per presentation. Silence and
-        // the partner's playback never contributed in the first place.
-        const spoken = spokenProduction(history.map((t, i) => ({
-          voicedMs: t.voicedMs,
-          encounterId: t.encounterId || `turn-${i}`,
-          sessionId: t.sessionId,
-          at: t.at,
-        })));
-        saveSession({
-          scenarioId: scenario.id, turns: history.length, report: r,
-          speakingSeconds: spoken.seconds,
-        });
-        onSessionSaved?.(r, spoken.seconds);
+        r = await sessionReport(apiKey, { scenario, history, level, mock: mockMode });
       } catch (e) {
-        if (!cancelled) setError(friendlyError(e));
+        // A failed report costs the NARRATIVE only. It used to cost everything:
+        // saveSession and onSessionSaved (→ bumpStreak) sat inside this try, so
+        // one flaky request on a 12-turn conversation that graded fine on every
+        // turn showed "couldn't reach the tutor" and recorded no session, no
+        // streak and no speaking time — the learner watched their streak freeze
+        // while the AI was demonstrably working a moment earlier.
+        r = {
+          session_grade: '—',
+          average_scores: scores,
+          strengths: [],
+          stubborn_habits: [],
+          tomorrow_focus: '',
+          offline: true,
+        };
       }
+      if (cancelled) return;
+      setReport(r);
+      saveSession({
+        scenarioId: scenario.id, turns: history.length, report: r,
+        speakingSeconds: spoken.seconds,
+      });
+      onSessionSaved?.(r, spoken.seconds);
     })();
     return () => { cancelled = true; };
   }, [open]); // eslint-disable-line react-hooks/exhaustive-deps

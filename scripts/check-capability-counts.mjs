@@ -41,7 +41,7 @@ const counts = {
 
 // Markers the docs use so the values are injected, not transcribed.
 //   <!-- counts:vocabEntries -->1<!-- /counts:vocabEntries -->
-// Rewriting is done by `npm run sync:docs`; the lint only CHECKS them.
+// Rewriting is manual: edit the digits between the marker comments; the lint only CHECKS them.
 const MARKER = /<!--\s*counts:([a-zA-Z]+)\s*-->[^<]*<!--\s*\/counts:\1\s*-->/g;
 
 // Obsolete scheduler name: FSRS replaced SM-2. It must not appear as a live
@@ -62,7 +62,10 @@ for (const rel of docs) {
     const digits = (s) => String(s).replace(/[^0-9]/g, '');
     if (digits(m[1]) !== digits(counts[name])) {
       errors.push(
-        `${rel}: ${name} says "${m[1].trim()}" but the app ships ${counts[name]} \u2014 run \`npm run sync:docs\``,
+        // There is no `sync:docs` script — this hint sent people (and me) to
+        // run a command that cannot exist. The counts sit in a comment marker,
+        // so just edit the digits between them and re-run this check.
+        `${rel}: ${name} says "${m[1].trim()}" but the app ships ${counts[name]} \u2014 update the number between the <!-- counts:${name} --> markers`,
       );
     }
   }

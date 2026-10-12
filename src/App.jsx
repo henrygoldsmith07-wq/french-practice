@@ -200,13 +200,25 @@ export default function App() {
   const handleTurn = (scores) => {
     if (!scenario) return; // registry still resolving (DE/ES cold start)
     setLastScores(scores);
+    const overall = Number(scores?.overall);
     recordSpeakingGap('conversation', {
       label: 'Conversation turn',
-      score: scores?.overall ?? 0,
+      score: Number.isFinite(overall) ? overall : 0,
       source: 'conversation',
       context: { scenarioId: scenario.id },
     });
-    awardXp(Math.max(1, Math.round(scores.overall / 10)));
+    // Not every turn payload carries a score. The transfer check deliberately
+    // sends `{ transfer: { correct, independent } }` — there is no `overall` to
+    // grade. That used to fall through to `Math.round(undefined / 10)` → NaN,
+    // and `Math.max(1, NaN)` is NaN, so a NaN award reached `addXp`; the
+    // `Math.max(0, …)` clamp there does not catch NaN, `JSON.stringify(NaN)`
+    // is the string "null", and the next load read a real `null` back and threw
+    // on `xp.toLocaleString` — the app was bricked, permanently, from the
+    // ordinary "use this structure somewhere new" step. Only a real, finite
+    // score earns XP.
+    if (Number.isFinite(overall)) {
+      awardXp(Math.max(1, Math.round(overall / 10)));
+    }
     setLastActivity('session', scenario.id, `Conversation: ${scenario.title}`);
   };
 

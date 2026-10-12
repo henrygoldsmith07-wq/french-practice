@@ -60,6 +60,15 @@ export function looseKey(s) {
 /** Exact comparison key: accents preserved, only spacing and quotes settled. */
 export function strictKey(s) {
   return String(s == null ? '' : s)
+    // NFC first. "parlé" can arrive decomposed (e + U+0301) from an IME, a
+    // paste from a PDF, or a JSON payload from another platform — it is the
+    // same word and byte-for-byte the same letters, but it compared unequal to
+    // the composed form, so the grader reported an ACCENT error on a correct
+    // answer, paid 1 XP instead of 3, and skipped both the error and the
+    // success record — leaving the learner-error entry for exactly this verb
+    // stuck forever. Canonical composition makes the comparison mean what it
+    // says it means.
+    .normalize('NFC')
     .toLowerCase()
     .replace(/['’]/g, "'")
     .replace(/[.,!?;:]/g, '')

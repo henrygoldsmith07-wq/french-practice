@@ -345,14 +345,26 @@ export function scoreCandidates(state = {}) {
   return out.sort((a, b) => b.score - a.score);
 }
 
-/** Every candidate gets an activity type; avoid three identical kinds running. */
+/**
+ * Every candidate gets an activity type; avoid three identical kinds running.
+ *
+ * Idempotent on purpose. `recentPlansFromTrials` feeds this the *already
+ * mapped* names for the common case (a trial's `segments[0].id` is a segment
+ * kind, but a trial recorded from a drill stores `payload.kind` — "dictation",
+ * "accent-drill" — which fell through to `practice`). Every one of those
+ * unmapped values fell through to the same bucket, so recent history compared
+ * as a run of `practice` that never matched any candidate's type and the
+ * "never three in a row" rule simply never fired on real plans. Mapping the
+ * names to themselves costs nothing and makes the constraint real.
+ */
 export function activityTypeOf(kind) {
   switch (kind) {
-    case 'speak': case 'transfer': return 'speaking';
-    case 'input': case 'warmup': return 'listening';
-    case 'retrieve': return 'recall';
+    case 'speak': case 'transfer': case 'speaking': return 'speaking';
+    case 'input': case 'warmup': case 'listening': return 'listening';
+    case 'retrieve': case 'recall': return 'recall';
     case 'repair': return 'repair';
     case 'review': return 'review';
+    case 'practice': return 'practice';
     default: return 'practice';
   }
 }
@@ -366,13 +378,27 @@ export function applySessionConstraints(candidates, state = {}) {
   const adjustments = [];
   const recent = Array.isArray(state.recentPlans) ? state.recentPlans : [];
   const recentTypes = recent.map((p) => activityTypeOf(p.kind));
+  const chosenTypes = [...recentTypes];
+  // The run is measured over `chosenTypes` ALONE — it is seeded with recent
+  // history and appended to as candidates are accepted, so it is one list, not
+  // two.
+  //
+  // This counted the same history twice: `typeRun` scanned `recentTypes` and
+  // `chosenTypes.filter(...)` scanned recent history PLUS the choices, against
+  // a `>= 2` threshold. So one prior repair session made every repair candidate
+  // ineligible — the three best-scoring repairs (4.1–4.6 against a 1.4
+  // runner-up) were all skipped as "type-run", the arc became
+  // input → speak → retrieve, and `plan.focus` reported input/listening instead
+  // of the weakness the dashboard was showing. `recentPlans` keeps ten
+  // sessions, so a single repair could keep the repair lane dead for ten
+  // sessions. The documented rule is "never the same type three times in a
+  // row", which is a trailing-run count over one list.
   const typeRun = (type) => {
     let run = 0;
-    for (let i = recentTypes.length - 1; i >= 0 && recentTypes[i] === type; i -= 1) run += 1;
+    for (let i = chosenTypes.length - 1; i >= 0 && chosenTypes[i] === type; i -= 1) run += 1;
     return run;
   };
-  const chosenTypes = [...recentTypes];
-  const targetsUsed = new Map();
+    const targetsUsed = new Map();
   for (const p of recent.slice(0, 6)) {
     if (p?.target) targetsUsed.set(p.target, (targetsUsed.get(p.target) || 0) + 1);
   }
@@ -386,8 +412,8 @@ export function applySessionConstraints(candidates, state = {}) {
       continue;
     }
     // Never the same activity type three times in a row (including what the
-    // learner already did recently).
-    if (typeRun(type) + chosenTypes.filter((t) => t === type).length >= 2) {
+    // learner already did recently) — so at most two consecutive.
+    if (typeRun(type) >= 2) {
       adjustments.push(`skipped:${c.kind}:type-run`);
       continue;
     }
@@ -444,20 +470,25 @@ export function buildSessionPlan(input = {}) {
   const { chosen, adjustments } = applySessionConstraints(candidates, state);
 
   // Sequence along the narrative arc, then allocate minutes.
-  const byArc = [...chosen].sort((a, b) => SESSION_ARC.indexOf(a.kind) - SESSION_ARC.indexOf(b.kind));
-  const budget = {};
-  for (const kind of SESSION_ARC) budget[kind] = 0;
+    const byArc = [...chosen].sort((a, b) => SESSION_ARC.indexOf(a.kind) - SESSION_ARC.indexOf(b.kind));
+  // Minutes are tracked PER SEGMENT, not per kind. Keyed by kind, a second
+  // `repair` candidate overwrote the first one's slot, so both segments were
+  // stamped with the same number and `plan.minutes` — the figure on the
+  // "Start today's session — 46 min" button — counted that segment twice. A
+  // 45-minute request rendered as 46 minutes of work, every time.
   let remaining = minutes;
   const weights = { warmup: 0.08, input: 0.16, speak: 0.30, repair: 0.22, transfer: 0.14, retrieve: 0.16 };
   const weightTotal = byArc.reduce((sum, c) => sum + (weights[c.kind] || 0.1), 0) || 1;
-  for (const c of byArc) {
+  const allocation = byArc.map((c) => {
     const raw = (minutes * (weights[c.kind] || 0.1)) / weightTotal;
-    budget[c.kind] = Math.max(2, Math.round(raw));
-    remaining -= budget[c.kind];
-  }
-  if (remaining > 0 && byArc.length) budget[byArc[0].kind] += remaining;
+    // Only the floor can push the total above the request; never below it.
+    const mins = Math.min(Math.max(2, Math.round(raw)), remaining);
+    remaining -= mins;
+    return mins;
+  });
+  if (remaining > 0 && allocation.length) allocation[0] += remaining;
 
-  const segments = byArc.map((c) => {
+  const segments = byArc.map((c, i) => {
     // The nearest losing competitor: the highest-scoring candidate of the
     // same kind that did NOT make the plan, or the runner-up overall when
     // this kind had no rival. "Why THIS one" is only inspectable beside
@@ -474,7 +505,7 @@ export function buildSessionPlan(input = {}) {
       id: c.kind,
       kind: c.kind,
       label: SEGMENT_LABEL[c.kind] || 'Practice',
-      minutes: budget[c.kind] || 2,
+      minutes: allocation[i] ?? 2,
       target: c.target,
       factors: c.factors,
       // The full reasoning, kept with the plan for dev/research inspection;

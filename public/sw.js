@@ -13,10 +13,26 @@
 
 const CACHE = 'le-studio-__BUILD_ID__';
 const SHELL = ['./', './index.html', './manifest.webmanifest', './icon.svg'];
+// The content-hashed chunks THIS build produced, injected by
+// scripts/version-sw.mjs at build time (dev serves an empty list, which is
+// correct — there is no build to precache).
+//
+// This list did not exist. The worker precached the four shell URLs and nothing
+// else, so the 80 JS chunks that make up the app were cached only if the
+// learner happened to open that screen first. Settings→Offline reported
+// "✓ Ready offline" the moment four files were cached, and then going offline
+// and opening an unvisited route failed the lazy import into the error
+// boundary. A precache manifest is what makes the claim true.
+const BUILD_ASSETS = /* __PRECACHE__ */ [];
 
 self.addEventListener('install', (event) => {
   self.skipWaiting();
-  event.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).catch(() => {}));
+  event.waitUntil(
+    caches.open(CACHE)
+      .then((c) => c.addAll([...SHELL, ...BUILD_ASSETS]))
+      // A single 404 must not abandon the whole precache. Cache what resolves.
+      .catch((err) => console.warn('[sw] precache incomplete', err))
+  );
 });
 
 self.addEventListener('activate', (event) => {

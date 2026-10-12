@@ -29,8 +29,13 @@ export const randomPoolSentence = (excludeText) => {
 };
 
 // Normalize for spoken comparison: lowercase, strip punctuation, keep accents.
+//
+// Canonical composition matters here too: "ça" can arrive decomposed (c + ç
+// as c + U+0327, a + U+0327) from an IME or a pasted source, and it is the
+// same word. Without NFC it compared unequal and the word scored as missed.
 export const toWords = (text) =>
   String(text)
+    .normalize('NFC')
     .toLowerCase()
     .replace(/[^\p{L}\p{N}\s'-]/gu, ' ')
     .split(/\s+/)

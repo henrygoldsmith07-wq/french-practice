@@ -6,6 +6,7 @@ import { readPulseOptIn, setApiKey, clearApiKey, setPulseOptIn } from '../lib/st
 import { LANGUAGE_LIST, maturityLabel } from '../lib/languages';
 import { getQuota, formatQuota } from '../lib/quota';
 import { getRelayConfig, pingRelay, relayEnabled } from '../lib/relay';
+import { storageFullWarning, onStorageFull } from '../lib/storageCore';
 
 // In relay mode the browser never accepts or stores a Groq key. The host's
 // authenticated identity is sent to the relay, which holds the provider key.
@@ -114,6 +115,7 @@ export default function SettingsModal({ open, onClose, apiKey, onKeyChange, sett
 
         <section className="space-y-2">
           <RelayBanner />
+          <StorageFullNotice />
           <QuotaStrip />
           <label htmlFor="groq-key" className="text-sm font-semibold text-ink">
             {relayEnabled ? 'Server relay' : 'Live AI key'} <span className="font-normal text-ink3">(optional)</span>
@@ -348,10 +350,29 @@ function RelayBanner() {
       <span className="font-bold">{cfg.enabled ? 'Server relay active' : 'Direct key mode'}</span>
       <span className="block mt-1 text-[11px] leading-relaxed opacity-90">{cfg.note}</span>
       {!cfg.enabled && (
-        <span className="block mt-1.5 text-[11px] font-mono bg-white/60 rounded-lg px-2 py-1 border border-black/5">
-          For a public launch, set VITE_GROQ_RELAY_URL=/api/groq and VITE_GROQ_DAILY_LIMIT. Key then lives on the server only — see <code>server/relay.js</code>.
+        <span className="block mt-1.5 text-[11px] leading-relaxed opacity-90">
+          You are using your own API key. It is stored only on this device and is
+          never uploaded or shared.
         </span>
       )}
+    </div>
+  );
+}
+
+// Storage quota is a data-loss risk, not a setting: if a save could not fit,
+// the learner's recent work was dropped and nothing else in the app says so.
+// `storageFullWarning()` existed for years with no consumer at all — this is it.
+function StorageFullNotice() {
+  const [full, setFull] = useState(storageFullWarning());
+  useEffect(() => onStorageFull(setFull), []);
+  if (!full) return null;
+  return (
+    <div className="rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-3 text-xs leading-relaxed text-amber-900">
+      <span className="font-bold">This device&rsquo;s storage is full</span>
+      <span className="block mt-1 leading-relaxed">
+        The most recent activity could not be saved and was discarded. Free up
+        space (or remove some saved words and history) so nothing else is lost.
+      </span>
     </div>
   );
 }
