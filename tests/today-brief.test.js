@@ -94,6 +94,59 @@ describe('today brief', () => {
     );
   });
 
+  test('an approaching exam shows how close it is', async () => {
+    // The countdown comes from the same examCountdown the session planner
+    // reads, so the brief's urgency always matches the session's mix.
+    const { todayBrief } = await freshBrief();
+    const settingsMod = await import('../src/lib/stores/settingsStore.js');
+    const dayIn = (n) => new Date(Date.now() + n * 86_400_000).toISOString().slice(0, 10);
+    settingsMod.setSettings({
+      ...settingsMod.getSettings(),
+      examBoard: 'aqa-gcse',
+      examBoardName: 'AQA GCSE French',
+      examDate: dayIn(12),
+    });
+    const brief = todayBrief({ entries: [], minutes: 15 });
+    assert.ok(
+      // The day count floors the remaining time, so it depends on the hour the
+      // test runs: seed with a fixed `now` mindset — assert the countdown line
+      // exists and counts 1..12, not a hardcoded number that flips at midnight.
+      brief.lines.some((l) => {
+        const m = l.match(/^(\d+) days to your exam$/);
+        return m !== null && Number(m[1]) >= 1 && Number(m[1]) <= 12;
+      }),
+      `lines: ${JSON.stringify(brief.lines)}`,
+    );
+  });
+
+  test('a learner with an exam but no date gets no countdown line — no invented urgency', async () => {
+    const { todayBrief } = await freshBrief();
+    const settingsMod = await import('../src/lib/stores/settingsStore.js');
+    settingsMod.setSettings({
+      ...settingsMod.getSettings(),
+      examBoard: 'aqa-gcse',
+      examBoardName: 'AQA GCSE French',
+    });
+    const brief = todayBrief({ entries: [], minutes: 15 });
+    assert.ok(!brief.lines.some((l) => /days to your exam|Exam is (today|tomorrow)/.test(l)),
+      `lines: ${JSON.stringify(brief.lines)}`);
+  });
+
+  test('a countdown without a named exam shows nothing — a bare date is not their exam', async () => {
+    // A date alone reads as a random deadline; without a board name the brief
+    // cannot tie it to the learner's qualification, so it stays silent.
+    const { todayBrief } = await freshBrief();
+    const settingsMod = await import('../src/lib/stores/settingsStore.js');
+    const dayIn = (n) => new Date(Date.now() + n * 86_400_000).toISOString().slice(0, 10);
+    settingsMod.setSettings({
+      ...settingsMod.getSettings(),
+      examDate: dayIn(12),
+    });
+    const brief = todayBrief({ entries: [], minutes: 15 });
+    assert.ok(!brief.lines.some((l) => /days to your exam|Exam is (today|tomorrow)/.test(l)),
+      `lines: ${JSON.stringify(brief.lines)}`);
+  });
+
   test('a learner with no exam selection gets no exam line — the brief never invents a target', async () => {
     const { todayBrief } = await freshBrief();
     const brief = todayBrief({ entries: [], minutes: 15 });
