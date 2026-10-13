@@ -103,3 +103,44 @@ test('the repair loop still runs under maximum exam pressure', () => {
   ok(ids.includes('speak'));
   ok(ids.includes('drill'), 'targeted repair survives exam pressure');
 });
+
+// ── the board's oracy weight reaches the LIVE session, not just the preview ──
+//
+// Regression guard: the dashboard brief applies resolveExamWeighting (the board's
+// oracy share) but the live session's examCountdown call omitted the board
+// entirely, so an oracy-heavy candidate saw a speak-leaning preview and then sat
+// a session that ignored their qualification. examCountdown already supported the
+// board through an injectable lookup; nothing on the session path passed it.
+
+test('an oracy-heavy board lifts the live session, not only the preview', () => {
+  const soon = new Date(Date.now() + 10 * 86_400_000).toISOString();
+  const weightOf = () => 0.30; // a Made-for-Wales style paper
+
+  const plain = examCountdown(soon, { now: Date.now() });
+  const withBoard = examCountdown(soon, { now: Date.now(), speakingWeightOf: weightOf });
+
+  ok(withBoard.speakWeight > plain.speakWeight,
+    `the board's oracy weight must lift the countdown weight (${plain.speakWeight} → ${withBoard.speakWeight})`);
+  // Bounded: a board can raise the pull, never blow the segment up.
+  ok(withBoard.speakWeight <= 2.2, 'the board-scaled weight stays bounded');
+});
+
+test('no stored board weight leaves the countdown exactly as it was', () => {
+  // A learner with no board, or one chosen before examSpeakingWeight existed,
+  // must get the identical session — an absent weight is never a guessed one.
+  const soon = new Date(Date.now() + 10 * 86_400_000).toISOString();
+  const baseline = examCountdown(soon, { now: Date.now() });
+  const noBoard = examCountdown(soon, { now: Date.now(), speakingWeightOf: undefined });
+  strictEqual(noBoard.speakWeight, baseline.speakWeight,
+    'an absent board weight is neutral — no invented urgency');
+});
+
+test('a baseline (25%) board is neutral for the countdown too', () => {
+  // 25% is the lightest shipped oracy share, the same neutral point
+  // resolveExamWeighting uses, so the commonest board behaves as before.
+  const soon = new Date(Date.now() + 10 * 86_400_000).toISOString();
+  const baseline = examCountdown(soon, { now: Date.now() });
+  const lightBoard = examCountdown(soon, { now: Date.now(), speakingWeightOf: () => 0.25 });
+  strictEqual(lightBoard.speakWeight, baseline.speakWeight,
+    'the 25% baseline board must not change the session');
+});
