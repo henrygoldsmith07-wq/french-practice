@@ -242,3 +242,56 @@ test('maps provider failures without forwarding provider response content', asyn
   assert.equal(res.body.error, 'provider_unavailable');
   assert.doesNotMatch(JSON.stringify(res.body), /provider internal diagnostics/);
 });
+
+// ── the server-side kill switch ────────────────────────────────────────────
+// An operator's emergency off. When RELAY_KILL_SWITCH is on, every
+// provider-backed route is refused before any upstream call or quota spend, so
+// a compromised key or runaway bill stops instantly. /healthz stays honest so
+// the relay reads as up-but-off. Off by default; normal operation unchanged.
+
+function healthRequest() {
+  return {
+    method: 'GET',
+    url: '/api/groq/healthz',
+    headers: { origin: 'https://studio.example.com', authorization: `Bearer ${token()}` },
+    body: '',
+  };
+}
+
+test('the kill switch refuses chat with 503 and makes NO upstream call', async () => {
+  const upstream = provider();
+  const res = await run({ environment: env({ RELAY_KILL_SWITCH: 'true' }), fetchImpl: upstream.fetchImpl });
+  assert.equal(res.statusCode, 503);
+  assert.equal(res.body.error, 'relay_disabled');
+  // The whole point: no provider spend, no quota consumed, when disabled.
+  assert.equal(upstream.calls, 0, 'the kill switch must not reach the provider');
+});
+
+test('the kill switch also refuses the free trial route before minting a token', async () => {
+  const upstream = provider();
+  const res = await run({
+    environment: env({ RELAY_KILL_SWITCH: '1' }),
+    fetchImpl: upstream.fetchImpl,
+    req: request({ path: '/api/groq/trial', body: {} }),
+  });
+  assert.equal(res.statusCode, 503);
+  assert.equal(res.body.error, 'relay_disabled');
+  assert.equal(upstream.calls, 0);
+});
+
+test('health stays 200 and reports disabled when the kill switch is on', async () => {
+  const res = await run({ environment: env({ RELAY_KILL_SWITCH: 'on' }), req: healthRequest() });
+  assert.equal(res.statusCode, 200, 'health is honest: the relay is up, just disabled');
+  assert.equal(res.body.ok, true);
+  assert.equal(res.body.disabled, true);
+});
+
+test('normal operation is unchanged when the kill switch is off (the default)', async () => {
+  const upstream = provider();
+  const res = await run({ fetchImpl: upstream.fetchImpl });
+  assert.equal(res.statusCode, 200);
+  assert.equal(upstream.calls, 1);
+  // Health reports not-disabled by default.
+  const health = await run({ req: healthRequest() });
+  assert.equal(health.body.disabled, false);
+});

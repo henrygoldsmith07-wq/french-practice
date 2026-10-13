@@ -276,6 +276,16 @@ function createRuntime(options = {}) {
     rateLimitPerMinute: Number(env.RELAY_TRIAL_RATE_LIMIT_PER_MINUTE) > 0 ? Number(env.RELAY_TRIAL_RATE_LIMIT_PER_MINUTE) : TRIAL_DEFAULTS.rateLimitPerMinute,
   };
 
+  // Server-side kill switch. An operator's emergency off: when on, every
+  // provider-backed route (chat, audio, trial) is refused with 503 BEFORE any
+  // upstream call or quota spend, so a compromised key, a runaway bill, or an
+  // abusive client is stopped instantly without a redeploy. /healthz stays
+  // honest (200) so operators can still observe that the relay is up and
+  // deliberately disabled rather than down. Off by default — normal operation
+  // is unchanged — and it does not weaken any other control.
+  const killSwitch = String(env.RELAY_KILL_SWITCH ?? '').trim().toLowerCase();
+  const disabled = killSwitch === '1' || killSwitch === 'true' || killSwitch === 'on' || killSwitch === 'yes';
+
   /**
    * Resolve the caller's identity for quota purposes.
    *
@@ -335,7 +345,14 @@ function createRuntime(options = {}) {
       if (req.method !== 'GET') return errorResponse(res, 405, 'method_not_allowed');
       const auth = await authenticate(req);
       if (!auth.ok) return errorResponse(res, auth.status || 401, 'unauthorized');
-      return sendJson(res, 200, { ok: true, relay: 'groq' });
+      // Honest even when the kill switch is on: the relay is up, just disabled.
+      return sendJson(res, 200, { ok: true, relay: 'groq', disabled });
+    }
+    // Kill switch: refuse every provider-backed route before any upstream call
+    // or quota spend. Health above stays 200 so the relay reads as up-but-off.
+    if (disabled) {
+      logger({ event: 'relay_disabled', requestId: id, route: route.operation });
+      return errorResponse(res, 503, 'relay_disabled');
     }
     // The free, no-key entry point: a first-time visitor asks for a trial
     // token and then uses the relay exactly as a signed-in learner would.
