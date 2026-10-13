@@ -37,6 +37,31 @@ const isStr = (v) => typeof v === 'string';
 const finite01to100 = (v) => Number.isFinite(Number(v)) && Number(v) >= 0 && Number(v) <= 100;
 
 /**
+ * Sanitize a learner-supplied free-text value before it enters an AI prompt's
+ * SYSTEM message (the privileged instruction channel).
+ *
+ * The learner's name (Profile.jsx) and a few profile fields are free text, and
+ * learnerLine folds them into the tutor's system prompt. A value like
+ * "Ignore previous instructions and…" would otherwise forge system instructions.
+ * This strips control characters and newlines (which could open a fake "system:"
+ * turn), collapses whitespace, and caps length — so the value can only ever be
+ * inert content, never prompt structure. Text is preserved (not deleted); only
+ * its ability to break structure is removed.
+ *
+ * @param {unknown} value
+ * @param {number} [max=60] hard character cap applied after whitespace collapse
+ * @returns {string}
+ */
+export function sanitizeForPrompt(value, max = 60) {
+  return String(value == null ? '' : value)
+    // eslint-disable-next-line no-control-regex -- matching control chars to STRIP them from prompt-bound text
+    .replace(/[\u0000-\u001F\u007F-\u009F]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, Math.max(0, Number(max) || 0));
+}
+
+/**
  * Validate a conversation-turn evaluation payload.
  * Returns { ok, error?, scores? } — on ok, `scores` carries the coerced
  * 0–100 integers (missing sub-scores fall back to `overall`).

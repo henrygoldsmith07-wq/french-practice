@@ -16,6 +16,7 @@ import { pingRelay, relayEnabled, withRelay } from './relay.js';
 import {
   validateTurnEvaluation, validateWritingFeedback,
   normalizeCorrectionsDetailed as normalizeCorrectionsDetailedStrict,
+  sanitizeForPrompt,
 } from './aiValidate.js';
 import {
   fluencyDebriefFromHistory, normalizeFluencyReview,
@@ -379,15 +380,25 @@ async function chatPlain(apiKey, messages, { temperature = 0.6, label = 'chat-pl
 
 // Fold the locally-tracked learner profile into a single instruction line, so
 // the tutor's answers are personal and context-aware. Never echoed verbatim.
+//
+// INJECTION GUARD: the learner's name is free text they typed themselves
+// (Profile.jsx), and it is interpolated into the SYSTEM prompt — the privileged
+// instruction channel. A name like "Ignore previous instructions and…" would
+// otherwise forge system instructions. `sanitizeForPrompt` (aiValidate.js)
+// strips control characters, collapses whitespace, and caps length so a name
+// can only ever be a name. Topics/mistakes/weakGrammar are constrained ids
+// (vocab/grammar keys), not free text, so they need no such treatment — but
+// they are capped here too.
+
 function learnerLine(l) {
   if (!l) return '';
   const bits = [];
-  if (l.name) bits.push(`their name is ${l.name}`);
-  if (l.topics?.length) bits.push(`interests: ${l.topics.join(', ')}`);
-  if (l.mistakes?.length) bits.push(`recurring mistakes to gently catch and reinforce: ${l.mistakes.join('; ')}`);
-  if (l.weakGrammar?.length) bits.push(`weak grammar areas: ${l.weakGrammar.join(', ')}`);
-  if (l.memory?.focusTopic) bits.push(`due retest: ${l.memory.focusTopic} (${l.memory.errorCount || 1} prior slip${(l.memory.errorCount||1)===1?'':'s'}, ${l.memory.status||'active'}) — deliberately create a natural opening for them to use it, then observe whether they do`);
-  if (l.recyclingInstruction) bits.push(l.recyclingInstruction);
+  if (l.name) bits.push(`their name is ${sanitizeForPrompt(l.name, 40)}`);
+  if (l.topics?.length) bits.push(`interests: ${sanitizeForPrompt(l.topics.join(', '), 120)}`);
+  if (l.mistakes?.length) bits.push(`recurring mistakes to gently catch and reinforce: ${sanitizeForPrompt(l.mistakes.join('; '), 200)}`);
+  if (l.weakGrammar?.length) bits.push(`weak grammar areas: ${sanitizeForPrompt(l.weakGrammar.join(', '), 120)}`);
+  if (l.memory?.focusTopic) bits.push(`due retest: ${sanitizeForPrompt(l.memory.focusTopic, 80)} (${l.memory.errorCount || 1} prior slip${(l.memory.errorCount||1)===1?'':'s'}, ${l.memory.status||'active'}) — deliberately create a natural opening for them to use it, then observe whether they do`);
+  if (l.recyclingInstruction) bits.push(sanitizeForPrompt(l.recyclingInstruction, 200));
   return bits.length
     ? ` Learner profile — ${bits.join('; ')}. Tailor your examples to their interests and weak spots, and address them by name when it feels natural; never recite this profile back to them.`
     : '';
