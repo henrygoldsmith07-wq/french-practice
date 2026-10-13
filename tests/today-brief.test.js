@@ -109,14 +109,38 @@ describe('today brief', () => {
     const brief = todayBrief({ entries: [], minutes: 15 });
     assert.ok(
       // The day count floors the remaining time, so it depends on the hour the
-      // test runs: seed with a fixed `now` mindset — assert the countdown line
-      // exists and counts 1..12, not a hardcoded number that flips at midnight.
+      // test runs: assert the countdown exists and counts 1..12, not a hardcoded
+      // number that flips at midnight. Name and countdown share ONE line so the
+      // brief's three slots are not spent entirely on context.
       brief.lines.some((l) => {
-        const m = l.match(/^(\d+) days to your exam$/);
+        const m = l.match(/^AQA GCSE French · (\d+) days to your exam$/);
         return m !== null && Number(m[1]) >= 1 && Number(m[1]) <= 12;
       }),
       `lines: ${JSON.stringify(brief.lines)}`,
     );
+  });
+
+  test('exam context takes ONE brief slot, leaving room for an actionable line', async () => {
+    // The brief shows at most three lines and they are the card's whole value
+    // proposition. Exam name + countdown on separate lines would spend two of
+    // the three on context and push a real task off the card, so they are one
+    // line. This guards that decision: with a named exam, a date, and something
+    // due, the brief must still carry the actionable line.
+    const { todayBrief } = await freshBrief();
+    const settingsMod = await import('../src/lib/stores/settingsStore.js');
+    const dayIn = (n) => new Date(Date.now() + n * 86_400_000).toISOString().slice(0, 10);
+    settingsMod.setSettings({
+      ...settingsMod.getSettings(),
+      examBoard: 'aqa-gcse',
+      examBoardName: 'AQA GCSE French',
+      examDate: dayIn(12),
+    });
+    const brief = todayBrief({ entries: [], minutes: 15 });
+
+    const examLines = brief.lines.filter((l) => /AQA GCSE French/.test(l));
+    assert.equal(examLines.length, 1, `exam context must be one line: ${JSON.stringify(brief.lines)}`);
+    assert.ok(/days to your exam/.test(examLines[0]), 'that one line carries the countdown too');
+    assert.ok(brief.lines.length <= 3, 'the brief never exceeds three lines');
   });
 
   test('a learner with an exam but no date gets no countdown line — no invented urgency', async () => {
