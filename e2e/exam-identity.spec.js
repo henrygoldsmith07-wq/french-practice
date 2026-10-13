@@ -105,3 +105,28 @@ test('the exam date survives reload and the countdown stays live', async ({ page
   await expect(page.getByLabel('Exam date')).toHaveValue(date);
   await expect(page.getByText(/to go\./)).toBeVisible({ timeout: 15_000 });
 });
+
+test('Today shows how close the exam is, not just its name', async ({ page }) => {
+  await freshLearner(page);
+  await openExamSetup(page);
+
+  // Board + a date 30 days out: the brief names the exam AND the countdown, so
+  // the learner can see why the session leans on speaking.
+  await page.getByRole('button', { name: /3800QS/ }).click();
+  await page.getByLabel('Exam date').fill(dayIn(30));
+
+  await page.getByLabel('Main navigation').getByRole('button', { name: 'Today' }).click();
+  await expect(page.getByText(/WJEC GCSE French/)).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByText(/days to your exam/)).toBeVisible({ timeout: 15_000 });
+});
+
+test('an exam with no date shows the name but never a countdown', async ({ page }) => {
+  await freshLearner(page);
+  await openExamSetup(page);
+  await page.getByRole('button', { name: /3800QS/ }).click();
+
+  await page.getByLabel('Main navigation').getByRole('button', { name: 'Today' }).click();
+  await expect(page.getByText(/WJEC GCSE French/)).toBeVisible({ timeout: 15_000 });
+  // No date set: the brief must not invent urgency.
+  await expect(page.getByText(/days to your exam|Exam is (today|tomorrow)/)).toHaveCount(0);
+});

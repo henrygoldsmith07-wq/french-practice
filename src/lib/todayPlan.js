@@ -59,7 +59,7 @@ export function buildTodayPlan(input) {
     entries, scenariosReg, grammarReady, listeningTracks,
     studyModule = null, degradedLearning = false,
     conjCap = false, authoredCap = false, accentCap = false,
-    examDate = null,
+    examDate = null, examSpeakingWeight = null,
     now = Date.now(),
   } = input || {};
   if (!open || entries === null || scenariosReg === null || !grammarReady || listeningTracks === null) return null;
@@ -70,12 +70,23 @@ export function buildTodayPlan(input) {
   // invalid or past date yields null, so no countdown means a standard session
   // and the countdown band/note never leak into the plan.
   //
-  // The exam BOARD is deliberately NOT resolved here: doing so would pull the
-  // ~25 KB board registry into Today's load graph and blow its 100 KB surface
-  // budget. Today's countdown runs on the date alone — the board-tailored
-  // oracy weight is applied where the registry already lives (ExamSetup). This
-  // keeps Today lean and never invents urgency a board does not carry.
-  const countdown = examCountdown(examDate, { now });
+  // The board's oracy weight arrives as a plain NUMBER, never resolved from
+  // boards.js here: the ~25 KB registry must stay off Today's load graph (100 KB
+  // surface budget). ExamSetup resolves it where the registry already lives and
+  // persists settings.examSpeakingWeight, so this reads a figure the learner's
+  // own board produced. The board used to be omitted entirely, so the dashboard
+  // brief — which DOES apply resolveExamWeighting — and the live session
+  // disagreed about an oracy-heavy paper: the preview leaned on speaking while
+  // the session the learner actually sat ignored their board.
+  //
+  // An absent weight (no board, or a board chosen before the field existed)
+  // leaves speakingWeightOf undefined, which examCountdown treats exactly as "no
+  // board": the countdown runs on the date alone and no weighting is invented.
+  const speakingWeight = Number(examSpeakingWeight);
+  const speakingWeightOf = Number.isFinite(speakingWeight) && speakingWeight > 0
+    ? () => speakingWeight
+    : undefined;
+  const countdown = examCountdown(examDate, { now, speakingWeightOf });
   const graph = getMistakeGraph();
 
   // Study enrolment is idempotent and consent-gated; a failure leaves `study`

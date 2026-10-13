@@ -113,6 +113,11 @@ export default function TodaySession({ open, onClose, minutes = 20, apiKey, mock
     authoredCap,
     accentCap,
     examDate: getSettings().examDate ?? null,
+    // The chosen board's oracy weight, persisted by ExamSetup as a plain number
+    // so the live session can honour the learner's qualification without Today
+    // importing the 25 KB board registry. Absent (no board, or chosen before
+    // the field existed) reads as "no weighting" — never a guessed one.
+    examSpeakingWeight: getSettings().examSpeakingWeight ?? null,
   }),
   // deps: every async dependency's arrival (or failure, or retry) changes the
   // deps object → these primitives change → the plan replans no matter what
