@@ -80,21 +80,28 @@ export function todayBrief(options = {}) {
   const examName = settings.examBoard && typeof settings.examBoardName === 'string'
     ? settings.examBoardName
     : null;
+  // Exam context: the qualification, and how close it is. Both come from the
+  // SAME countdown the session uses (plannerState resolves it once), so the
+  // brief can never promise a calmer mix than the session delivers.
+  //
+  // Name and countdown share ONE line on purpose. The brief shows at most three
+  // lines and the rest are actionable ("N items due", "X needs work"); spending
+  // two slots on context would push a real task off the card. They read together
+  // as one thought anyway ("Foundation tier, WJEC GCSE French · 12 days to your
+  // exam"), and the card joins lines with " · " regardless.
+  //
+  // The countdown requires a named exam: a bare date reads as a random deadline,
+  // not the learner's qualification, so a date without a board name shows
+  // nothing. No date, or a past one, adds nothing — no invented urgency.
   const examTier = settings.examTier;
-    if (examName) {
+  if (examName) {
     const tierWord = examTier === TIER_FOUNDATION ? 'Foundation' : examTier === TIER_HIGHER ? 'Higher' : '';
-    lines.push(`${tierWord ? `${tierWord} tier, ` : ''}${examName}`);
-  }
-  // Exam proximity, from the SAME countdown the session uses (plannerState
-  // resolves it once). A learner with an exam approaching sees how close it is
-  // — that is why the session leans on speaking — while one without a date
-  // sees nothing (no invented urgency). `examName` must be present: a countdown
-  // without a named exam reads as a random deadline, not theirs.
-  if (examName && state.examCountdown) {
     const cd = state.examCountdown;
-    lines.push(cd.days <= 1
-      ? `Exam ${cd.days === 0 ? 'is today' : 'is tomorrow'}`
-      : `${cd.days} days to your exam`);
+    const when = !cd ? ''
+      : cd.days <= 0 ? ' · exam is today'
+        : cd.days === 1 ? ' · exam is tomorrow'
+          : ` · ${cd.days} days to your exam`;
+    lines.push(`${tierWord ? `${tierWord} tier, ` : ''}${examName}${when}`);
   }
   if (state.srsDue > 0) lines.push(`${state.srsDue} item${state.srsDue === 1 ? '' : 's'} due`);
   if (skillLabel) lines.push(`${skillLabel} needs work`);
