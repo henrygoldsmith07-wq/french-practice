@@ -80,13 +80,13 @@ export function buildTodayPlan(input) {
   // the session the learner actually sat ignored their board.
   //
   // An absent weight (no board, or a board chosen before the field existed)
-  // leaves speakingWeightOf undefined, which examCountdown treats exactly as "no
+  // leaves speakingWeight null, which examCountdown treats exactly as "no
   // board": the countdown runs on the date alone and no weighting is invented.
-  const speakingWeight = Number(examSpeakingWeight);
-  const speakingWeightOf = Number.isFinite(speakingWeight) && speakingWeight > 0
-    ? () => speakingWeight
-    : undefined;
-  const countdown = examCountdown(examDate, { now, speakingWeightOf });
+  const examWeight = Number(examSpeakingWeight);
+  const countdown = examCountdown(examDate, {
+    now,
+    speakingWeight: Number.isFinite(examWeight) && examWeight > 0 ? examWeight : null,
+  });
   const graph = getMistakeGraph();
 
   // Study enrolment is idempotent and consent-gated; a failure leaves `study`

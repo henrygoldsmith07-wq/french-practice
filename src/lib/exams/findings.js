@@ -170,10 +170,19 @@ export function applyPaperFindings(tasks = [], { recordError, recordSuccess, con
  * as before, so this never invents urgency a board does not actually carry.
  *
  * @param {string|Date|null} examDate
- * @param {object} [options] { now, boardId, speakingWeightOf }
+ * @param {object} [options] { now, boardId, speakingWeight, speakingWeightOf }
+ *   - `speakingWeight`: the board's oracy share as a PLAIN NUMBER (0.25, 0.30).
+ *     This is the primary, preferred way to pass the board — one value, nothing
+ *     to wire, impossible to forget. ExamSetup persists it as
+ *     `settings.examSpeakingWeight`; use `resolveSpeakingWeight(settings)` to
+ *     read it the same way everywhere.
+ *   - `speakingWeightOf`: a `(boardId) => number|null` lookup, for a caller that
+ *     already holds the board registry. Legacy/compat; prefer `speakingWeight`.
  * @returns {{days:number, band:string, speakWeight:number, note:string}|null}
  */
-export function examCountdown(examDate, { now = Date.now(), boardId = null, speakingWeightOf } = {}) {
+export function examCountdown(examDate, {
+  now = Date.now(), boardId = null, speakingWeight = null, speakingWeightOf,
+} = {}) {
   if (!examDate) return null;
   const at = examDate instanceof Date ? examDate.getTime() : Date.parse(examDate);
   if (!Number.isFinite(at)) return null;
@@ -204,19 +213,40 @@ export function examCountdown(examDate, { now = Date.now(), boardId = null, spea
   // stray data value can never blow the segment up; unknown/missing weight is a
   // no-op. A neutral board therefore returns the exact prior number.
   //
-  // The weight comes from an injectable lookup rather than a static boards.js
-  // import (see the module note): callers that already hold the board registry
-  // pass it in; callers that don't (Today) simply get the countdown alone, with
-  // no invented urgency — the board registry never enters their load graph.
-  const boardWeight = typeof speakingWeightOf === 'function'
-    ? speakingWeightOf(boardId)
-    : null;
+  // The weight arrives as a PLAIN number (`speakingWeight`, preferred — see
+  // resolveSpeakingWeight) or, for a caller holding the board registry, a
+  // `speakingWeightOf` lookup. A plain number needs no import, so the ~25 KB
+  // registry never enters Today's load graph; an absent value reads as "no
+  // board" and invents no urgency.
+  const directWeight = Number(speakingWeight);
+  const boardWeight = Number.isFinite(directWeight) && directWeight > 0
+    ? directWeight
+    : (typeof speakingWeightOf === 'function' ? speakingWeightOf(boardId) : null);
   if (Number.isFinite(boardWeight) && boardWeight > 0) {
     const scale = 0.25 / boardWeight; // GCSE 0.25 → 1; 0.30 → ~0.83
     speakWeight = Math.min(2.2, Math.max(1, speakWeight / scale));
   }
 
   return { days, band, speakWeight, note };
+}
+
+/**
+ * Read the learner's exam oracy weight from persisted settings, the ONE way.
+ *
+ * ExamSetup resolves the board's `speakingWeight` where the registry lives and
+ * persists it as `settings.examSpeakingWeight` (a plain number), precisely so
+ * Today's load path never imports the ~25 KB board registry. Every countdown
+ * call site resolves it through here, so a new call site copies one line
+ * instead of reinventing the read — the footgun behind the #17/#19 divergence
+ * family, where each call site forgot to pass the board and the brief and
+ * session disagreed.
+ *
+ * @param {object|null|undefined} settings the learner's settings object
+ * @returns {number|null} the oracy share (0.25, 0.30, …) or null when unset
+ */
+export function resolveSpeakingWeight(settings) {
+  const weight = Number(settings?.examSpeakingWeight);
+  return Number.isFinite(weight) && weight > 0 ? weight : null;
 }
 
 export { CRITERION_LABEL };
