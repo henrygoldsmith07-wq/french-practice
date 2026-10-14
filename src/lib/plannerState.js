@@ -149,7 +149,17 @@ export function plannerState(options = {}) {
   // how close the paper is. Null when there is no date or it has passed — no
   // invented urgency. `speakWeight` is the banded pull the planner turns into a
   // speak factor; 1.0 means "no countdown pressure".
-  const countdown = examCountdown(settings.examDate || null, { now });
+  //
+  // The stored oracy weight is forwarded exactly as buildTodayPlan does. Until
+  // it was, the two planners read different exam inputs: the session lifted the
+  // speak weight for an oracy-heavy board while this brief did not, so a
+  // Made-for-Wales candidate's preview understated its own session's leaning.
+  // The weight is a plain number (ExamSetup resolves it beside the registry), so
+  // this adds no registry to Today's load graph. An absent or unusable weight
+  // leaves the lookup undefined — "no board", the countdown runs on the date
+  // alone, and no urgency is invented.
+  const speakingWeightOf = examWeighting !== null ? () => examWeighting : undefined;
+  const countdown = examCountdown(settings.examDate || null, { now, speakingWeightOf });
 
   return {
     now,

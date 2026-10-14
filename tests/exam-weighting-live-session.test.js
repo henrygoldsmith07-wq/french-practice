@@ -23,6 +23,8 @@ import { memoryStorage } from './helpers/memory-storage.js';
 globalThis.localStorage = memoryStorage();
 
 const { buildTodayPlan } = await import('../src/lib/todayPlan.js');
+const { plannerState } = await import('../src/lib/plannerState.js');
+const { examCountdown } = await import('../src/lib/exams/findings.js');
 const { ensureGrammarTopics } = await import('../src/lib/todayCapabilities.js');
 await ensureGrammarTopics();
 
@@ -85,4 +87,49 @@ test('the board weight does nothing without an exam date', () => {
   const shape = (plan) => plan.segments.map((s) => `${s.id}:${s.minutes}`).join('|');
   assert.equal(shape(noDate), shape(noDatePlain),
     'a board weight without an exam date must not reshape the session');
+});
+
+// ── the two planners must agree about the learner's exam ──
+//
+// todayBrief (preview) and buildTodayPlan (live session) are deliberately
+// distinct planners, but they read the same exam inputs. Two defects of the
+// same class have already been found here: the countdown missing from the
+// brief, then the board weight missing from the session — and now, the board
+// weight missing from plannerState's own countdown. This asserts the invariant
+// directly so a future divergence fails loudly instead of shipping quietly.
+
+test('the preview and the live session weight an oracy-heavy board identically', () => {
+  const settings = {
+    examDate: dayIn(10),
+    examBoard: 'wjec-gcse-3830',
+    examBoardName: 'WJEC GCSE French (Made for Wales)',
+    examSpeakingWeight: 0.30,
+  };
+
+  const preview = plannerState({ reading: { settings }, entries: [] });
+  const session = examCountdown(settings.examDate, {
+    now: Date.now(),
+    speakingWeightOf: () => settings.examSpeakingWeight,
+  });
+
+  assert.ok(preview.examCountdown, 'the preview resolved a countdown');
+  assert.equal(
+    preview.examCountdown.speakWeight,
+    session.speakWeight,
+    'both planners must lift the speak weight by the same board-scaled amount',
+  );
+  assert.ok(
+    preview.examCountdown.speakWeight > examCountdown(settings.examDate, { now: Date.now() }).speakWeight,
+    'and both must exceed the boardless countdown',
+  );
+});
+
+test('an absent board weight leaves the two planners alike', () => {
+  // A learner with no board, or one chosen before the field existed, must see
+  // identical exam inputs on both paths — never a guessed weighting.
+  const settings = { examDate: dayIn(10), examBoard: null };
+  const preview = plannerState({ reading: { settings }, entries: [] });
+  const bare = examCountdown(settings.examDate, { now: Date.now() });
+  assert.equal(preview.examCountdown.speakWeight, bare.speakWeight,
+    'no stored weight means the plain date-only countdown on both paths');
 });
