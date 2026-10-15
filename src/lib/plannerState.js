@@ -140,9 +140,6 @@ export function plannerState(options = {}) {
   // reads as "no weighting", never as a wrong one.
   const storedWeight = Number(settings.examSpeakingWeight);
   const examWeighting = Number.isFinite(storedWeight) && storedWeight > 0 ? storedWeight : null;
-  const examBoardName = settings.examBoard && examWeighting
-    ? (typeof settings.examBoardName === 'string' && settings.examBoardName ? settings.examBoardName : null)
-    : null;
 
   // Exam-date pressure, from the SAME examCountdown the session planner uses
   // (exams/findings.js) so the dashboard brief and the real session agree on

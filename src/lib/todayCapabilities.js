@@ -74,6 +74,14 @@ export function dictationDrillFor(concept) {
 export function accentDrillFor(concept) {
   return PRONUNCIATION_GAP_RE.test(String(concept || '').trim()) ? { kind: 'accent-drill' } : null;
 }
+// A pronunciation gap is about how a word SOUNDS, so the repair must make the
+// learner say it out loud. It used to fall to `accentDrillFor` — a keyboard
+// orthography drill that files its score under 'writing' — with vocabulary
+// recall and a podcast behind it: nothing in that chain exercised speech, so
+// the gap could never actually be repaired by the session it was scheduled in.
+export function pronunciationDrillFor(concept) {
+  return PRONUNCIATION_GAP_RE.test(String(concept || '').trim()) ? { kind: 'pronunciation-drill' } : null;
+}
 
 /** Normalise a mistake concept (AI topic id or free text) to a library topic id. */
 export function conceptToTopicId(concept) {
@@ -263,6 +271,10 @@ export function probeCapabilities({
   const authored = concept ? authoredDrillFor(concept) : null;
   const trainer = concept ? trainerDrillFor(concept) : null;
   const dictation = concept ? dictationDrillFor(concept) : null;
+  // A pronunciation concept gets the READ-ALOUD drill first (it exercises
+  // speech); the accent retype stays available as the orthography repair for
+  // writing concepts, and as a later fallback for pronunciation.
+  const pronunciation = concept ? pronunciationDrillFor(concept) : null;
   const accent = concept ? accentDrillFor(concept) : null;
   return {
     concept: concept || null,
@@ -276,6 +288,7 @@ export function probeCapabilities({
     'ai-drill': Boolean(hasAi) && Boolean(concept),
     'conj-drill': Boolean(trainer) && languageCaps.conj !== false,
     'dictation-drill': Boolean(dictation),
+    'pronunciation-drill': Boolean(pronunciation),
     'accent-drill': Boolean(accent) && languageCaps.accent !== false,
     'authored-drill': Boolean(authored) && languageCaps.authored !== false,
     'retype': pendingRetypes > 0,
@@ -286,6 +299,7 @@ export function probeCapabilities({
     authoredDrill: authored,
     trainerDrill: trainer,
     dictationDrill: dictation,
+    pronunciationDrill: pronunciation,
     accentDrill: accent,
   };
 }
@@ -301,6 +315,7 @@ export function drillChain(caps) {
     chain.push({ kind: 'conj-drill', verb: caps.trainerDrill.verb, tense: caps.trainerDrill.tense, personIndex: caps.trainerDrill.personIndex });
   }
   if (caps['dictation-drill']) chain.push({ kind: 'dictation-drill' });
+  if (caps['pronunciation-drill']) chain.push({ kind: 'pronunciation-drill' });
   if (caps['accent-drill']) chain.push({ kind: 'accent-drill' });
   if (caps['ai-drill']) {
     chain.push({ kind: 'ai-drill', concept: caps.concept ?? null });
