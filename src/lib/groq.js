@@ -470,7 +470,7 @@ export async function generateExercises(apiKey, { topic, level = 'B1', mock }) {
   const json = await chatJson(apiKey, [
     {
       role: 'system',
-      content: `Create ${LANG.name} practice exercises for a CEFR ${level} learner on the topic: "${topic}". Reply ONLY as JSON: {"exercises": [{"q": "fill-in-the-blank or question, ${LANG.name} with ___ where needed", "options": ["3 short options"], "answer": index_of_correct, "why": "one-line explanation in English"}]} — exactly 3 exercises, difficulty matched to ${level}.`,
+      content: `Create ${LANG.name} practice exercises for a CEFR ${level} learner on the topic: "${sanitizeForPrompt(topic, 120)}". Reply ONLY as JSON: {"exercises": [{"q": "fill-in-the-blank or question, ${LANG.name} with ___ where needed", "options": ["3 short options"], "answer": index_of_correct, "why": "one-line explanation in English"}]} — exactly 3 exercises, difficulty matched to ${level}.`,
     },
     { role: 'user', content: topic },
   ], { label: 'generate-exercises', temperature: 0.6 });
@@ -574,7 +574,7 @@ export async function explainMistake(apiKey, { userText, corrections, level = 'B
   return chatPlain(apiKey, [
     {
       role: 'system',
-      content: `A CEFR ${level} ${LANG.name} learner said: "${userText}". They received these corrections: "${corrections}". Explain the UNDERLYING rule(s) behind the main correction in plain English — why ${LANG.name} works this way, the pattern to remember, and one extra example with translation. Max 120 words.`,
+      content: `A CEFR ${level} ${LANG.name} learner said: "${sanitizeForPrompt(userText, 400)}". They received these corrections: "${sanitizeForPrompt(corrections, 400)}". Explain the UNDERLYING rule(s) behind the main correction in plain English — why ${LANG.name} works this way, the pattern to remember, and one extra example with translation. Max 120 words.`,
     },
     { role: 'user', content: 'Why is that wrong? Explain the rule.' },
   ], { label: 'explain-mistake', temperature: 0.4, maxTokens: 400 });
@@ -593,7 +593,7 @@ export async function evaluateRedoTurn(apiKey, { scenario, historyBefore, origin
   const json = await chatJson(apiKey, [
     {
       role: 'system',
-      content: `${turnSystem()}\n\n${LEVEL_NOTES[level] || LEVEL_NOTES.B1}\n\nCurrent scenario: ${scenario.title} — ${scenario.setup}\nYour role: ${scenario.aiRole}\n\nREDO MODE: the learner is retrying their last turn. Original: "${originalText}" Retry: "${retryText}" — score ONLY the retry, but in corrections call out specifically whether they incorporated the previous correction. Include a "redo_note" field (one sentence in English: did the retry improve and what specifically got better or still needs work?).`,
+      content: `${turnSystem()}\n\n${LEVEL_NOTES[level] || LEVEL_NOTES.B1}\n\nCurrent scenario: ${scenario.title} — ${scenario.setup}\nYour role: ${scenario.aiRole}\n\nREDO MODE: the learner is retrying their last turn. Original: "${sanitizeForPrompt(originalText, 400)}" Retry: "${sanitizeForPrompt(retryText, 400)}" — score ONLY the retry, but in corrections call out specifically whether they incorporated the previous correction. Include a "redo_note" field (one sentence in English: did the retry improve and what specifically got better or still needs work?).`,
     },
     ...historyBefore.flatMap((t) => [
       { role: 'user', content: t.userText },
@@ -673,7 +673,7 @@ function learningPlanLine(plan) {
   const correction = plan.correction || {};
   const progression = plan.progression || {};
   const recycling = plan.recycling || {};
-  const due = Array.isArray(recycling.due) ? recycling.due.slice(0, 3).map((entry) => entry.label || entry.key).filter(Boolean) : [];
+  const due = Array.isArray(recycling.due) ? recycling.due.slice(0, 3).map((entry) => entry.label || entry.key).filter(Boolean).map((label) => sanitizeForPrompt(label, 60)).filter(Boolean) : [];
   return [
     '\n\nLEARNING ADAPTATION (follow this quietly; do not mention internal scores):',
     input.directive,
@@ -763,7 +763,7 @@ export async function writingFeedback(apiKey, { text, prompt, level = 'B1', dept
   const json = await chatJson(apiKey, [
     {
       role: 'system',
-      content: `You are a ${LANG.name} writing teacher reviewing a CEFR ${level} learner's ${essay ? 'essay' : 'short text'}${prompt ? ` written to the prompt: "${prompt}"` : ''}.
+      content: `You are a ${LANG.name} writing teacher reviewing a CEFR ${level} learner's ${essay ? 'essay' : 'short text'}${prompt ? ` written to the prompt: "${sanitizeForPrompt(prompt, 200)}"` : ''}.
 ${LEVEL_NOTES[level] || LEVEL_NOTES.B1}
 Reply ONLY as JSON:
 {
