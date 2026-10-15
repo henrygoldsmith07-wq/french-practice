@@ -1,6 +1,8 @@
 // Focus & habit helpers: Pomodoro phase config, habit-streak maths, and the
 // goal-streak calendar (which days met the daily XP goal). Pure/offline.
 
+import { localDayKey } from './localDay.js';
+
 export const POMODORO = {
   work: 25 * 60,
   break: 5 * 60,
@@ -8,9 +10,10 @@ export const POMODORO = {
   cyclesBeforeLongBreak: 4,
 };
 
-// Local-time day keys, matching how storage.js stamps the XP log — UTC
-// slicing put evening sessions in tomorrow's cell for anyone west of GMT.
-const dayStamp = (d) => new Date(d).toLocaleDateString('en-CA');
+// Local-time day keys — the canonical identity from localDay.js, shared by
+// every module that stamps a calendar day. Hand-rolling a second copy here is
+// how the day boundary drifted between modules before (see localDay.js).
+const dayStamp = (d) => localDayKey(new Date(d));
 
 // Consecutive-days streak for a single habit, counting back from today (or
 // yesterday, so a not-yet-done-today habit doesn't read as broken).

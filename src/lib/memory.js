@@ -9,6 +9,7 @@
 // "strong" and "fading" on the revision screen.
 
 import { retrievability } from './fsrs.js';
+import { localDayKey } from './localDay.js';
 
 const DAY = 86400000;
 
@@ -80,7 +81,7 @@ export function heatmapWeeks(log, weeks = 15, now = new Date()) {
   const stamps = [];
   for (let i = days - 1; i >= 0; i--) {
     const d = new Date(now.getTime() - i * DAY);
-    const day = d.toLocaleDateString('en-CA');
+    const day = localDayKey(d);
     stamps.push({ day, count: log[day] || 0 });
   }
   const max = Math.max(1, ...stamps.map((s) => s.count));

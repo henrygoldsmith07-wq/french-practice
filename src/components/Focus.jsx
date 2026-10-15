@@ -3,6 +3,7 @@ import {
   getHabitTracker, addHabit, removeHabit, toggleHabit, getXpLog, getSettings,
 } from '../lib/storage';
 import { POMODORO, habitStreak, goalCalendar, goalStreak, fmtClock } from '../lib/focus';
+import { localDayKey } from '../lib/localDay';
 import { X, Play, Square, RefreshCw, Check, Plus, Trash, Flame, Target } from './icons';
 import { ICON_BTN_ROUND_SOFT, TOP_BAR, INPUT_FIELD } from '../components/classNames.js';
 
@@ -222,7 +223,7 @@ function FocusTimer({ onExit }) {
 function Habits() {
   const [tracker, setTracker] = useState(getHabitTracker);
   const [name, setName] = useState('');
-  const today = new Date().toLocaleDateString('en-CA');
+  const today = localDayKey(new Date());
 
   const add = () => {
     if (!name.trim()) return;

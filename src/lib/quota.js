@@ -8,13 +8,17 @@
 // which made it one shared counter per device — in a household one learner's AI
 // practice silently exhausted the other's for the rest of the day.
 import { KEYS, read as readKey, write as writeKey } from './storageCore.js';
+import { localDayKey } from './localDay.js';
 
 // VITE_AI_DAILY_LIMIT is the current name; VITE_GROQ_DAILY_LIMIT kept for
 // older deployments that already set it.
 const DEFAULT_LIMIT = Number(import.meta.env?.VITE_AI_DAILY_LIMIT || import.meta.env?.VITE_GROQ_DAILY_LIMIT || 80);
 
 function dayStamp(d = new Date()) {
-  return d.toLocaleDateString('en-CA');
+  // The canonical local-day identity (localDay.js). Do not hand-roll another
+  // toLocaleDateString here: five modules once had their own and the day
+  // boundary drifted between them.
+  return localDayKey(d);
 }
 
 function read() {

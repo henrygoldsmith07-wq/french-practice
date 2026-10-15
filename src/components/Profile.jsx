@@ -15,6 +15,7 @@ import {
   leagueTier, weeklyLeague, LEAGUE_TIERS,
 } from '../lib/game';
 import { totalReviews } from '../lib/memory';
+import { localDayKey } from '../lib/localDay';
 import Stats from './Stats';
 import { X, Check, Flame, Bolt, Coins, Trophy, Lock } from './icons';
 import { ICON_BTN_ROUND_SOFT, TOP_BAR } from '../components/classNames.js';
@@ -259,9 +260,10 @@ function WeeklyLeague({ level }) {
     const dow = (now.getDay() + 6) % 7; // 0 = Monday
     const weekProgress = (dow * 86400 + now.getHours() * 3600 + now.getMinutes() * 60) / (7 * 86400);
     const monday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - dow);
-    // Local Y/M/D key, matching isoWeekKey in storage.js — toISOString put
-    // Sunday-evening users in the following week's league.
-    const weekKey = monday.toLocaleDateString('en-CA');
+    // Local Y/M/D key from the canonical identity (localDay.js) — matching
+    // isoWeekKey in storage.js; toISOString put Sunday-evening users in the
+    // following week's league.
+    const weekKey = localDayKey(monday);
     const tier = leagueTier(level);
     const settings = getSettings();
     const avatar = AVATARS.find((a) => a.id === getAvatar());

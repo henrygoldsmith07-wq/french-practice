@@ -4,8 +4,11 @@
 // deterministic — no network.
 
 import { retentionNow } from './memory.js';
+import { localDayKey } from './localDay.js';
 
-const dayStamp = (d) => new Date(d).toLocaleDateString('en-CA');
+// The canonical local-day identity (localDay.js) — never hand-roll a second
+// toLocaleDateString day key; the boundary drifted between modules once already.
+const dayStamp = (d) => localDayKey(new Date(d));
 const avg = (arr) => (arr.length ? Math.round(arr.reduce((a, b) => a + b, 0) / arr.length) : null);
 
 export const SKILLS = [

@@ -68,7 +68,6 @@ const DEFAULT_SETTINGS = {
   // like — normaliseLanguages() does that, so upgrading never reassigns
   // someone studying German to the French default.
   languages: [],
-  timezone: null, // IANA tz, detected at onboarding — frames reminder copy
   // accessibility preferences (applied as classes on <html>)
   reduceMotion: false,
   largeText: false,

@@ -25,13 +25,10 @@ export default function useOnboarding({
   }, []);
 
   const finishOnboarding = (d) => {
-    let timezone = null;
-    try { timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || null; } catch { timezone = null; }
     updateSettings({
       ...settings,
       name: d.name.trim(),
       language: d.language,
-      timezone,
       level: d.level,
       dailyGoal: d.dailyGoal,
       weeklyGoal: d.weeklyGoal,

@@ -18,6 +18,7 @@ import { applyLanguageEvidence, normaliseLanguageProgress } from './languageMode
 // session/encounter provenance that makes "independent mastery evidence"
 // mean one drill presentation, not one more tap.
 import { currentSessionId, newEncounterId } from './evidenceIdentity.js';
+import { localDayKey } from './localDay.js';
 import {
   addFieldNote as _addFieldNote,
   normaliseFieldNotes,
@@ -1279,7 +1280,7 @@ export function toggleHabit(id, day = dayStamp()) {
 
 // Day key in the user's local time â€” streaks, XP days and challenges roll
 // over at local midnight, matching Word of the Day and the calendars.
-const dayStamp = (d = new Date()) => d.toLocaleDateString('en-CA');
+const dayStamp = (d = new Date()) => localDayKey(d);
 
 export const getStreak = () => {
   const s = read(KEYS.streak, { count: 0, lastDay: null });
