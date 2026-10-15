@@ -186,3 +186,50 @@ test('dictation honours the "accents lenient" label it prints', async () => {
   // A decomposed form is the same word and must count at either strictness.
   assert.equal(toWords('ça')[0], 'ça', 'toWords composes canonically');
 });
+
+// ── a drill must be able to repair the gap it was scheduled against ───────
+
+test('a pronunciation gap routes to the read-aloud drill, not a typing drill', async () => {
+  const { probeCapabilities, drillChain } = await import('../src/lib/todayCapabilities.js');
+
+  const kinds = drillChain(probeCapabilities({ hasAi: true, concept: 'Pronunciation clarity' }))
+    .map((p) => p.kind);
+  assert.equal(kinds[0], 'pronunciation-drill',
+    'the repair for a pronunciation gap must exercise speech first');
+  assert.ok(kinds.includes('accent-drill'), 'the orthography drill stays available as a fallback');
+});
+
+test('a drill outcome recorded through onActivity closes the learner-error loop', async () => {
+  globalThis.localStorage = memoryStorage();
+  const { importFullStorage } = await import('./helpers/fullStorage.js');
+  const storage = await importFullStorage(`drill-${Date.now()}-${Math.random()}`);
+
+  // This is the path the session's drill chain now uses. Before, the drill
+  // segment never threaded onActivity, so a dictation/accent/listen drill
+  // scored the learner but recorded NOTHING: the gap it was scheduled against
+  // stayed active with errorCount frozen, and the same drill was re-selected
+  // session after session.
+  // A miss first — the drill exists because the learner got it wrong. (A
+  // success with no prior entry is a deliberate no-op: successes never create
+  // weaknesses from nothing.)
+  storage.recordLearningActivity({ type: 'dictation', score: 40, label: 'Dictée listening accuracy' });
+  storage.recordLearningActivity({ type: 'pronunciation', score: 40, label: 'Pronunciation clarity' });
+  // Then the repair round: the drill the planner scheduled runs, and its
+  // outcome lands through the same onActivity path. Before, the drill segment
+  // never threaded onActivity, so this outcome went nowhere — the gap stayed
+  // active with errorCount frozen and the same drill was re-selected session
+  // after session.
+  storage.recordLearningActivity({ type: 'dictation', score: 90, label: 'Dictée listening accuracy' });
+
+  // includeResolved: a clean pass RESOLVES the entry, and the prioritised view
+  // hides resolved entries by design — Today should not re-drill something the
+  // learner just fixed. The raw model is the durable record.
+  const errors = storage.getLearnerErrors({ limit: 12, includeResolved: true });
+  const dictation = errors.find((e) => e.key === 'dictation');
+  const pronunciation = errors.find((e) => e.key === 'pronunciation');
+  assert.ok(dictation, 'the dictation outcome reached the learner-error model');
+  assert.equal(dictation.status, 'recovering', 'a clean pass moves the gap into recovery');
+  assert.ok(pronunciation, 'the pronunciation outcome reached the model too');
+  assert.equal(pronunciation.status, 'active', 'a poor round keeps the gap active');
+  assert.equal(pronunciation.errorCount, 1, 'and counts as a miss, so Today can schedule its repair');
+});

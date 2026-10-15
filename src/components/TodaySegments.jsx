@@ -23,6 +23,7 @@ const TrackPlayer = lazy(() => import('./Listening').then((m) => ({ default: m.T
 const ConjugationTrainer = lazy(() => import('./ConjugationTrainer'));
 const Dictation = lazy(() => import('./Dictation'));
 const AccentDrill = lazy(() => import('./AccentDrill'));
+const PronunciationDrill = lazy(() => import('./Pronunciation'));
 
 // Segment runners for Today's composed session: the drill chain and its
 // producers, SRS recall and delayed review. Each runner owns only its own
@@ -66,7 +67,7 @@ export function WhyPanel({ explain, recovery }) {
 //   5. the completion handler fires exactly once, and only when a runnable
 //      activity actually finished or every link is genuinely exhausted;
 //   6. no transient "unavailable" dead-end UI.
-export function DrillChainRunner({ payload, level, apiKey, mockMode, ttsRate, onXp, onDone }) {
+export function DrillChainRunner({ payload, level, apiKey, mockMode, ttsRate, onXp, onActivity, onDone }) {
   const chain = Array.isArray(payload?.chain) && payload.chain.length
     ? payload.chain
     : [payload];
@@ -138,16 +139,36 @@ export function DrillChainRunner({ payload, level, apiKey, mockMode, ttsRate, on
   if (kind === 'dictation-drill') {
     // sessionMode: the segment ends when the repair lands — a clean pass
     // repairs the gap (recordLearnerSuccess), 'Done' hands back to the session.
+    // `onActivity` must reach the drill: recordLearningActivity is the ONLY
+    // writer of the learner-error model, so a drill whose outcome went nowhere
+    // scheduled itself forever — the same gap re-selected session after
+    // session, with the learner re-drilling something they had just passed.
     return (
       <SessionDrillShell title="Dictée — train your ear" onDone={finish}>
-        <Dictation ttsRate={ttsRate} onXp={onXp} sessionMode onDone={finish} />
+        <Dictation ttsRate={ttsRate} onXp={onXp} onActivity={onActivity} sessionMode onDone={finish} />
       </SessionDrillShell>
     );
   }
   if (kind === 'accent-drill') {
     return (
       <SessionDrillShell title="Accent drill — retype with the accents" onDone={finish}>
-        <AccentDrill onXp={onXp} sessionMode onDone={finish} />
+        <AccentDrill onXp={onXp} onActivity={onActivity} sessionMode onDone={finish} />
+      </SessionDrillShell>
+    );
+  }
+  if (kind === 'pronunciation-drill') {
+    // A PRONUNCIATION gap is about how a word sounds, so the repair must make
+    // the learner say it. The chain used to route this gap to the accent
+    // drill — a keyboard orthography exercise that files its score under
+    // 'writing' — and the fallback chain behind it was vocabulary recall and
+    // a podcast: nothing between them exercises speech. This link runs the
+    // real read-aloud scorer (same ASR diff, same acoustic pipeline).
+    return (
+      <SessionDrillShell title="Read aloud — say it clearly" onDone={finish}>
+        <PronunciationDrill mode="pronunciation" apiKey={apiKey} mockMode={mockMode} level={level} onXp={onXp} onActivity={onActivity} />
+        <button onClick={finish} className="btn btn-secondary w-full min-h-10 rounded-xl text-xs">
+          Done drilling
+        </button>
       </SessionDrillShell>
     );
   }
@@ -168,7 +189,7 @@ export function DrillChainRunner({ payload, level, apiKey, mockMode, ttsRate, on
     return <RecallRunner cardCap={current.cardCap || 5} onDone={finish} onXp={onXp} />;
   }
   if (kind === 'listen') {
-    return <ListenFallback track={current.track} onDone={finish} onUnavailable={unavailable} />;
+    return <ListenFallback track={current.track} onDone={finish} onUnavailable={unavailable} onActivity={onActivity} />;
   }
   if (kind === 'review') {
     return <DelayedReview count={current.count} onXp={onXp} onDone={finish} />;
@@ -344,7 +365,7 @@ function AuthoredDrill({ exercises, topicTitle, onXp, onDone }) {
 
 // Listen fallback inside the drill chain. A missing/unresolvable track is
 // producer unavailability: the chain walks on instead of dead-ending.
-function ListenFallback({ track, onDone, onUnavailable }) {
+function ListenFallback({ track, onDone, onUnavailable, onActivity }) {
   const tracks = useListeningTracks();
   const resolved = resolveListeningTrack(tracks, track?.id);
   const firedRef = useRef(false);
@@ -359,7 +380,10 @@ function ListenFallback({ track, onDone, onUnavailable }) {
     return <div className="h-full grid place-items-center"><p className="text-sm text-ink2">Loading listening…</p></div>;
   }
   if (resolved.status !== 'ready') return null;
-  return <TrackPlayer track={resolved.track} baseRate={1} level="B1" onXp={() => {}} onActivity={() => {}} onDone={onDone} />;
+  // `onActivity` is threaded from the session: without it the track's
+  // comprehension score went nowhere and a listening weakness routed here
+  // could never be cleared.
+  return <TrackPlayer track={resolved.track} baseRate={1} level="B1" onXp={() => {}} onActivity={onActivity} onDone={onDone} />;
 }
 
 // Compact SRS recall: due cards, capped, rated through the real scheduler.

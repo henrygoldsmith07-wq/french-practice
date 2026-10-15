@@ -133,8 +133,12 @@ export function buildTodayPlan(input) {
       e.key === 'dictation' && e.status === 'active' && e.errorCount > 1);
     return gap ? { id: gap.id, concept: 'Dictée listening accuracy', label: gap.label, type: 'listening', mastery: 0, recurrence: gap.recurrenceCount, source: 'learner-errors' } : null;
   })();
-  // The accent repair retypes French accents (é/è/ç/œ) — French-authored
-  // orthography, so it exists only under the writing-authored capability row.
+  // A pronunciation gap is repaired by the read-aloud drill (the same ASR
+  // scorer the gap was recorded from), with the accent retype behind it as
+  // the orthography fallback. It used to route ONLY to the accent drill — a
+  // typing exercise filing its score under 'writing' — so a learner who
+  // failed read-aloud was sent to a keyboard drill, and the chain behind it
+  // was vocabulary recall and a podcast: nothing exercised speech.
   const pronunciationGap = !accentCap ? null : (() => {
     const gap = dueLearnerErrors.find((e) =>
       e.key === 'pronunciation' && e.status === 'active' && e.errorCount > 1);

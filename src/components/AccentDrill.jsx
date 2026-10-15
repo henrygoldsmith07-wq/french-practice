@@ -24,7 +24,7 @@ const ROUNDS = 10;
 
 const strip = (s) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/œ/g, 'oe').replace(/’/g, "'");
 
-export default function AccentDrill({ onXp, sessionMode, onDone }) {
+export default function AccentDrill({ onXp, onActivity, sessionMode, onDone }) {
   const [game, setGame] = useState(null);
   const inputRef = useRef(null);
   // Cleared on unmount, so leaving mid-round cannot refocus a dead ref.
@@ -58,7 +58,15 @@ export default function AccentDrill({ onXp, sessionMode, onDone }) {
   const next = () => {
     if (game.n >= ROUNDS) {
       const score = Math.round((game.correct / ROUNDS) * 100);
+      // This is a WRITING drill: it trains which letters carry which marks, so
+      // the score belongs to the writing skill. It used to file its score
+      // under 'writing' in metrics while the session comment claimed a
+      // pronunciation repair that recordLearningActivity never performed —
+      // the pronunciation gap this round was scheduled against stayed active
+      // forever. The activity event is what closes the loop; the pronunciation
+      // gap itself is now repaired by a real read-aloud drill instead.
       recordSkillScore('writing', score);
+      onActivity?.({ type: 'writing', mode: 'accent-retype', score, label: 'Accent retype accuracy' });
       onXp(Math.max(1, game.correct * 2));
       setGame({ ...game, done: true, score });
       return;
@@ -86,9 +94,9 @@ export default function AccentDrill({ onXp, sessionMode, onDone }) {
       <div className="bg-surface border border-line rounded-2xl p-6 text-center space-y-3 fade-in">
         <p className="text-3xl font-bold text-ink tabular-nums">{game.correct}/{ROUNDS}</p>
         <p className="text-xs text-ink2">{passed ? 'Accents impeccables !' : 'è vs é trips everyone — one more round.'}</p>
-        {/* Session mode: a clean round repairs the pronunciation gap
-            (recordLearningActivity fires the success on ≥80) and ends the
-            segment; below 80 the learner goes straight back in. */}
+        {/* Session mode: the score was already filed as a writing activity
+            event above; a clean round ends the segment, below 80 the learner
+            goes straight back in. */}
         {sessionMode && passed ? (
           <button onClick={onDone} className="btn btn-primary min-h-11 px-5 rounded-xl text-sm"><Check size={14} /> Done drilling</button>
         ) : (

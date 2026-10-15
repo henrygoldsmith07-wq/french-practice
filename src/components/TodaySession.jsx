@@ -445,6 +445,7 @@ function TodayBody({ plan, trialId, segIndex, setSegIndex, close, apiKey, mockMo
           mockMode={mockMode}
           ttsRate={ttsRate}
           onXp={award}
+          onActivity={onActivity}
           onDone={advance}
         />
       );

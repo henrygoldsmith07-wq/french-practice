@@ -282,7 +282,13 @@ test('dictée and pronunciation gaps get their own focused offline drills', () =
   assert.deepEqual(chain[0].fallbacks, ['ai-drill'], 'no authored topic matches a dictée gap');
 
   const prCaps = probeCapabilities({ hasAi: true, concept: 'Pronunciation clarity' });
-  assert.deepEqual(drillChain(prCaps).map((p) => p.kind), ['accent-drill', 'ai-drill']);
+  // The read-aloud drill leads — a pronunciation gap is about how a word
+  // SOUNDS, so the repair must make the learner say it. The chain used to
+  // route this gap to the accent drill (a keyboard orthography exercise
+  // filing its score under 'writing') with vocabulary recall behind it:
+  // nothing in that chain exercised speech, so the gap scheduled against the
+  // session could never actually be repaired by it.
+  assert.deepEqual(drillChain(prCaps).map((p) => p.kind), ['pronunciation-drill', 'accent-drill', 'ai-drill']);
 
   const offline = probeCapabilities({ hasAi: false, concept: 'Dictée listening accuracy' });
   assert.deepEqual(drillChain(offline).map((p) => p.kind), ['dictation-drill'], 'fully offline repair');
