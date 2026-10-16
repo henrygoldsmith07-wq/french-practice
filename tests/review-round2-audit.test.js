@@ -233,3 +233,73 @@ test('a drill outcome recorded through onActivity closes the learner-error loop'
   assert.equal(pronunciation.status, 'active', 'a poor round keeps the gap active');
   assert.equal(pronunciation.errorCount, 1, 'and counts as a miss, so Today can schedule its repair');
 });
+
+// ── the conjugation drill must feed the model Today reads ─────────────────
+
+test('a conjugation drill answer becomes a repairable weakness', async () => {
+  globalThis.localStorage = memoryStorage();
+  const { importFullStorage } = await import('./helpers/fullStorage.js');
+  const storage = await importFullStorage(`conj-${Date.now()}-${Math.random()}`);
+
+  // The drill reports the CELL it graded. recordLearningActivity had no
+  // 'conjugation' branch and the drill sent no score, so the one surface that
+  // detects per-verb/per-tense weakness — and tells the learner about it —
+  // filed its results into a store no planner reads. The weakness could never
+  // route into Today.
+  storage.recordLearningActivity({
+    type: 'conjugation',
+    itemId: 'conj:être:subjonctif:2',
+    score: 0,
+    label: 'être · subjonctif · il/elle',
+  });
+
+  const errors = storage.getLearnerErrors({ limit: 12, includeResolved: true });
+  const entry = errors.find((e) => e.key === 'conjugation:être:subjonctif:2');
+  assert.ok(entry, `the drill answer became a learner-error entry (got ${errors.map((e) => e.key).join(', ')})`);
+  assert.equal(entry.category, 'grammar');
+  assert.equal(entry.status, 'active', 'a wrong form is an open weakness');
+  assert.equal(entry.errorCount, 1);
+
+  // The key shape is the contract: todayPlan hunts `conjugation:<verb>:<tense>`
+  // to build the conj-drill repair, so a different shape would be unreachable.
+  const [prefix, verb, tense] = entry.key.split(':');
+  assert.equal(prefix, 'conjugation');
+  assert.equal(verb, 'être');
+  assert.equal(tense, 'subjonctif');
+});
+
+test('an identity-less activity never invents a conjugation gap', async () => {
+  globalThis.localStorage = memoryStorage();
+  const { importFullStorage } = await import('./helpers/fullStorage.js');
+  const storage = await importFullStorage(`conj0-${Date.now()}-${Math.random()}`);
+
+  storage.recordLearningActivity({ type: 'conjugation', score: 0 });
+  assert.deepEqual(
+    storage.getLearnerErrors({ limit: 12, includeResolved: true }), [],
+    'no item id means no gap — a blank key must not become a phantom weakness',
+  );
+});
+
+test('a household switch re-reads the learner-scoped rewards', async () => {
+  globalThis.localStorage = memoryStorage();
+  const { importFullStorage } = await import('./helpers/fullStorage.js');
+  const storage = await importFullStorage(`hh-${Date.now()}-${Math.random()}`);
+
+  const a = storage.addHouseholdMember('First');
+  const b = storage.addHouseholdMember('Second');
+
+  storage.switchHouseholdMember(a.id);
+  storage.addXp(120);
+  storage.addCoins(40);
+  assert.equal(storage.getXp(), 120);
+
+  storage.switchHouseholdMember(b.id);
+  // The header held these in React state seeded ONCE with useState(getXp), so
+  // it kept showing the previous member's totals while Profile (which re-reads)
+  // showed the new member's. The storage contract the refresh depends on:
+  assert.equal(storage.getXp(), 0, 'the new member starts from their own XP');
+  assert.equal(storage.getCoins(), 0);
+
+  storage.switchHouseholdMember(a.id);
+  assert.equal(storage.getXp(), 120, 'and switching back restores the first member');
+});

@@ -62,7 +62,28 @@ export default function ConjugationDrill({ onXp, onActivity, onBack }) {
       wrong: t.wrong + (graded.verdict === 'incorrect' || graded.verdict === 'empty' ? 1 : 0),
     }));
     if (graded.verdict === 'correct') onXp?.(2);
-    onActivity?.({ type: 'conjugation', id: current.id, label: `${current.inf} · ${current.tenseLabel}` });
+    // The score is what makes this event evidence: recordLearningActivity
+    // drops an unscored event (applyGap returns early on a null score), so the
+    // per-verb/per-tense weakness this drill uniquely detects used to stay in
+    // getConjugationProgress — a store no planner reads — and could never route
+    // into Today. The item id carries the cell, which becomes the same
+    // `conjugation:<inf>:<tense>:<person>` key the conj-drill repair hunts.
+    // An accent slip is scored honestly low (the written form IS wrong in a
+    // paper) but it is its own verdict, so a learner whose problem is accents
+    // accumulates accent errors rather than silent gaps.
+    const conjScore = graded.verdict === 'correct'
+      ? 100
+      : graded.verdict === 'accent-error' ? 40 : 0;
+    onActivity?.({
+      type: 'conjugation',
+      id: current.id,
+      itemId: current.id,
+      score: conjScore,
+      label: `${current.inf} · ${current.tenseLabel} · ${current.person}`,
+      detail: graded.verdict === 'accent-error'
+        ? `Typed “${entry.trim() || '—'}”, the form is right, accents wrong`
+        : graded.verdict === 'correct' ? null : `Typed “${entry.trim() || '—'}”, expected “${current.answer}”`,
+    });
   };
 
   const advance = () => {

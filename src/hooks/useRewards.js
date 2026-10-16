@@ -51,9 +51,24 @@ export default function useRewards({ dailyGoal = 30 } = {}) {
 
   const bumpStreak = () => setStreakTick((t) => t + 1);
 
+  // Re-read the persisted rewards from storage.
+  //
+  // XP/coins/avatar are LEARNER-scoped keys, but they were seeded once with
+  // `useState(getXp)` and never re-read. Switching household member in Profile
+  // therefore left the header showing the PREVIOUS member's XP and coins while
+  // the Profile screen — which re-reads on every tick — showed the new
+  // member's: two different totals on one screen, with the wrong one always in
+  // the header. Any surface that changes which learner is active must call
+  // this, because there is no storage subscription to rely on.
+  const refreshRewards = () => {
+    setXp(getXp());
+    setCoins(getCoins());
+    setAvatarId(getAvatar());
+  };
+
   return {
     xp, xpGain, celebration, setCelebration,
     coins, setCoins, avatarId, setAvatarId,
-    streakTick, bumpStreak, awardXp,
+    streakTick, bumpStreak, awardXp, refreshRewards,
   };
 }

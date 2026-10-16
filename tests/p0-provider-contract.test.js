@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
@@ -65,15 +65,31 @@ test('P0.7: source never reads a shared/provider secret from VITE_*', () => {
   assert.match(guard, /VITE_.*GROQ/i, 'guard must block Groq shared secrets');
   assert.match(guard, /process\.env/, 'guard must inspect the environment');
 
-  // The only VITE_* key reads permitted in src are the documented
-  // bring-your-own-key path and non-secret config.
-  const sources = ['src/lib/storage.js', 'src/lib/quota.js', 'src/lib/relay.js'];
+  // Scan EVERY first-party source file, not a hand-maintained list.
+  //
+  // This test used to name three files. When the real VITE_* read moved to
+  // src/lib/stores/settingsStore.js, the guard kept passing while inspecting
+  // none of the code that actually reads the environment — a guard that had
+  // silently stopped guarding. Walking the tree means it cannot go stale again.
   const forbidden = /import\.meta\.env\.VITE_[A-Z0-9_]*(?:GROQ|NVIDIA|OPENAI|SHARED|PROVIDER|JWT_SECRET|SIGNING)[A-Z0-9_]*/i;
-  for (const rel of sources) {
-    const body = read(rel);
+  const sources = [];
+  const walk = (dir) => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const full = join(dir, entry.name);
+      if (entry.isDirectory()) { walk(full); continue; }
+      if (/\.(?:js|jsx|mjs|ts|tsx)$/.test(entry.name)) sources.push(full);
+    }
+  };
+  walk(join(root, 'src'));
+  assert.ok(sources.length > 100, `expected to scan the whole source tree, found ${sources.length} files`);
+
+  const offenders = [];
+  for (const full of sources) {
+    const body = readFileSync(full, 'utf8');
     const hits = body.match(new RegExp(forbidden.source, 'gi')) || [];
     // VITE_GROQ_RELAY_URL / VITE_GROQ_DAILY_LIMIT are config, not secrets.
     const secrets = hits.filter((h) => !/RELAY_URL|DAILY_LIMIT/i.test(h));
-    assert.deepEqual(secrets, [], `${rel} reads a shared secret via VITE_*: ${secrets.join(', ')}`);
+    if (secrets.length) offenders.push(`${full.slice(root.length + 1)}: ${secrets.join(', ')}`);
   }
+  assert.deepEqual(offenders, [], `shared secret read via VITE_*:\n${offenders.join('\n')}`);
 });
