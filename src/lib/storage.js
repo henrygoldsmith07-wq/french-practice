@@ -1,4 +1,4 @@
-﻿// Learner-error model persistence lives in stores/learnerErrorStore.js;
+// Learner-error model persistence lives in stores/learnerErrorStore.js;
 // the facade re-exports it (recordGrammarError and friends below still need
 // the migration priming via getLearnerErrorModel).
 import {
@@ -745,6 +745,25 @@ export const dismissGettingStarted = () => write(KEYS.gettingStarted, '1');
 
 export const getGrammarErrors = () => read(KEYS.grammarErrors, {});
 
+// A conjugation activity event becomes a learner-error entry with the SAME key
+// shape the trainer writes (`conjugation:<inf>:<tenseId>:<personIndex>`), so
+// the weakness is repairable by the conj-drill link the planner already hunts.
+// Returns null when the producer supplied no usable identity — an
+// identity-less event must never invent a gap.
+function conjugationGapKeyOf(event) {
+  const raw = String(event.itemId || event.id || '').trim();
+  if (!raw) return null;
+  // Accept either the drill's own id (`conj:<inf>:<tense>:<person>`) or the
+  // trainer's (`<inf>:<tense>:<person>`), and a bare `<inf>:<tense>` with no
+  // person — the drill reports the cell, the trainer always has one.
+  const parts = raw.startsWith('conj:') ? raw.slice(5).split(':') : raw.split(':');
+  const [inf, tense, person] = parts;
+  if (!inf || !tense) return null;
+  const key = `conjugation:${inf}:${tense}${person != null && person !== '' ? `:${person}` : ''}`;
+  const label = String(event.label || `${inf} · ${tense}`).slice(0, 140);
+  return { key, label };
+}
+
 export function recordGrammarError(topicId, { mode = 'conversation', score = null, label = null, detail = null } = {}) {
   // `topicId` here is model-authored free text (`grammar_topic` off
   // evaluateTurn), and it becomes a PERMANENT storage key: a `fp.grammarErrors`
@@ -1226,6 +1245,21 @@ export function recordLearningActivity(event = {}) {
     applyGap('writing', 'writing', event.label || 'Written accuracy');
   } else if (event.type === 'reading') {
     applyGap('reading', 'reading', event.label || 'Reading comprehension');
+  } else if (event.type === 'conjugation') {
+    // Typed production of a specific verb/tense/person. This branch did not
+    // exist, so the ONE drill that detects per-tense, per-verb weakness and
+    // reports it back to the learner ("Your trouble spots: subjonctif 61%")
+    // fed nothing into the learner-error model — its stats lived in
+    // getConjugationProgress, a store no planner reads. The weakness could
+    // therefore never route into Today, and the conj-drill repair link
+    // (which hunts `conjugation:<verb>:<tense>:<person>` entries) could only
+    // ever be fed by the trainer, never by this drill.
+    //
+    // The key shape mirrors what the trainer and todayPlan hunt, so a weakness
+    // found here is repairable by conj-drill tomorrow. A person index is
+    // carried when the producer knows it.
+    const conj = conjugationGapKeyOf(event);
+    if (conj) applyGap('grammar', conj.key, conj.label);
   }
   return stored;
 }

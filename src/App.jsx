@@ -110,7 +110,7 @@ export default function App() {
   const {
     xp, xpGain, celebration, setCelebration,
     coins, setCoins, avatarId, setAvatarId,
-    streakTick, bumpStreak, awardXp,
+    streakTick, bumpStreak, awardXp, refreshRewards,
   } = useRewards({ dailyGoal: settings.dailyGoal || 30 });
   const [prefs, setPrefsState] = useState(getPrefs);
   const pwa = usePwaInstall();
@@ -616,7 +616,7 @@ export default function App() {
       {overlayIs(overlay, 'personalise') && (<Personalise open onClose={closeOverlay} prefs={prefs} onPrefsChange={updatePrefs} baseLevel={settings.level} onRun={runRecommendation} />)}
       {overlayIs(overlay, 'offline') && <Offline open onClose={closeOverlay} pwa={pwa} />}
       {overlayIs(overlay, 'analytics') && <Analytics open onClose={closeOverlay} />}
-      {overlayIs(overlay, 'reference') && (<Reference open initialTool={overlayPayload(overlay, 'tool')} onXp={awardXp} onClose={() => { closeOverlay(); setLearnView(null); }} />)}
+      {overlayIs(overlay, 'reference') && (<Reference open initialTool={overlayPayload(overlay, 'tool')} onXp={awardXp} onActivity={handleActivity} onClose={() => { closeOverlay(); setLearnView(null); }} />)}
       {overlayIs(overlay, 'focus') && <Focus open onClose={closeOverlay} />}
       {/* Developer panel: opt-in (Settings → Developer panel), lazy, and an
           overlay — never inline in a tab, where its height would push layout
@@ -638,7 +638,7 @@ export default function App() {
       {overlayIs(overlay, 'onboarding') && (<Onboarding open initialLanguage={settings.language} aiAvailable={relayEnabled || Boolean(apiKey)} apiKey={apiKey} onComplete={finishOnboarding} onSkip={skipOnboarding} onStartConversation={() => setTab('speak')} />)}
       {overlayIs(overlay, 'search') && <GlobalSearch open onClose={closeOverlay} onGo={goFromSearch} />}
       {overlayIs(overlay, 'realWorld') && (<RealWorld open onClose={closeOverlay} onRoleplay={startRoleplay} onXp={awardXp} />)}
-      {overlayIs(overlay, 'profile') && (<Profile open onClose={closeOverlay} onXp={awardXp} weeklyGoal={settings.weeklyGoal} onHeaderChange={({ coins: c, avatarId: a }) => { setCoins(c); setAvatarId(a); }} />)}
+      {overlayIs(overlay, 'profile') && (<Profile open onClose={closeOverlay} onXp={awardXp} weeklyGoal={settings.weeklyGoal} onMemberSwitch={refreshRewards} onHeaderChange={({ coins: c, avatarId: a }) => { setCoins(c); setAvatarId(a); }} />)}
       {overlayIs(overlay, 'pathSetup') && (<PathSetup open onClose={closeOverlay} onCreated={(p) => { setPath(p); closeOverlay(); updateSettings({ ...settings, level: p.cefr }); }} />)}
       </Suspense>
       {overlayIs(overlay, 'today') && (

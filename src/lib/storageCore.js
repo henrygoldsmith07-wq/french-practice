@@ -232,6 +232,12 @@ export const LEARNER_KEY_VALUES = [
   KEYS.studyState, KEYS.studyConsent, KEYS.studyChecks, KEYS.studyOutcomes,
   KEYS.lastPlacement, KEYS.errorNotebook, KEYS.starred,
   KEYS.xp, KEYS.xpDay, KEYS.xpLog, KEYS.timeLog, KEYS.active,
+  // Coins are earned WITH XP (awardXp credits both) and spent on avatars and
+  // cosmetics. They were left out of this list while XP was in it, so in a
+  // household the XP bar was per-member and the coin purse was SHARED: one
+  // member's practice funded another member's purchases, and switching member
+  // showed the new learner the previous one's balance.
+  KEYS.coins,
   // Preferences/progress that used to live as raw component-level keys: with
   // a household active each member now keeps their own mode and seen-lists;
   // the one-shot claim keeps every pre-existing value with the first member.

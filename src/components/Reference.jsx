@@ -31,7 +31,7 @@ const TOOLS_ALL = [
 // Authored for French only; hidden for beta languages rather than wrong.
 const FRENCH_ONLY_TOOLS = new Set(['conjugation', 'pairs', 'cloze']);
 
-export default function Reference({ open, onClose, onImported, onXp, initialTool = null }) {
+export default function Reference({ open, onClose, onImported, onXp, onActivity, initialTool = null }) {
   const [tool, setTool] = useState(initialTool);
 
   useEffect(() => {
@@ -45,7 +45,7 @@ export default function Reference({ open, onClose, onImported, onXp, initialTool
     if (tool === 'drills') return <PhraseDrills onXp={onXp} onBack={() => setTool(null)} />;
     if (tool === 'phrasebook') return <Phrasebook />;
     if (tool === 'conjugation') return <Conjugations />;
-    if (tool === 'conjugation-drill') return <ConjugationDrill onXp={onXp} onBack={() => setTool(null)} />;
+    if (tool === 'conjugation-drill') return <ConjugationDrill onXp={onXp} onActivity={onActivity} onBack={() => setTool(null)} />;
     if (tool === 'pairs') return <MinimalPairs />;
     if (tool === 'cloze') return <Cloze />;
     if (tool === 'dict') return <Dictionary onImported={onImported} />;

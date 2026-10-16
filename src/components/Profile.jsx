@@ -25,7 +25,7 @@ import { ICON_BTN_ROUND_SOFT, TOP_BAR } from '../components/classNames.js';
 // event. Single-player — the league ranks the learner against seeded
 // pace-setters, never real people, since there is no backend.
 
-export default function Profile({ open, onClose, onXp, onHeaderChange, weeklyGoal }) {
+export default function Profile({ open, onClose, onXp, onHeaderChange, onMemberSwitch, weeklyGoal }) {
   const [tick, setTick] = useState(0);
   const [newBadges, setNewBadges] = useState([]);
   const [newCards, setNewCards] = useState([]);
@@ -127,7 +127,7 @@ export default function Profile({ open, onClose, onXp, onHeaderChange, weeklyGoa
           </div>
 
           <WeeklyLeague level={level.level} />
-          <Household onChange={refresh} />
+          <Household onChange={refresh} onMemberSwitch={onMemberSwitch} />
           <DailyChallenges data={data} onXp={onXp} onChange={refresh} onNewCard={(id) => setNewCards((c) => [...c, id])} />
           <SeasonalEvent collectibles={data.collectibles} />
           <Stats weeklyGoal={weeklyGoal} onCoinsChange={refresh} />
@@ -143,7 +143,7 @@ export default function Profile({ open, onClose, onXp, onHeaderChange, weeklyGoa
 // Household (family mode): one household on this install, each member with
 // their own streak. Names only, active member marked — never ranked, never
 // totalled, never placed side-by-side with scores. No comparison by design.
-function Household({ onChange }) {
+function Household({ onChange, onMemberSwitch }) {
   const [household, setHousehold] = useState(() => getHousehold());
   const [name, setName] = useState('');
   const [notice, setNotice] = useState(null);
@@ -155,7 +155,13 @@ function Household({ onChange }) {
 
   const switchTo = (id) => {
     setNotice(null);
-    if (switchHouseholdMember(id)) reload();
+    if (switchHouseholdMember(id)) {
+      reload();
+      // The active learner changed, so every learner-scoped value held in App
+      // state (header XP, coins, avatar) is now the PREVIOUS member's. Tell App
+      // to re-read; without this the header and this screen disagreed.
+      onMemberSwitch?.();
+    }
   };
 
   const add = () => {

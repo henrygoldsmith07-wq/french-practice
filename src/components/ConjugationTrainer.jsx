@@ -96,6 +96,27 @@ export default function ConjugationTrainer({ onXp, focus = null, onDone = null, 
         encounterId: encounterRef.current,
         activityId: prompt.key,
       });
+    } else {
+      // An accent slip IS a mistake the app names as one — the verdict panel
+      // says "Right word, wrong accents" and warns it costs a mark in a
+      // written paper. But `!near` meant it filed NEITHER an error nor a
+      // success, so a learner whose recurring problem is accents rather than
+      // forms produced an entry that could never move: no error to route a
+      // repair, no success to resolve it. Scored as a partial pass (below the
+      // 80 success bar, above a total miss) it lands as evidence the recovery
+      // loop can actually act on.
+      recordLearnerError({
+        category: 'grammar',
+        key: `conjugation:${prompt.key}`,
+        label: `${prompt.inf} · ${prompt.tense} · ${prompt.person} → ${prompt.answer}`,
+        mode: 'conjugation-trainer',
+        score: 40,
+        source: 'conjugation-trainer',
+        detail: `Accent slip: typed “${input.trim() || '—'}”, the form is right but it is written “${prompt.answer}”`,
+        sessionId: currentSessionId(),
+        encounterId: encounterRef.current,
+        activityId: prompt.key,
+      });
     }
     setResult({ status, answer: prompt.answer, gained });
   };
