@@ -52,6 +52,15 @@ const src = readFileSync(GROQ, 'utf8');
 // userText/corrections = learner text + prior corrections; topic/prompt =
 // learner-chosen subjects. The recycling-due labels (AI-evaluation-derived) are
 // covered by the second test below, because they arrive by a different route.
+//
+// lastAiReply is MODEL-authored, and the privileged channel must not carry
+// model text either: the partner reply is produced from the learner's own
+// turns, so a learner can steer what lands in that slot ("the other speaker
+// just said: …") and a jailbroken or merely chatty reply can forge system
+// structure. It shipped raw in getHint — and this list did NOT contain it, so
+// the guard was blind to the one prompt that interpolated it. A free-text
+// variable missing from this set is invisible no matter how good the walker is,
+// which is why adding a name here is part of the fix, not bookkeeping.
 const FREE_TEXT_VARS = new Set([
   'originalText',
   'retryText',
@@ -59,6 +68,7 @@ const FREE_TEXT_VARS = new Set([
   'corrections',
   'topic',
   'prompt',
+  'lastAiReply',
 ]);
 
 // Lazy: acorn is a devDependency. If a minimal checkout has not installed it the
@@ -419,4 +429,35 @@ test('the guard detects the interpolation shapes the old regex missed', async ()
     assert.deepEqual(rawFindings(template), [],
       `the guard must NOT flag ${label} (${expr})`);
   }
+});
+
+test('a free-text variable omitted from FREE_TEXT_VARS would be invisible', () => {
+  // The lastAiReply hole was NOT a walker bug — the walker saw the
+  // interpolation perfectly. It was invisible because the identifier was absent
+  // from FREE_TEXT_VARS, and no amount of AST sophistication can flag a name the
+  // guard was never told to look for.
+  //
+  // This test pins the consequence: the same raw interpolation is caught when
+  // the name is in the set, and silently passes when it is not. That asymmetry
+  // is the reason adding lastAiReply to the set is the substantive half of the
+  // fix, and why a future removal must fail a test rather than quietly reopen
+  // the hole.
+  const snippet = 'const s = { role: "system", content: `just said: "${lastAiReply}"` };';
+  const ast = parse(snippet, { ecmaVersion: 'latest', sourceType: 'module' });
+  let template = null;
+  walk(ast, (n) => { if (n.type === 'TemplateLiteral') template = n; });
+
+  assert.ok(FREE_TEXT_VARS.has('lastAiReply'),
+    'lastAiReply must stay in the free-text set — it is model-authored text that ' +
+    'ships into the getHint system prompt');
+  assert.ok(rawFindings(template).some((f) => f.name === 'lastAiReply'),
+    'with lastAiReply in the set, a raw interpolation of it must be flagged');
+
+  // And the value check the fix actually enforces: groq.js must route it
+  // through sanitizeForPrompt at the one call site that interpolates it.
+  const hintLine = src.split('\n').find((l) => l.includes('The other speaker just said'));
+  assert.ok(hintLine, 'the getHint system prompt still exists');
+  assert.match(hintLine, /sanitizeForPrompt\(lastAiReply/,
+    'getHint interpolates the model-authored partner reply — it must be wrapped ' +
+    'in sanitizeForPrompt like every other free-text value in a system prompt');
 });
