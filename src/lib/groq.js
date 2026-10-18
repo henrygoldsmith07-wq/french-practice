@@ -729,7 +729,7 @@ export async function getHint(apiKey, { scenario, lastAiReply, level, cefr = 'B1
   const json = await chatJson(apiKey, [
     {
       role: 'system',
-      content: `You help a CEFR ${cefr} ${LANG.name} learner respond in a roleplay. Scenario: ${scenario.title}. The other speaker just said: "${lastAiReply}". ${depth} Match the vocabulary to their level. Reply ONLY as JSON: {"hint": "..."}`,
+      content: `You help a CEFR ${cefr} ${LANG.name} learner respond in a roleplay. Scenario: ${scenario.title}. The other speaker just said: "${sanitizeForPrompt(lastAiReply, 400)}". ${depth} Match the vocabulary to their level. Reply ONLY as JSON: {"hint": "..."}`,
     },
     { role: 'user', content: 'Give me a hint.' },
   ], { label: `hint-${level}` });
