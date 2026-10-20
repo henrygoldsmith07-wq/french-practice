@@ -1,9 +1,10 @@
 import { lazy, Suspense } from 'react';
 import { getSettings } from '../lib/storage';
-import { BarChart, Map, Clock, Target, Layers } from './icons';
+import { BarChart, Map, Clock, Target, Layers, Share } from './icons';
 import { ChevronRight } from './icons';
 import { featureAvailableNow, hasCapabilityNow } from '../lib/languages';
 import { CHIP } from '../components/classNames.js';
+import EnhancedProgressInsights from './EnhancedProgressInsights';
 
 const LazyProfile = lazy(() => import('./Profile'));
 const LazyAnalytics = lazy(() => import('./Analytics'));
@@ -31,6 +32,16 @@ const SECTIONS_ALL = [
   { id: 'focus', title: 'Focus & habits', subtitle: 'Timer, Pomodoro & habit tracker.', icon: Clock },
 ];
 
+// Utility sections (always available)
+const UTILITY_SECTIONS = [
+  { 
+    id: 'socialSharing', 
+    title: 'Share Progress', 
+    subtitle: 'Create motivational progress cards', 
+    icon: Share,
+  },
+];
+
 // The 12-unit learning path is authored for French only; beta languages get
 // the core loop and honest progress surfaces instead of a half-built path.
 // Gated via the shared FULL_ONLY_FEATURES registry (languages.js).
@@ -52,7 +63,16 @@ export default function ProgressHub({
   onOpenPathSetup,
   onOpenGrammar,
   onOpenSpeaking,
+  onSocialShare,
 }) {
+  // Handle utility section clicks
+  const handleUtilitySection = (id) => {
+    if (id === 'socialSharing' && onSocialShare) {
+      onSocialShare(id);
+    } else {
+      onView(id);
+    }
+  };
   if (view === 'stats') {
     return (
       <div className="h-full flex flex-col min-h-0">
@@ -147,6 +167,10 @@ export default function ProgressHub({
             onOpenDetails={() => onView('analytics')}
           />
         </Suspense>
+
+        {/* Enhanced progress visualization with confidence intervals */}
+        <EnhancedProgressInsights />
+
         <Suspense fallback={null}>
           <LazyWeeklyReview />
         </Suspense>
@@ -164,6 +188,21 @@ export default function ProgressHub({
               <span className="text-[18px] font-bold tracking-[-0.02em] leading-tight">{s.title}</span>
               <span className="text-sm text-ink2 leading-relaxed">{s.subtitle}</span>
               <span className="text-xs font-semibold text-ink inline-flex items-center gap-1 mt-1">Open <ChevronRight size={12} /></span>
+            </button>
+          ))}
+          
+          {/* Utility section cards */}
+          {UTILITY_SECTIONS.map((u) => (
+            <button
+              key={u.id}
+              onClick={() => handleUtilitySection(u.id)}
+              data-testid={`progress-utility-${u.id}`}
+              className="text-left bg-gradient-to-br from-surface to-surface2 border border-line rounded-[20px] p-[22px] hover:border-ink3 transition flex flex-col gap-2"
+            >
+              <span className="w-8 h-8 grid place-items-center rounded-full bg-accent text-onaccent"><u.icon size={16} /></span>
+              <span className="text-[18px] font-bold tracking-[-0.02em] leading-tight">{u.title}</span>
+              <span className="text-sm text-ink2 leading-relaxed">{u.subtitle}</span>
+              <span className="text-xs font-semibold text-ink inline-flex items-center gap-1 mt-1">Try <ChevronRight size={12} /></span>
             </button>
           ))}
         </div>

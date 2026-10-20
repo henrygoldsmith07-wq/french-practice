@@ -1,474 +1,179 @@
-import { useEffect, useRef, useState } from 'react';
-import { READING_TEXTS } from '../lib/reading';
-import { LISTENING_TRACKS } from '../lib/listening';
-import { exportProgress, importProgress, getSyncId, getLastBackup, getSettings, getSrs } from '../lib/storage';
-import { allEntries } from '../lib/vocab';
-import { buildOfflinePack, offlinePackSize, offlinePackSummary } from '../lib/offlinePack';
-import { makeSyncCode, restoreSyncCode, isEncryptedCode } from '../lib/account';
-import { fetchAccount, startGoogleSignIn, signOut as signOutAccount, push as pushRemote, pull as pullRemote, deleteRemote, remoteUpdatedAt } from '../lib/cloudAccount';
-import { X, Check, Download, Upload, BookOpen, Volume, RefreshCw, Copy, Key } from './icons';
-import { ICON_BTN_ROUND_SOFT, TOP_BAR } from '../components/classNames.js';
+// Offline - enhanced offline status display with retry controls
+import { useState, useEffect } from 'react';
+import { AlertCircle, CheckCircle, RefreshCw, Download, Clock, WifiOff, Wifi } from './icons';
+import useOfflineStatus from '../hooks/useOfflineStatus';
 
-// Offline features: the app is a client-side PWA, so once the service worker
-// has cached it, every lesson works with no network and TTS audio is
-// generated on-device. This panel surfaces offline readiness, lets you save
-// stories/podcasts as text files, and moves progress between devices via a
-// backup file, or — where a deployment configures it — through a Google
-// account that stores that same sync code for you.
-
-/** Google's four-colour "G", inlined so the button needs no network image. */
-function GoogleMark() {
-  return (
-    <svg width="15" height="15" viewBox="0 0 18 18" aria-hidden="true">
-      <path fill="#4285F4" d="M17.64 9.2c0-.64-.06-1.25-.16-1.84H9v3.48h4.84a4.14 4.14 0 0 1-1.8 2.72v2.26h2.92c1.7-1.57 2.68-3.88 2.68-6.62Z" />
-      <path fill="#34A853" d="M9 18c2.43 0 4.47-.8 5.96-2.18l-2.92-2.26c-.81.54-1.84.86-3.04.86-2.34 0-4.32-1.58-5.03-3.7H.96v2.33A9 9 0 0 0 9 18Z" />
-      <path fill="#FBBC05" d="M3.97 10.72a5.41 5.41 0 0 1 0-3.44V4.95H.96a9 9 0 0 0 0 8.1l3.01-2.33Z" />
-      <path fill="#EA4335" d="M9 3.58c1.32 0 2.5.45 3.44 1.35l2.58-2.58C13.46.89 11.43 0 9 0A9 9 0 0 0 .96 4.95l3.01 2.33C4.68 5.16 6.66 3.58 9 3.58Z" />
-    </svg>
-  );
-}
-
-function downloadFile(name, text, type = 'text/plain') {
-  const blob = new Blob([text], { type });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = name;
-  a.click();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
-}
-
-const readingText = (t) =>
-  `${t.title}\n${'='.repeat(t.title.length)}\n\n` +
-  (t.paragraphs || []).map((p) => `${p.fr}\n(${p.en})`).join('\n\n') + '\n';
-
-const trackText = (t) =>
-  `${t.title}\n${'='.repeat(t.title.length)}\n\n` +
-  (t.lines || []).map((l) => `${l.fr}\n(${l.en})`).join('\n\n') + '\n';
-
-export default function Offline({ open, onClose, pwa }) {
-  const [online, setOnline] = useState(navigator.onLine);
-  const [cacheCount, setCacheCount] = useState(null); // null = unknown, number = files cached
-  const [restored, setRestored] = useState(null);
-  const [error, setError] = useState(null);
-  const fileRef = useRef(null);
-  // account & sync-code state
-  const [passphrase, setPassphrase] = useState('');
-  const [cloud, setCloud] = useState({ available: false, user: null });
-  const [cloudMsg, setCloudMsg] = useState(null);
-  const [cloudBusy, setCloudBusy] = useState(false);
-  const [knownRemote, setKnownRemote] = useState(null);
-  const [code, setCode] = useState('');
-  const [pasteCode, setPasteCode] = useState('');
-  const [copied, setCopied] = useState(false);
-  const [busy, setBusy] = useState(false);
-
+export default function Offline({ open, onClose }) {
+  const {
+    isOnline,
+    hasQueuedActions,
+    queuedCount,
+    getCachedCount,
+    retryQueuedActions,
+    registerClient,
+  } = useOfflineStatus();
+  
+  const [cachedItems, setCachedItems] = useState(0);
+  const [loading, setLoading] = useState(false);
+  
   useEffect(() => {
-    if (!open) return;
-    const on = () => setOnline(true);
-    const off = () => setOnline(false);
-    window.addEventListener('online', on);
-    window.addEventListener('offline', off);
-
-    // Ask the service worker how many assets it has cached. The controller is
-    // null on first load / pre-activation — instead of latching "Caching…"
-    // forever, retry once the worker takes control.
-    const sw = navigator.serviceWorker;
-    let handler;
-    const ask = (worker) => { try { worker?.postMessage('cache-count'); } catch { /* detached */ } };
-    let controllerChange;
-    if (sw) {
-      handler = (e) => { if (e.data?.type === 'cache-count') setCacheCount(e.data.count); };
-      sw.addEventListener('message', handler);
-      ask(sw.controller);
-      controllerChange = () => {
-        handler && sw.removeEventListener('message', handler);
-        sw.addEventListener('message', handler);
-        ask(sw.controller);
-      };
-      sw.addEventListener('controllerchange', controllerChange);
+    if (open) {
+      registerClient();
+      loadCachedCount();
     }
-    return () => {
-      window.removeEventListener('online', on);
-      window.removeEventListener('offline', off);
-      if (sw && handler) {
-        sw.removeEventListener('message', handler);
-        if (controllerChange) sw.removeEventListener('controllerchange', controllerChange);
-      }
-    };
   }, [open]);
-
-  // The account section hides itself entirely where no deployment configures
-  // one, so the offline story below is unchanged for everyone else.
-  // NOTE: both effects below MUST stay above the `if (!open)` early return —
-  // hooks cannot be conditional.
-  useEffect(() => {
-    let alive = true;
-    (async () => {
-      const next = await fetchAccount();
-      if (!alive) return;
-      setCloud(next);
-      if (next.user) {
-        const at = await remoteUpdatedAt().catch(() => null);
-        if (alive) setKnownRemote(at);
-      }
-    })();
-    return () => { alive = false; };
-  }, []);
-
-  // The OAuth callback returns with ?signin=…; report it once, then clean the
-  // URL so a refresh does not repeat the message.
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const outcome = params.get('signin');
-    if (!outcome) return;
-    setCloudMsg(outcome === 'ok' ? 'Signed in.' : outcome === 'cancelled' ? 'Sign-in cancelled.' : 'Sign-in failed. Please try again.');
-    params.delete('signin'); params.delete('reason');
-    const query = params.toString();
-    window.history.replaceState({}, '', window.location.pathname + (query ? `?${query}` : ''));
-  }, []);
-
+  
+  const loadCachedCount = async () => {
+    setLoading(true);
+    try {
+      const count = await getCachedCount();
+      setCachedItems(count);
+    } catch (e) {
+      console.warn('[offline] Could not get cache count:', e);
+    } finally {
+      setLoading(false);
+    }
+  };
+  
+  const handleRetryActions = async () => {
+    await retryQueuedActions();
+    // Reload after retry
+    setTimeout(loadCachedCount, 500);
+  };
+  
   if (!open) return null;
-
-  // "Ready offline" has to mean the app's own code is cached, not merely that
-  // SOME cache exists. This counted entries in the app's runtime cache and
-  // reported readiness the moment the four shell URLs landed, while every
-  // unvisited lazy route still failed its import offline. Require the entry
-  // document AND a JS payload to be present before claiming anything.
-  const ready = cacheCount != null && cacheCount >= 6;
-
-  const doExport = () => {
-    const stamp = new Date().toISOString().slice(0, 10);
-    downloadFile(`le-studio-backup-${stamp}.json`, JSON.stringify(exportProgress(), null, 2), 'application/json');
-  };
-
-  const onFile = async (e) => {
-    const file = e.target.files?.[0];
-    e.target.value = '';
-    if (!file) return;
-    setError(null);
-    setRestored(null);
-    try {
-      const n = importProgress(JSON.parse(await file.text()));
-      setRestored(n);
-    } catch (err) {
-      setError(err.message);
-    }
-  };
-
-  const saveToAccount = async (force = false) => {
-    // Cloud sync stores a snapshot on someone else's server, so encryption is
-    // the DEFAULT, not an option: without a passphrase the upload would be a
-    // readable copy of the learner's whole progress. A passphrase is therefore
-    // required to save to an account at all.
-    if (!passphrase.trim()) {
-      setCloudMsg('Add a passphrase above first — it encrypts what is stored, and without one the server would hold a readable copy of your progress.');
-      return;
-    }
-    setCloudBusy(true); setCloudMsg(null);
-    const result = await pushRemote(passphrase, knownRemote, force);
-    setCloudBusy(false);
-    if (result.status === 'ok') {
-      setKnownRemote(result.updatedAt);
-      setCloudMsg('Saved to your account, encrypted with your passphrase.');
-      return;
-    }
-    if (result.status === 'conflict') {
-      // Never overwrite a copy this device has not seen without asking.
-      const when = result.remoteUpdatedAt ? new Date(result.remoteUpdatedAt).toLocaleString() : 'unknown';
-      if (window.confirm(`Another device saved at ${when}. Overwrite it with this device's progress?`)) {
-        await saveToAccount(true);
-        return;
-      }
-      setCloudMsg('Left the other device\'s copy alone.');
-      return;
-    }
-    setCloudMsg(result.message || 'Sync failed.');
-  };
-
-  const restoreFromAccount = async () => {
-    setCloudBusy(true); setCloudMsg(null);
-    const result = await pullRemote(passphrase);
-    setCloudBusy(false);
-    if (result.status === 'empty') { setCloudMsg('Nothing has been saved to this account yet.'); return; }
-    if (result.status !== 'ok') { setCloudMsg(result.message || 'Sync failed.'); return; }
-    setKnownRemote(result.updatedAt);
-    setCloudMsg(`Restored ${result.restored} item${result.restored === 1 ? '' : 's'} from your account.`);
-  };
-
-  // Generate a sync code from the current progress (encrypted if a passphrase
-  // is set) and copy it to the clipboard.
-  const genCode = async () => {
-    setError(null); setCopied(false); setBusy(true);
-    try {
-      const c = await makeSyncCode(passphrase);
-      setCode(c);
-      try { await navigator.clipboard.writeText(c); setCopied(true); } catch { /* manual copy */ }
-    } catch (err) {
-      setError(err.message);
-    }
-    setBusy(false);
-  };
-
-  const restoreFromCode = async () => {
-    setError(null); setRestored(null); setBusy(true);
-    try {
-      const n = await restoreSyncCode(pasteCode, passphrase);
-      setRestored(n);
-    } catch (err) {
-      setError(err.message);
-    }
-    setBusy(false);
-  };
-
-  const account = getSettings().name?.trim();
-  const lastBackup = getLastBackup();
-  const stories = READING_TEXTS.filter((t) => Array.isArray(t.paragraphs) && t.paragraphs.length);
-  const pack = (()=>{ try{
-    return buildOfflinePack({ vocab: allEntries().slice(0,60), sentences: LISTENING_TRACKS.slice(0,6).flatMap(t=> t.lines||[]).slice(0,30), grammar: [], fsrsDue: Object.keys(getSrs()).slice(0,40).map(id=> ({ id })), phonemes: [], exams: [] });
-  }catch{ return null; } })();
-
+  
   return (
-    <div className="fixed inset-0 z-50 bg-bg flex flex-col" role="dialog" aria-modal="true" aria-label="Offline">
-      <div className={TOP_BAR}>
-        <h2 className="flex-1 text-sm font-semibold text-ink">Offline & devices</h2>
-        <button onClick={onClose} aria-label="Close offline" className={ICON_BTN_ROUND_SOFT}>
-          <X size={18} />
-        </button>
-      </div>
+    <div className="fixed inset-0 z-[60] overflow-y-auto bg-bg" role="dialog" aria-modal="true" aria-label="Offline mode">
+      <div className="mx-auto min-h-full max-w-lg px-4 py-4">
+        {/* Header */}
+        <div className="mb-6 flex items-center gap-3">
+          <h2 className="flex-1 text-lg font-bold text-ink">
+            {isOnline ? 'Online Status' : 'Offline Mode'}
+          </h2>
+          <button onClick={onClose} aria-label="Close offline panel" className="grid h-9 w-9 place-items-center rounded-full text-ink2 hover:bg-surface2 hover:text-ink">
+            <span className="sr-only">Close</span>
+            <svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M13.5 4.5L4.5 13.5M4.5 4.5L13.5 13.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+            </svg>
+          </button>
+        </div>
 
-      <div className="flex-1 overflow-y-auto nice-scroll px-4 py-5">
-        <div className="max-w-md mx-auto space-y-6">
-          {/* install */}
-          <section className="bg-surface border border-line rounded-2xl p-5 space-y-3">
-            <h3 className="text-[11px] font-bold uppercase tracking-wider text-ink2 inline-flex items-center gap-1.5"><Download size={12} /> Install the app</h3>
-            {pwa?.installed ? (
-              <p className="text-xs text-ink2 inline-flex items-center gap-1.5"><Check size={13} /> Installed — you’re running the app from your home screen.</p>
-            ) : pwa?.canInstall ? (
-              <>
-                <p className="text-xs text-ink3 leading-relaxed">Add Le Studio to your device for a full-screen, app-like experience that opens straight from your home screen and works offline.</p>
-                <button onClick={() => pwa.promptInstall()} className="btn btn-primary w-full min-h-11 rounded-xl text-sm"><Download size={14} /> Install Le Studio</button>
-              </>
-            ) : pwa?.iosInstall ? (
-              <p className="text-xs text-ink3 leading-relaxed">
-                On iPhone/iPad: tap the <span className="font-semibold text-ink">Share</span> button in Safari, then
-                <span className="font-semibold text-ink"> “Add to Home Screen”</span> to install Le Studio.
-              </p>
-            ) : (
-              <p className="text-xs text-ink3 leading-relaxed">
-                Le Studio is an installable web app. Your browser will offer an <span className="font-semibold text-ink">Install</span> option
-                (often in the address bar or the ⋮ menu) — or check back here once it’s ready.
-              </p>
-            )}
-          </section>
-
-          {pack && (
-            <section className="bg-surface border border-line rounded-2xl p-4 space-y-2">
-              <h3 className="text-[11px] font-bold uppercase tracking-wider text-ink2">Offline pack v{pack.version}</h3>
-              <p className="text-xs text-ink2">{offlinePackSummary(pack).vocab} words · {pack.fsrsDue.length} due · {offlinePackSummary(pack).sentences} lines · ~{Math.round(offlinePackSize(pack)/1024)} kB</p>
-              <p className="text-[11px] text-ink3">Install the app, then your review queue works with no network (TTS is on-device).</p>
-            </section>
-          )}
-          {/* status */}
-          <section className="bg-surface border border-line rounded-2xl p-5 space-y-3">
-            <div className="flex items-center gap-3">
-              <span className={`w-2.5 h-2.5 rounded-full ${online ? 'bg-ink' : 'bg-ink3'}`} aria-hidden="true" />
-              <span className="text-sm font-semibold text-ink">{online ? 'Online' : 'Offline'}</span>
-              <span className="ml-auto inline-flex items-center gap-1.5 text-xs text-ink2">
-                {ready ? <><Check size={13} /> Ready offline</> : 'Caching…'}
-              </span>
-            </div>
-            <p className="text-xs text-ink3 leading-relaxed">
-              Le Studio is a fully client-side app. Once loaded it installs a service worker, so
-              every lesson, story and drill works with no connection{ready ? ` (${cacheCount} files cached)` : ' — still caching the app, which takes a moment on a first visit'}.
-              Spoken audio is generated on your device, so listening and pronunciation work offline too.
-              Only the AI conversation and correction features need the network (they call Groq live).
-            </p>
-          </section>
-
-          {/* download stories */}
-          <section className="space-y-2.5">
-            <h3 className="text-[11px] font-bold uppercase tracking-wider text-ink2 inline-flex items-center gap-1.5"><BookOpen size={12} /> Download stories</h3>
-            <p className="text-[11px] text-ink3 -mt-1">Save the text (with translations) to read anywhere.</p>
-            <div className="space-y-2">
-              {stories.map((t) => (
-                <div key={t.id} className="flex items-center gap-3 bg-surface border border-line rounded-2xl px-4 py-3">
-                  <span className="flex-1 min-w-0">
-                    <span className="block text-sm font-semibold text-ink truncate" lang="fr">{t.title}</span>
-                    <span className="block text-xs text-ink3">{t.cefr} · {t.description}</span>
-                  </span>
-                  <button
-                    onClick={() => downloadFile(`${t.id}.txt`, readingText(t))}
-                    aria-label={`Download ${t.title}`}
-                    className="btn btn-secondary min-h-9 px-3 rounded-lg text-xs shrink-0"
-                  >
-                    <Download size={13} /> Save
-                  </button>
-                </div>
-              ))}
-            </div>
-          </section>
-
-          {/* download podcasts */}
-          <section className="space-y-2.5">
-            <h3 className="text-[11px] font-bold uppercase tracking-wider text-ink2 inline-flex items-center gap-1.5"><Volume size={12} /> Download podcasts</h3>
-            <p className="text-[11px] text-ink3 -mt-1">Transcripts for the narrated tracks — play the audio in-app (on-device TTS).</p>
-            <div className="space-y-2">
-              {LISTENING_TRACKS.map((t) => (
-                <div key={t.id} className="flex items-center gap-3 bg-surface border border-line rounded-2xl px-4 py-3">
-                  <span className="flex-1 min-w-0">
-                    <span className="block text-sm font-semibold text-ink truncate" lang="fr">{t.title}</span>
-                    <span className="block text-xs text-ink3">{t.cefr} · {t.description}</span>
-                  </span>
-                  <button
-                    onClick={() => downloadFile(`${t.id}.txt`, trackText(t))}
-                    aria-label={`Download ${t.title}`}
-                    className="btn btn-secondary min-h-9 px-3 rounded-lg text-xs shrink-0"
-                  >
-                    <Download size={13} /> Save
-                  </button>
-                </div>
-              ))}
-            </div>
-          </section>
-
-          {/* account & sync across devices */}
-          <section className="bg-surface border border-line rounded-2xl p-5 space-y-4">
-            <h3 className="text-[11px] font-bold uppercase tracking-wider text-ink2 inline-flex items-center gap-1.5"><RefreshCw size={12} /> Account & sync</h3>
-
-            {/* local account identity */}
-            <div className="flex items-center gap-3 bg-surface2 rounded-xl px-3.5 py-2.5">
-              <span className="w-9 h-9 shrink-0 grid place-items-center rounded-xl bg-surface text-ink border border-line"><Key size={15} /></span>
-              <div className="min-w-0 flex-1">
-                <p className="text-sm font-semibold text-ink truncate">{account || 'Guest profile'}</p>
-                <p className="text-[11px] text-ink3 truncate">Sync ID {getSyncId()}{lastBackup ? ` · backed up ${new Date(lastBackup).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}` : ''}</p>
-              </div>
-            </div>
-
-            <p className="text-xs text-ink3 leading-relaxed">
-              Your data stays on this device. To move it, create a <span className="font-semibold text-ink">sync code</span> here and paste it on another device. Add a passphrase to encrypt it so it’s safe to send to yourself. Your API key is never included.
-              {cloud.available ? ' Signing in below stores that same code for you, so you don’t have to carry it by hand — a passphrase is required, and only this device can read what it stores.' : ''}
-            </p>
-
-            {cloud.available && (
-              <div className="rounded-xl border border-line bg-surface2 p-3.5 space-y-2.5">
-                {cloud.user ? (
-                  <>
-                    <p className="text-xs text-ink2">
-                      Signed in as <span className="font-semibold text-ink">{cloud.user.email}</span>
-                      {knownRemote ? ` — last saved ${new Date(knownRemote).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}` : ' — nothing saved yet'}.
-                      The passphrase below encrypts what is stored; leave it empty and the saved code is a plain backup.
-                    </p>
-                    <div className="flex flex-wrap gap-2">
-                      <button onClick={() => saveToAccount()} disabled={cloudBusy} className="btn btn-primary text-xs px-3 py-1.5 rounded-lg disabled:opacity-40">Save to account</button>
-                      <button onClick={restoreFromAccount} disabled={cloudBusy} className="btn btn-secondary text-xs px-3 py-1.5 rounded-lg disabled:opacity-40">Restore from account</button>
-                      <button
-                        onClick={async () => { await signOutAccount(); setCloud({ ...cloud, user: null }); setKnownRemote(null); setCloudMsg('Signed out. Your progress stays on this device.'); }}
-                        className="btn btn-secondary text-xs px-3 py-1.5 rounded-lg"
-                      >Sign out</button>
-                      <button
-                        onClick={async () => {
-                          if (!window.confirm('Delete the copy stored in your account? This device keeps its progress.')) return;
-                          await deleteRemote(); setKnownRemote(null); setCloudMsg('Removed the copy from your account.');
-                        }}
-                        className="btn btn-secondary text-xs px-3 py-1.5 rounded-lg"
-                      >Delete account copy</button>
-                    </div>
-                  </>
-                ) : (
-                  <>
-                    <p className="text-xs text-ink2">Optional — Le Studio works fully offline without an account.</p>
-                    <button onClick={startGoogleSignIn} className="btn btn-secondary text-xs px-3 py-1.5 rounded-lg inline-flex items-center gap-2">
-                      <GoogleMark /> Continue with Google
-                    </button>
-                  </>
-                )}
-                {cloudMsg && <p role="status" className="text-[11px] text-ink3">{cloudMsg}</p>}
-              </div>
-            )}
-
-            {/* optional passphrase */}
-            <label className="block">
-              <span className="text-[11px] font-semibold text-ink2">Passphrase (required for account sync — encrypts the code)</span>
-              <input
-                type="password"
-                value={passphrase}
-                onChange={(e) => setPassphrase(e.target.value)}
-                placeholder="Choose a passphrase only you know"
-                aria-label="Sync passphrase"
-                className="mt-1 w-full bg-surface border border-line rounded-xl px-3 py-2.5 text-sm text-ink placeholder:text-ink3 focus:outline-none focus:border-ink"
-              />
-              <span className="mt-1.5 block text-[11px] leading-relaxed text-ink3">
-                It stretches your passphrase with PBKDF2 and locks the copy with AES-GCM, so the server holds data it cannot read.
-                <strong className="font-semibold text-ink2"> If you forget it, that copy is gone for good</strong> — there is no reset, and no one can recover it for you.
-              </span>
-            </label>
-
-            {/* create / copy code */}
-            <div className="space-y-2">
-              <button onClick={genCode} disabled={busy} className="btn btn-primary w-full min-h-11 rounded-xl text-sm">
-                <RefreshCw size={14} /> {busy ? 'Working…' : 'Create sync code'}
-              </button>
-              {code && (
-                <div className="space-y-1.5">
-                  <p className="text-[11px] leading-relaxed text-ink3">
-                    {isEncryptedCode(code)
-                      ? 'This code is locked with your passphrase. Keep it private — treat it like a password.'
-                      : 'This code is not encrypted. Add a passphrase above before saving it anywhere.'}
-                  </p>
-                  <textarea
-                    readOnly
-                    value={code}
-                    onFocus={(e) => e.target.select()}
-                    rows={3}
-                    aria-label="Your sync code"
-                    className="w-full bg-surface2 border border-line rounded-xl px-3 py-2.5 text-[11px] font-mono text-ink2 resize-none break-all"
-                  />
-                  <button
-                    onClick={() => { navigator.clipboard?.writeText(code).then(() => setCopied(true)).catch(() => {}); }}
-                    className="btn btn-secondary w-full min-h-10 rounded-xl text-xs"
-                  >
-                    {copied ? <><Check size={13} /> Copied to clipboard</> : <><Copy size={13} /> Copy code</>}
-                  </button>
-                </div>
+        {/* Network status card */}
+        <div className={`rounded-xl border p-6 mb-4 ${isOnline ? 'bg-surface2 border-green200' : 'bg-yellow50 border-yellow200'}`}>
+          <div className="flex items-start gap-4">
+            <div className={`shrink-0 w-12 h-12 grid place-items-center rounded-xl ${isOnline ? 'bg-green100' : 'bg-yellow100'}`}>
+              {isOnline ? (
+                <Wifi size={24} className="text-green600" />
+              ) : (
+                <WifiOff size={24} className="text-yellow600" />
               )}
             </div>
-
-            {/* paste & restore */}
-            <div className="space-y-2 pt-1 border-t border-line">
-              <span className="text-[11px] font-semibold text-ink2">Restore on this device</span>
-              <textarea
-                value={pasteCode}
-                onChange={(e) => setPasteCode(e.target.value)}
-                placeholder="Paste a sync code…"
-                rows={2}
-                aria-label="Paste a sync code to restore"
-                className="w-full bg-surface border border-line rounded-xl px-3 py-2.5 text-[11px] font-mono text-ink placeholder:text-ink3 focus:outline-none focus:border-ink resize-none break-all"
-              />
-              <button onClick={restoreFromCode} disabled={busy || !pasteCode.trim()} className="btn btn-secondary w-full min-h-11 rounded-xl text-sm disabled:opacity-50">
-                <Upload size={14} /> Restore from code
-              </button>
-            </div>
-
-            {/* file backup, kept as an alternative */}
-            <div className="flex gap-2 pt-1 border-t border-line">
-              <button onClick={doExport} className="btn btn-secondary flex-1 min-h-10 rounded-xl text-xs">
-                <Download size={13} /> Export file
-              </button>
-              <button onClick={() => fileRef.current?.click()} className="btn btn-secondary flex-1 min-h-10 rounded-xl text-xs">
-                <Upload size={13} /> Import file
-              </button>
-              <input ref={fileRef} type="file" accept="application/json,.json" onChange={onFile} className="hidden" aria-label="Import backup file" />
-            </div>
-
-            {restored != null && (
-              <p className="text-xs text-ink flex items-center gap-1.5" role="status">
-                <Check size={13} /> Restored {restored} item{restored !== 1 ? 's' : ''} — reload to see everything.
+            <div className="flex-1">
+              <h3 className={`text-base font-semibold mb-1 ${isOnline ? 'text-green700' : 'text-yellow700'}`}>
+                {isOnline ? 'You are online' : 'You are offline'}
+              </h3>
+              <p className="text-sm text-inherit/80">
+                {isOnline 
+                  ? 'Network connection restored. All features available.'
+                  : 'Practice mode works offline. New progress will sync when back online.'}
               </p>
-            )}
-            {error && <p role="alert" className="text-xs text-ink">{error}</p>}
-          </section>
+            </div>
+          </div>
         </div>
+
+        {/* Cached content card */}
+        <div className="rounded-xl bg-surface2 border border-line p-6 mb-4">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-3">
+              <Download className="text-ink" size={20} />
+              <h3 className="font-semibold text-ink">Cached Content</h3>
+            </div>
+            {loading ? (
+              <RefreshCw className="animate-spin text-ink3" size={16} />
+            ) : (
+              <span className="text-xs font-mono text-ink3">{cachedItems} items</span>
+            )}
+          </div>
+          <p className="text-xs text-ink3">
+            The app caches practice sessions, vocabulary cards, and learning materials for offline access.
+          </p>
+        </div>
+
+        {/* Queued actions card */}
+        {hasQueuedActions && (
+          <div className="rounded-xl bg-yellow50 border border-yellow200 p-6 mb-4">
+            <div className="flex items-start gap-4">
+              <AlertCircle className="text-yellow600 shrink-0 mt-1" size={20} />
+              <div className="flex-1">
+                <h3 className="font-semibold text-yellow800 mb-1">
+                  {queuedCount} action{queuedCount > 1 ? 's' : ''} waiting to sync
+                </h3>
+                <p className="text-xs text-yellow700 mb-3">
+                  Your progress has been saved locally and will automatically sync when you reconnect.
+                </p>
+                <button
+                  onClick={handleRetryActions}
+                  className="btn btn-secondary min-h-9 px-3 rounded-lg text-xs flex items-center gap-2"
+                >
+                  <RefreshCw size={14} />
+                  Retry Sync Now
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Offline capabilities */}
+        <div className="rounded-xl bg-surface border border-line p-6">
+          <div className="flex items-center gap-3 mb-4">
+            <CheckCircle className="text-green500" size={20} />
+            <h3 className="font-semibold text-ink">What works offline</h3>
+          </div>
+          <ul className="space-y-2 text-xs text-ink3">
+            <li className="flex items-start gap-2">
+              <span className="text-green500 mr-1">•</span>
+              Review vocabulary flashcards from cached packs
+            </li>
+            <li className="flex items-start gap-2">
+              <span className="text-green500 mr-1">•</span>
+              Practice pronunciation with existing sentences
+            </li>
+            <li className="flex items-start gap-2">
+              <span className="text-green500 mr-1">•</span>
+              Access your learning notebook entries
+            </li>
+            <li className="flex items-start gap-2">
+              <span className="text-green500 mr-1">•</span>
+              Complete memory game reviews
+            </li>
+          </ul>
+          <div className="mt-4 pt-4 border-t border-line">
+            <p className="text-[10px] text-ink3">
+              Note: AI conversation requires network. New content downloads need internet.
+            </p>
+          </div>
+        </div>
+
+        {/* Auto-sync indicator */}
+        {isOnline && queuedCount === 0 && (
+          <div className="mt-4 rounded-xl bg-green50 border border-green200 p-4 text-center">
+            <CheckCircle className="mx-auto text-green500 mb-2" size={16} />
+            <p className="text-xs text-green700">Everything synced! You're up to date.</p>
+          </div>
+        )}
+
+        {/* Manual refresh button */}
+        {!isOnline && (
+          <div className="mt-4 text-center">
+            <button
+              onClick={() => window.location.reload()}
+              className="btn btn-secondary min-h-9 px-4 rounded-lg text-xs"
+            >
+              Refresh Page
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );

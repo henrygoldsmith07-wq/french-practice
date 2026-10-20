@@ -40,6 +40,11 @@ export default function Vocabulary({ apiKey, mockMode, onActivity, onXp }) {
     next.has(id) ? next.delete(id) : next.add(id);
     return next;
   });
+
+  // Open content import overlay
+  const handleOpenImport = () => {
+    window.dispatchEvent(new CustomEvent('openOverlay', { detail: 'contentImport' }));
+  };
   // Refresh-tick pattern: srsTick/nbTick bump after study/notebook writes;
   // the void keeps the tick registered as read inside the memo factory.
   const srs = useMemo(() => {
@@ -161,6 +166,19 @@ export default function Vocabulary({ apiKey, mockMode, onActivity, onXp }) {
             </span>
           </button>
         )}
+
+        {/* import custom content */}
+        <button
+          onClick={handleOpenImport}
+          className={CARD_ROW}
+        >
+          <Plus size={18} />
+          <span className="flex-1">
+            <span className="block text-sm font-semibold text-ink">Import your content</span>
+            <span className="block text-xs text-ink3">Add PDFs, Anki decks, or custom vocab lists</span>
+          </span>
+          <ChevronRight size={16} className="text-ink3 shrink-0" />
+        </button>
 
         {/* memory & revision dashboard */}
         <button

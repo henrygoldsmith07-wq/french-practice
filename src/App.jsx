@@ -1,26 +1,116 @@
-import { lazy, Suspense, useEffect, useMemo, useReducer, useRef, useState } from 'react';
+import { Component, lazy, Suspense, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import HomeDashboard from './components/HomeDashboard';
 import FeedbackWidget from './components/FeedbackWidget';
-const ChatArena = lazy(() => import('./components/ChatArena'));
-const SessionDashboard = lazy(() => import('./components/SessionDashboard'));
-const Vocabulary = lazy(() => import('./components/Vocabulary'));
+import WithErrorBoundary, { createLazyWithBoundary } from './components/WithErrorBoundary';
+import { LoadingScreen, TodaySessionSkeleton, ConversationSkeleton, ProgressChartSkeleton } from './components/LoadingScreen';
+import ScreenLoader, { TodayLoader, ConversationLoader, VocabularyLoader, ProgressLoader } from './components/ScreenLoader';
+// Conversatios/Arena - AI conversation feature
+const ChatArena = createLazyWithBoundary(() => import('./components/ChatArena'), {
+  context: 'conversation',
+  errorType: 'network',
+});
+
+// Session Dashboard - post-session review
+const SessionDashboard = createLazyWithBoundary(() => import('./components/SessionDashboard'), {
+  context: 'review',
+  loadingFallback: <LoadingScreen message="Loading session results..." />,
+});
+
+// Vocabulary practice mode
+const Vocabulary = createLazyWithBoundary(() => import('./components/Vocabulary'), {
+  context: 'vocabulary',
+  errorType: 'network',
+  loadingFallback: <LoadingScreen message="Loading vocabulary cards..." />,
+});
+
+// DevPanel - development tools (don't show errors to users)
 const DevPanel = lazy(() => import('./components/DevPanel'));
-const SettingsModal = lazy(() => import('./components/SettingsModal'));
-const PathSetup = lazy(() => import('./components/PathSetup'));
-const LearningPath = lazy(() => import('./components/LearningPath'));
-const Profile = lazy(() => import('./components/Profile'));
-const RealWorld = lazy(() => import('./components/RealWorld'));
-const Personalise = lazy(() => import('./components/Personalise'));
+
+// Settings Modal
+const SettingsModal = createLazyWithBoundary(() => import('./components/SettingsModal'), {
+  context: 'settings',
+  loadingFallback: <LoadingScreen message="Loading settings..." />,
+});
+
+// Learning Path Setup
+const PathSetup = createLazyWithBoundary(() => import('./components/PathSetup'), {
+  context: 'learningPath',
+  errorType: 'network',
+});
+
+// Full Learning Path interface
+const LearningPath = createLazyWithBoundary(() => import('./components/LearningPath'), {
+  context: 'learningPath',
+  errorType: 'network',
+  loadingFallback: <LoadingScreen message="Loading learning path..." />,
+});
+
+// User Profile & Account
+const Profile = createLazyWithBoundary(() => import('./components/Profile'), {
+  context: 'profile',
+  loadingFallback: <LoadingScreen message="Loading profile..." />,
+});
+
+// Content Importer
+const ContentImporter = lazy(() => import('./components/ContentImporter'));
+
+// Teacher Dashboard (Free tier for educators)
+const TeacherDashboard = lazy(() => import('./components/TeacherDashboard'));
+
+// Social Sharing Cards
+const SocialSharingCards = lazy(() => import('./components/SocialSharingCards'));
+
+// Real World Scenarios
+const RealWorld = createLazyWithBoundary(() => import('./components/RealWorld'), {
+  context: 'realWorld',
+  loadingFallback: <LoadingScreen message="Loading scenarios..." />,
+});
+
+// Personalization Options
+const Personalise = createLazyWithBoundary(() => import('./components/Personalise'), {
+  context: 'settings',
+  loadingFallback: <LoadingScreen message="Loading preferences..." />,
+});
+
+// Offline Mode Indicator/Help
 const Offline = lazy(() => import('./components/Offline'));
-const Analytics = lazy(() => import('./components/Analytics'));
-const Reference = lazy(() => import('./components/Reference'));
-const Focus = lazy(() => import('./components/Focus'));
-const Onboarding = lazy(() => import('./components/Onboarding'));
-const GlobalSearch = lazy(() => import('./components/GlobalSearch'));
-// TodaySession (and its drill-runner graph) is an overlay the learner opens
-// deliberately — lazy keeps its curriculum/memory/quiz imports out of the
-// first-load chunk entirely.
-const TodaySession = lazy(() => import('./components/TodaySession'));
+
+// Analytics Dashboard
+const Analytics = createLazyWithBoundary(() => import('./components/Analytics'), {
+  context: 'analytics',
+  loadingFallback: <LoadingScreen message="Loading analytics..." />,
+});
+
+// Reference Materials
+const Reference = createLazyWithBoundary(() => import('./components/Reference'), {
+  context: 'reference',
+  loadingFallback: <LoadingScreen message="Loading references..." />,
+});
+
+// Focus Mode
+const Focus = createLazyWithBoundary(() => import('./components/Focus'), {
+  context: 'focus',
+  loadingFallback: <LoadingScreen message="Loading focus mode..." />,
+});
+
+// Onboarding Flow
+const Onboarding = createLazyWithBoundary(() => import('./components/Onboarding'), {
+  context: 'onboarding',
+  loadingFallback: <LoadingScreen message="Starting onboarding..." />,
+});
+
+// Global Search
+const GlobalSearch = createLazyWithBoundary(() => import('./components/GlobalSearch'), {
+  context: 'search',
+  loadingFallback: <LoadingScreen message="Searching..." />,
+});
+
+// Today Session Overlay - primary learning session
+const TodaySession = createLazyWithBoundary(() => import('./components/TodaySession'), {
+  context: 'todaySession',
+  errorType: 'sessionError',
+  loadingFallback: <TodaySessionSkeleton />,
+});
 // Grammar / Skills / AiHub / Culture chunks are NOT imported here — App never
 // renders them directly (Learn hub owns them) and lib/prefetch.js owns their
 // intent/idle loading. Importing them here would drag them into App's chunk
@@ -493,7 +583,7 @@ export default function App() {
 
       <div className="flex-1 flex min-h-0">
         <main id="main" className="flex-1 min-w-0 flex flex-col">
-          <Suspense fallback={<ScreenLoader />}>
+          <Suspense fallback={<TodayLoader />}>
           {tab === 'today' && (
             <HomeDashboard
               onStartLesson={startLesson}
@@ -516,30 +606,32 @@ export default function App() {
               registry chunk resolves a beat after boot; ChatArena only mounts
               once the scenario — restored or first — is final. */}
           {tab === 'speak' && (scenario ? (
-            <ChatArena
-              onEndSession={endSession}
-              apiKey={apiKey}
-              mockMode={settings.mockMode}
-              ttsRate={settings.ttsRate}
-              level={effectiveLevel}
-              conversationMode={conversationMode}
-              onConversationMode={(m) => { setConversationModeState(m); }}
-              onTtsRate={(r) => updateSettings({ ...settings, ttsRate: r })}
-              onTurn={handleTurn}
-              onXp={awardXp}
-              onGrammarTip={(topicId) => {
-                if (!featureAvailableNow('grammar')) return;
-                setGrammarFocus(topicId);
-                setLearnView('grammar');
-                setTab('learn');
-              }}
-              history={history}
-              setHistory={setHistory}
-              scenario={scenario}
-              setScenario={setScenario}
-            />
+            <Suspense fallback={<ConversationSkeleton />}>
+              <ChatArena
+                onEndSession={endSession}
+                apiKey={apiKey}
+                mockMode={settings.mockMode}
+                ttsRate={settings.ttsRate}
+                level={effectiveLevel}
+                conversationMode={conversationMode}
+                onConversationMode={(m) => { setConversationModeState(m); }}
+                onTtsRate={(r) => updateSettings({ ...settings, ttsRate: r })}
+                onTurn={handleTurn}
+                onXp={awardXp}
+                onGrammarTip={(topicId) => {
+                  if (!featureAvailableNow('grammar')) return;
+                  setGrammarFocus(topicId);
+                  setLearnView('grammar');
+                  setTab('learn');
+                }}
+                history={history}
+                setHistory={setHistory}
+                scenario={scenario}
+                setScenario={setScenario}
+              />
+            </Suspense>
           ) : (
-            <ScreenLoader />
+            <ConversationLoader />
           ))}
           {tab === 'review' && (
             <Vocabulary apiKey={apiKey} mockMode={settings.mockMode} onActivity={handleActivity} onXp={awardXp} />
@@ -570,6 +662,7 @@ export default function App() {
               referenceTool={overlayIs(overlay, 'reference') ? overlayPayload(overlay, 'tool') : null}
               onCloseReference={() => { closeOverlay(); setLearnView(null); }}
               onOpenSpeaking={() => setTab('speak')}
+              openOverlay={openOverlay}
             />
           )}
           {tab === 'progress' && (
@@ -591,6 +684,7 @@ export default function App() {
                 setGrammarFocus(topicId); setLearnView('grammar'); setTab('learn');
               }}
               onOpenSpeaking={() => setTab('speak')}
+              onSocialShare={(id) => openOverlay(id)}
             />
           )}
           </Suspense>
@@ -624,6 +718,9 @@ export default function App() {
       {overlayIs(overlay, 'devPanel') && (
         <DevPanel open onClose={closeOverlay} telemetry={telemetry} apiKey={apiKey} mockMode={settings.mockMode} onMockMode={(v) => updateSettings({ ...settings, mockMode: v })} onClear={clearTelemetry} />
       )}
+      {overlayIs(overlay, 'contentImport') && <ContentImporter open onClose={closeOverlay} onXp={awardXp} />}
+      {overlayIs(overlay, 'teacherDashboard') && <TeacherDashboard open onClose={closeOverlay} />}
+      {overlayIs(overlay, 'socialSharing') && <SocialSharingCards open onClose={closeOverlay} />}
       {overlayIs(overlay, 'learningPath') && (
         <div className="fixed inset-0 z-[55] overflow-y-auto bg-bg" role="dialog" aria-modal="true" aria-label="Learning path">
           <div className="mx-auto min-h-full max-w-lg px-4 py-4">

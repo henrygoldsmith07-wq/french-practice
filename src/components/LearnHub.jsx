@@ -1,5 +1,5 @@
 import { lazy, Suspense } from 'react';
-import { Book, Mic, Sparkles, Landmark, Compass, Search, ChevronRight, GraduationCap, Bookmark } from './icons';
+import { Book, Mic, Sparkles, Landmark, Compass, Search, ChevronRight, GraduationCap, Bookmark, Share } from './icons';
 import { contentLang } from '../lib/content/active.js';
 import { featureAvailableNow, betaAlternativeCopy, getLanguage } from '../lib/languages';
 import { CHIP } from '../components/classNames.js';
@@ -31,6 +31,24 @@ const SECTIONS_ALL = [
   { id: 'realworld', title: 'Real-world', subtitle: 'Travel, café, medical phrases', icon: Compass },
 ];
 
+// Additional utility sections (not language-specific)
+const UTILITY_SECTIONS = [
+  { 
+    id: 'teacherDashboard', 
+    title: 'Teacher Dashboard', 
+    subtitle: 'Free tier for educators viewing class progress', 
+    icon: GraduationCap,
+    action: (onOpen) => onOpen('teacherDashboard')
+  },
+  { 
+    id: 'socialSharing', 
+    title: 'Share Progress', 
+    subtitle: 'Create motivational progress cards', 
+    icon: Share,
+    action: (onOpen) => onOpen('socialSharing')
+  },
+];
+
 // Language honesty: grammar topics, culture and exam boards are authored in
 // French only. For beta languages those tools hide instead of showing
 // half-working content — the core loop (Today, Speak, vocab, dictée,
@@ -59,7 +77,9 @@ export default function LearnHub({
   referenceTool,
   onCloseReference,
   onOpenSpeaking,
+  openOverlay,
 }) {
+  const onOpenOverlay = (id) => openOverlay?.(id);
   // Defensive deep-link gate: even if a stale link, a recommendation or a
   // future caller routes here, a French-authored screen can never render for
   // a beta language — the hub shows the honest beta note instead.
@@ -190,6 +210,20 @@ export default function LearnHub({
               <span className="text-[18px] font-bold tracking-[-0.02em] leading-tight">{s.title}</span>
               <span className="text-sm text-ink2 leading-relaxed">{s.subtitle}</span>
               <span className="text-xs font-semibold text-ink inline-flex items-center gap-1 mt-1">Open <ChevronRight size={12} /></span>
+            </button>
+          ))}
+          
+          {/* Utility section cards */}
+          {UTILITY_SECTIONS.map((u) => (
+            <button
+              key={u.id}
+              onClick={() => u.action(onOpenOverlay)}
+              className="text-left bg-gradient-to-br from-surface to-surface2 border border-line rounded-[20px] p-[22px] hover:border-ink3 transition flex flex-col gap-2"
+            >
+              <span className="w-8 h-8 grid place-items-center rounded-full bg-accent text-onaccent"><u.icon size={16} /></span>
+              <span className="text-[18px] font-bold tracking-[-0.02em] leading-tight">{u.title}</span>
+              <span className="text-sm text-ink2 leading-relaxed">{u.subtitle}</span>
+              <span className="text-xs font-semibold text-ink inline-flex items-center gap-1 mt-1">Try <ChevronRight size={12} /></span>
             </button>
           ))}
         </div>

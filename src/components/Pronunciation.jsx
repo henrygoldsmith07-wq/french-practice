@@ -15,8 +15,9 @@ import { evaluateFluency, PAUSE_MIN_MS } from '../lib/speakingEvaluation';
 import { decodeToMono16k } from '../lib/acoustics';
 import { analyzePhonology } from '../lib/phonologicalScore';
 import { recordMistake, isAsrUncertain } from '../lib/mistakeGraph';
-import { Mic, Square, Play, RefreshCw } from './icons';
+import { Mic, Square, Play, RefreshCw, Volume2, Target } from './icons';
 import { SECTION_LABEL_SM } from '../components/classNames.js';
+import PronunciationInsightsPanel from './PronunciationInsightsPanel';
 
 // Pronunciation ("read aloud") and Shadowing ("listen & repeat") drills.
 // The learner speaks the target sentence; Whisper transcribes; the word-level
@@ -30,6 +31,7 @@ export default function Pronunciation({ mode, apiKey, mockMode, level, onXp, onA
   const [phase, setPhase] = useState('idle'); // idle | scoring
   const [result, setResult] = useState(null); // { heard, accuracy, gained, hits, feedback }
   const [error, setError] = useState(null);
+  const [showInsights, setShowInsights] = useState(false); // Toggle insights panel
   // Evidence identity: ONE encounter per presented sentence. "Try again" on
   // the same sentence is the same encounter — feedback was already shown, so
   // a retry can never read as an independent retrieval. Only "Next sentence"
@@ -169,12 +171,37 @@ export default function Pronunciation({ mode, apiKey, mockMode, level, onXp, onA
     setPlayed(false);
     setResult(null);
     setError(null);
+    setShowInsights(false); // Reset insights when moving to next sentence
   };
 
   const canRecord = !shadow || played;
 
   return (
     <div className="space-y-4">
+      {/* Header with insights toggle */}
+      <div className="flex items-center justify-between">
+        <h2 className="text-base font-bold text-ink">
+          {shadow ? 'Shadowing' : 'Pronunciation'} Practice
+        </h2>
+        <button
+          onClick={() => setShowInsights(!showInsights)}
+          className={`inline-flex items-center gap-2 rounded-xl border px-3 py-1.5 text-xs font-medium transition-colors ${
+            showInsights 
+              ? 'border-primary bg-primary/10 text-primary' 
+              : 'border-line bg-surface text-ink hover:border-ink3'
+          }`}
+        >
+          <Volume2 size={14} />
+          {showInsights ? 'Hide Insights' : 'Show Phoneme Insights'}
+        </button>
+      </div>
+
+      {/* Show insights panel if toggled on */}
+      {showInsights && (
+        <div className="fade-in animate-in">
+          <PronunciationInsightsPanel mode={mode} />
+        </div>
+      )}
       <p className="text-xs text-ink2 text-center">
         {shadow
           ? 'Listen to the native rhythm first, then repeat it as closely as you can.'
