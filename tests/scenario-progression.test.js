@@ -26,7 +26,14 @@ describe('scenario progression', () => {
 
   it('demonstrated ability advances the level', () => {
     const sessions = [session('restaurant', 80), session('restaurant', 82), session('restaurant', 85)];
-    const state = scenarioLevel(sessions, scenario.id);
+    // The clock is pinned on purpose. scenarioLevel() lets a level that has
+    // not been touched in a month drift back one step, and these sessions are
+    // dated 2026-09-20 — so without a pinned "now" this test silently started
+    // failing once the wall clock moved 30 days past that date (2026-10-20),
+    // and it would keep failing forever after. The subject of this test is
+    // "demonstrated ability" — performance that is CURRENT — so the test now
+    // says so explicitly instead of depending on the day it is run.
+    const state = scenarioLevel(sessions, scenario.id, { now: new Date('2026-09-20T10:00:00Z').getTime() });
     assert.equal(state.level, 3);
     assert.equal(state.readyForNext, true);
   });
