@@ -412,6 +412,32 @@ function learnerLine(l) {
     : '';
 }
 
+// A feedback-shaped profile line — deliberately NOT the same as learnerLine().
+//
+// learnerLine() tells the AI to "deliberately create a natural opening for them
+// to use it, then observe whether they do", and to "address them by name when
+// it feels natural". Both instructions only make sense inside a LIVE
+// conversation, where the model can steer the exchange and then watch what the
+// learner does with it. A rule explanation ("why is that wrong?") and a hint
+// are ONE-SHOT: there is no opening to create and nothing to observe. Reusing
+// learnerLine() there would hand the model instructions it cannot execute, and
+// the worst outcome is a model that claims to have watched the learner use a
+// weakness it never saw.
+//
+// What genuinely helps in one-shot feedback is knowing whether a correction is
+// a PATTERN or a one-off — so the explanation can say "this is the same rule
+// you slipped on before" instead of presenting a repeat as news. The name and
+// the interests are dropped on purpose: neither belongs in a rule explanation.
+function learnerFeedbackLine(l) {
+  if (!l) return '';
+  const bits = [];
+  if (l.weakGrammar?.length) bits.push(`weak grammar areas: ${sanitizeForPrompt(l.weakGrammar.join(', '), 120)}`);
+  if (l.mistakes?.length) bits.push(`recurring mistakes: ${sanitizeForPrompt(l.mistakes.join('; '), 200)}`);
+  if (l.memory?.focusTopic) bits.push(`a weakness they are due to re-check: ${sanitizeForPrompt(l.memory.focusTopic, 80)} (${l.memory.errorCount || 1} prior slip${(l.memory.errorCount || 1) === 1 ? '' : 's'})`);
+  return bits.length
+    ? ` Learner context — ${bits.join('; ')}. Pitch what you give them at these weak spots. If the point at hand matches one of these, you may add ONE short clause saying it is a pattern they have slipped on before rather than a one-off; if it does not match, stay silent about their history.`
+    : '';
+}
 
 const TUTOR_SYSTEM = (level, learner) => `You are a warm, expert ${LANG.name} tutor. The learner is CEFR ${level}. Answer their questions about ${LANG.name} — grammar, vocabulary, usage, culture, learning strategy — in clear English with ${LANG.name} examples (each with a translation). Be concise: prefer 3-6 short paragraphs or a tight list. Use markdown sparingly (**bold** for ${LANG.name} forms). If they write to you in ${LANG.name}, gently correct any mistakes first, then answer. End with one short follow-up question or a suggestion of what to explore next, when it fits.${learnerLine(learner)}`;
 
@@ -578,12 +604,12 @@ export async function generateLesson(apiKey, { habits, level = 'B1', mock }) {
 
 // ---- deeper explanation of a specific mistake ----
 
-export async function explainMistake(apiKey, { userText, corrections, level = 'B1', mock }) {
+export async function explainMistake(apiKey, { userText, corrections, level = 'B1', learner, mock }) {
   if (mock) return mockExplanation();
   return chatPlain(apiKey, [
     {
       role: 'system',
-      content: `A CEFR ${level} ${LANG.name} learner said: "${sanitizeForPrompt(userText, 400)}". They received these corrections: "${sanitizeForPrompt(corrections, 400)}". Explain the UNDERLYING rule(s) behind the main correction in plain English — why ${LANG.name} works this way, the pattern to remember, and one extra example with translation. Max 120 words.`,
+      content: `A CEFR ${level} ${LANG.name} learner said: "${sanitizeForPrompt(userText, 400)}". They received these corrections: "${sanitizeForPrompt(corrections, 400)}". Explain the UNDERLYING rule(s) behind the main correction in plain English — why ${LANG.name} works this way, the pattern to remember, and one extra example with translation.${learnerFeedbackLine(learner)} Max 120 words.`,
     },
     { role: 'user', content: 'Why is that wrong? Explain the rule.' },
   ], { label: 'explain-mistake', temperature: 0.4, maxTokens: 400 });
@@ -728,7 +754,7 @@ export async function evaluateTurn(apiKey, { scenario, history, userText, curveb
 
 // ---- progressive hints ----
 
-export async function getHint(apiKey, { scenario, lastAiReply, level, cefr = 'B1', mock }) {
+export async function getHint(apiKey, { scenario, lastAiReply, level, cefr = 'B1', learner, mock }) {
   if (mock) return mockHint(level);
   const depth = [
     `Level 1: give only 2-3 useful ${LANG.name} vocabulary words with English glosses.`,
@@ -738,7 +764,7 @@ export async function getHint(apiKey, { scenario, lastAiReply, level, cefr = 'B1
   const json = await chatJson(apiKey, [
     {
       role: 'system',
-      content: `You help a CEFR ${cefr} ${LANG.name} learner respond in a roleplay. Scenario: ${scenario.title}. The other speaker just said: "${sanitizeForPrompt(lastAiReply, 400)}". ${depth} Match the vocabulary to their level. Reply ONLY as JSON: {"hint": "..."}`,
+      content: `You help a CEFR ${cefr} ${LANG.name} learner respond in a roleplay. Scenario: ${scenario.title}. The other speaker just said: "${sanitizeForPrompt(lastAiReply, 400)}". ${depth} Match the vocabulary to their level.${learnerFeedbackLine(learner)} Reply ONLY as JSON: {"hint": "..."}`,
     },
     { role: 'user', content: 'Give me a hint.' },
   ], { label: `hint-${level}` });

@@ -3,7 +3,7 @@ import { Markdown, ScoreBadge, SpeakButton, Spinner } from './ui';
 import Quiz from './Quiz';
 import { ArrowRight, Book, Lightbulb } from './icons';
 import { explainMistake, friendlyError, generateExercises } from '../lib/groq';
-import { saveToNotebook } from '../lib/storage';
+import { saveToNotebook, getLearnerBrief } from '../lib/storage';
 import { getGrammarTopic } from '../lib/grammar';
 import { rankCorrections, COACH_BUDGET } from '../lib/speakingCoach';
 import { SECTION_LABEL_SM } from '../components/classNames.js';
@@ -303,6 +303,10 @@ export function ExplainRule({ turn, apiKey, mockMode, level }) {
         userText: turn.userText,
         corrections: turn.evaluation.corrections,
         level,
+        // Read the profile when the learner asks, not when the turn rendered:
+        // the explanation is on-demand, so it should reflect the weaknesses
+        // known NOW — including any recorded earlier in this same session.
+        learner: getLearnerBrief(),
         mock: mockMode,
       }));
     } catch (e) {
