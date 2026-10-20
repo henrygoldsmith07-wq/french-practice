@@ -453,7 +453,12 @@ export default function ChatArena({ apiKey, mockMode, ttsRate, level, onTtsRate,
     hintsUsedRef.current = depth;
     try {
       const lastAiReply = history.length ? history[history.length - 1].reply : scenario.opener;
-      const h = await getHint(apiKey, { scenario, lastAiReply, level: depth, cefr: level, mock: mockMode });
+      // The hint is pitched at the learner's own weak spots, so it takes the
+      // profile the conversation partner already gets. Read it at request time
+      // (not render time) so the hint reflects what the learner has actually
+      // slipped on, including anything learned earlier in this session.
+      const learner = getLearnerBrief();
+      const h = await getHint(apiKey, { scenario, lastAiReply, level: depth, cefr: level, learner, mock: mockMode });
       if (hintSeqRef.current !== seq) return; // a newer hint (or scenario switch) superseded this one
       setHint(h);
     } catch {
