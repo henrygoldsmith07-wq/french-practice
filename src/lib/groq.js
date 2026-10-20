@@ -313,7 +313,15 @@ async function sendChat(apiKey, body, { label }) {
 
 async function chatCompletion(apiKey, body, { label } = {}) {
   try {
-    return await sendChat(apiKey, body, { label });
+    // The envelope matters: sendChat returns the provider payload as-is
+    // ({choices: [...]}), and every caller here destructures `{ data }` out of
+    // it — exactly like the fallback path below returns `{ data }`. Returning
+    // the bare payload on the success path made `data` undefined, so the very
+    // next line (data.choices[0]) threw and EVERY conversation turn, quiz and
+    // tutor answer failed with "Cannot read properties of undefined". The
+    // fallback path was already correct; the success path was not.
+    const data = await sendChat(apiKey, body, { label });
+    return { data };
   } catch (e) {
     const msg = String(e?.message || '');
     const worthFallback =
@@ -403,6 +411,7 @@ function learnerLine(l) {
     ? ` Learner profile — ${bits.join('; ')}. Tailor your examples to their interests and weak spots, and address them by name when it feels natural; never recite this profile back to them.`
     : '';
 }
+
 
 const TUTOR_SYSTEM = (level, learner) => `You are a warm, expert ${LANG.name} tutor. The learner is CEFR ${level}. Answer their questions about ${LANG.name} — grammar, vocabulary, usage, culture, learning strategy — in clear English with ${LANG.name} examples (each with a translation). Be concise: prefer 3-6 short paragraphs or a tight list. Use markdown sparingly (**bold** for ${LANG.name} forms). If they write to you in ${LANG.name}, gently correct any mistakes first, then answer. End with one short follow-up question or a suggestion of what to explore next, when it fits.${learnerLine(learner)}`;
 
