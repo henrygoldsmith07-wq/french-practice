@@ -99,6 +99,7 @@ const KEYS = {
   conversationMode: 'fp.conversationMode', // 'coach' | 'fluency' — Arena correction policy
   cultureSeen: 'fp.cultureSeen', // [articleId] — Culture items already opened
   realworldSeen: 'fp.realworldSeen', // [itemId] — RealWorld items already opened
+  progressCards: 'fp.progressCards.v1', // [{ id, createdAt, themeId, quote, rows, level }] — saved progress cards
   path: 'fp.path', // Learning Path state: goal, CEFR, unit/lesson progress, checkpoints
 };
 
@@ -238,6 +239,11 @@ export const LEARNER_KEY_VALUES = [
   // member's practice funded another member's purchases, and switching member
   // showed the new learner the previous one's balance.
   KEYS.coins,
+  // The progress cards a learner has saved. They are the learner's own
+  // record of their own progress, so they are learner-routed with XP and
+  // the notebook — a shared card library would show one member of a
+  // household the cards another member made.
+  KEYS.progressCards,
   // Preferences/progress that used to live as raw component-level keys: with
   // a household active each member now keeps their own mode and seen-lists;
   // the one-shot claim keeps every pre-existing value with the first member.

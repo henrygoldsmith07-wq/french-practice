@@ -24,7 +24,15 @@ const FIRSTLOAD_BUDGET_KB = 450;
 // Total shipped JS: the PWA caches everything offline, so all three
 // languages' content legitimately ships once. Set from the current build with
 // headroom; the first-load budget is the boot-time guard.
-const TOTAL_BUDGET_KB = 1800;
+//
+// Re-baselined 1800 -> 1950 on 2026-10-21, the same way 1200 -> 1800 was done
+// in 422ffda when a large feature landed. The build was 1844 KB after the
+// teacher/import/progress-features work; 1950 keeps the same ~5% headroom
+// that 1800 gave the 1200-era build. The FIRST-LOAD budget below is
+// deliberately NOT moved: it is the one that protects a learner waiting for
+// the app to boot, and the new screens are all lazy-loaded, so the boot
+// closure stayed at 385 KB against an unchanged 450 KB budget.
+const TOTAL_BUDGET_KB = 1950;
 // Additional JS needed when a learner opens each main surface, excluding the
 // boot closure already downloaded. These are raw-byte budgets for the static
 // dependency closure of the surface entry chunk(s), not just the top file.

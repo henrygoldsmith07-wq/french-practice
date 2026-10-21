@@ -32,7 +32,7 @@ import { useScenarios } from '../hooks/useScenarios.js';
 import {
   dueEntries, notebookAsEntries, NEW_CARD_CAP,
 } from './memory.js';
-import { getSrs, getNotebook } from './storage.js';
+import { getSrs, getNotebook, saveToNotebook, isInNotebook } from './storage.js';
 
 let resolved = null; // promise for the CURRENT language's library
 let resolvedLang = null; // which language `resolved` belongs to
@@ -82,6 +82,58 @@ export function useAllEntries() {
  * nothing if something else already started the load. (The scenario chunk is
  * tiny, so even a miss is cheap — see lib/data.js.)
  */
+/**
+ * Imported vocabulary — the learner's OWN words.
+ *
+ * The app already has one place for words the learner saved by hand: the
+ * notebook. Everything that reads the learner's word list composes it the
+ * same way — `[...allEntries(), ...notebookAsEntries(getNotebook())]` — in
+ * the practice queue, the search index, the analytics totals and the
+ * personal word library.
+ *
+ * An imported word list is exactly that kind of thing, so it goes in the same
+ * place. That is the whole point: an imported word joins practice instead of
+ * sitting in a store nothing reads.
+ *
+ * The notebook belongs to the ACTIVE language (it holds one word list, not
+ * one per language), so a request for another language honestly returns
+ * nothing rather than another language's words.
+ *
+ * The notebook caps at 200 entries. `addVocabEntry` therefore returns the
+ * entry only when it was ACTUALLY stored — a caller that reports "N words
+ * imported" must count the returns, not the words it tried to add.
+ */
+export function getVocabularyBySource(lang) {
+  const only = String(lang || contentLang()).toLowerCase();
+  if (only !== contentLang().toLowerCase()) return [];
+  return getNotebook().map((n) => ({
+    id: n.id,
+    target: n.fr,
+    explanation: n.en || '',
+    source: 'notebook',
+    addedAt: n.addedAt,
+  }));
+}
+
+/**
+ * Add one imported word to the learner's own word list.
+ * Returns the stored entry, or null when it was not stored (a blank word, a
+ * duplicate, or the notebook already being at its cap).
+ */
+export async function addVocabEntry(entry = {}) {
+  const target = String(entry.target || '').trim();
+  if (!target) return null;
+  const id = entry.id
+    || `import-${target.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')}`;
+  saveToNotebook({
+    id,
+    fr: target,
+    en: entry.explanation || '',
+    note: entry.source ? `Imported from ${entry.source}` : 'Imported',
+  });
+  return isInNotebook(id) ? { id, target, explanation: entry.explanation || '' } : null;
+}
+
 export function warmScenarios() {
   return import('./data').then((m) => m.getScenariosAsync());
 }

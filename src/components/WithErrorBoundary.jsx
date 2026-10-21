@@ -1,4 +1,4 @@
-import { Component, Suspense } from 'react';
+import { Component, lazy, Suspense } from 'react';
 import ErrorCard from './ui/ErrorCard';
 import LoadingScreen from './LoadingScreen';
 
@@ -50,7 +50,7 @@ export default class ErrorBoundary extends Component {
     } = this.props;
 
     if (hasError) {
-      const { error } = this.state;
+      const { error, errorInfo } = this.state;
       
       return (
         <ErrorCard
@@ -120,7 +120,12 @@ export function withErrorBoundary(WrappedComponent, options = {}) {
  * });
  */
 export function createLazyWithBoundary(importFn, options = {}) {
-  const LazyComponent = window.lazy(() => importFn().then(mod => ({
+  // `lazy` has to come from React. It was read off `window` here, and React
+  // does not put `lazy` on the global object — so this threw "window.lazy is
+  // not a function" while App.jsx was still being evaluated. The app never
+  // booted: what the end-to-end suite saw was the static marketing shell in
+  // index.html, not the app.
+  const LazyComponent = lazy(() => importFn().then(mod => ({
     default: props => (
       <ErrorBoundary
         context={options.context}
@@ -131,6 +136,6 @@ export function createLazyWithBoundary(importFn, options = {}) {
       </ErrorBoundary>
     ),
   })));
-  
+
   return LazyComponent;
 }

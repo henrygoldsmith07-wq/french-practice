@@ -1,16 +1,105 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Share2, Download, CheckCircle, Target, Clock, TrendingUp } from './icons';
+import {
+  getSessions, getStreak, getSettings, getSrs, getGrammarProgress, getMetrics,
+  getLearnerErrorSummary, getLearningEvidenceState,
+} from '../lib/storage';
+import { proficiency } from '../lib/proficiency';
+import { hasCapabilityNow } from '../lib/languages';
+import { getProgressCards, saveProgressCards } from '../lib/stores/progressCardStore.js';
 
 /**
- * SocialSharingCards - Opt-in progress exports for student motivation
- * Creates visually appealing shareable cards without exposing personal data
+ * SocialSharingCards - progress cards the learner can keep and share.
+ *
+ * Every number on a card comes from the learner's own record. The card used
+ * to be built from fixed figures (47 sessions, 72% accuracy, 23 weaknesses
+ * fixed) behind a "Download Card" button that did nothing except say it
+ * would have worked — so the thing a learner shares was a claim about their
+ * own learning that was not true. Where there is no evidence yet the card
+ * says so instead of inventing a number.
+ *
+ * Nothing personal goes on the card: no name, no account, no dates beyond
+ * what the learner chose to include.
  */
+
+const THEMES = [
+  { id: 'primary', label: 'Studio', from: '#3b5bdb', to: '#1c3faa' },
+  { id: 'success', label: 'Green', from: '#2f9e44', to: '#1b6e30' },
+  { id: 'purple', label: 'Purple', from: '#7048e8', to: '#4c2fb0' },
+  { id: 'amber', label: 'Amber', from: '#e8890c', to: '#b35c05' },
+];
+
+const QUOTES = [
+  'Practice makes progress.',
+  'Every mistake is a lesson.',
+  'Consistency is key.',
+  'Fluency takes time.',
+];
+
+const readCards = () => getProgressCards();
+const writeCards = (cards) => saveProgressCards(cards);
+
+/**
+ * The learner's own numbers.
+ *
+ * `null` means "not enough evidence yet" — the card shows a dash rather than
+ * a made-up figure, because a shared card is a claim about real learning.
+ */
+function realStats() {
+  const sessions = getSessions();
+  const summary = getLearnerErrorSummary();
+  const streak = getStreak();
+  const statedLevel = getSettings().level || 'A1';
+
+  // Accuracy comes from the learner's own evidence events: every attempt the
+  // app recorded, and whether it was right.
+  let correct = 0;
+  let attempts = 0;
+  const evidence = hasCapabilityNow('learning-path') ? getLearningEvidenceState() : null;
+  for (const cycle of (evidence && evidence.cycles) || []) {
+    for (const field of ['baseline', 'interventions', 'transfers', 'delayed', 'recurrences']) {
+      for (const e of cycle[field] || []) {
+        attempts += 1;
+        if (e.correct) correct += 1;
+      }
+    }
+  }
+
+  // The level comes from the same evidence the Progress tab uses, so the
+  // card cannot claim a level the app itself does not.
+  const result = proficiency({
+    level: statedLevel,
+    srs: getSrs() || {},
+    topicScores: getGrammarProgress() || {},
+    sessions,
+    metrics: getMetrics() || [],
+    learningEvidence: evidence || {},
+  });
+
+  return {
+    sessionsCompleted: sessions.length,
+    accuracy: attempts ? Math.round((correct / attempts) * 100) : null,
+    accuracyAttempts: attempts,
+    weaknessesFixed: summary.resolved,
+    currentStreak: (streak && streak.count) || 0,
+    level: result.workingLevel || statedLevel,
+  };
+}
+
+const fmt = (value) => (value === null || value === undefined ? '—' : String(value));
+
 export default function SocialSharingCards({ open, onClose }) {
   const [showCreator, setShowCreator] = useState(false);
   const [selectedMetrics, setSelectedMetrics] = useState(['sessions', 'accuracy', 'weaknesses']);
-  
+  const [cards, setCards] = useState(() => readCards());
+
   if (!open) return null;
-  
+
+  const onBack = () => {
+    setShowCreator(false);
+    setCards(readCards());
+  };
+
   return (
     <div className="fixed inset-0 z-[55] overflow-y-auto bg-bg" role="dialog" aria-modal="true" aria-label="Share progress">
       <div className="mx-auto min-h-full max-w-4xl px-4 py-4">
@@ -29,8 +118,8 @@ export default function SocialSharingCards({ open, onClose }) {
           <div className="w-1/2 border-r border-line bg-surface p-6">
             <h2 className="text-xl font-bold text-ink mb-2">Share Your Progress</h2>
             <p className="text-sm text-ink2 mb-6">
-              Create beautiful, motivating progress cards to celebrate your achievements! 
-              No personal data included - just your learning stats.
+              Create a progress card from your own record. No personal data is
+              included — just the numbers you have actually earned.
             </p>
 
             {/* Privacy Badge */}
@@ -38,10 +127,10 @@ export default function SocialSharingCards({ open, onClose }) {
               <div className="flex items-start gap-3">
                 <CheckCircle size={20} className="text-onaccent mt-0.5" />
                 <div>
-                  <h4 className="text-sm font-semibold text-onaccent">Privacy First</h4>
+                  <h4 className="text-sm font-semibold text-onaccent">Privacy first</h4>
                   <p className="mt-1 text-xs text-onaccent/80">
-                    Your name and personal details are never included in shared cards. 
-                    Only anonymized learning metrics.
+                    Your name and personal details are never included in shared cards.
+                    Only anonymised learning metrics.
                   </p>
                 </div>
               </div>
@@ -50,7 +139,7 @@ export default function SocialSharingCards({ open, onClose }) {
             {/* Metrics Selection */}
             <h3 className="text-sm font-bold uppercase tracking-wider text-ink2 mb-3">Choose What to Share</h3>
             <div className="space-y-2 mb-6">
-              <MetricToggle 
+              <MetricToggle
                 label="Sessions Completed"
                 description="Total practice sessions"
                 icon={Clock}
@@ -58,7 +147,7 @@ export default function SocialSharingCards({ open, onClose }) {
                 selected={selectedMetrics}
                 onToggle={setSelectedMetrics}
               />
-              <MetricToggle 
+              <MetricToggle
                 label="Accuracy Rate"
                 description="Average correctness %"
                 icon={Target}
@@ -66,7 +155,7 @@ export default function SocialSharingCards({ open, onClose }) {
                 selected={selectedMetrics}
                 onToggle={setSelectedMetrics}
               />
-              <MetricToggle 
+              <MetricToggle
                 label="Weaknesses Fixed"
                 description="Mistakes improved"
                 icon={TrendingUp}
@@ -85,67 +174,43 @@ export default function SocialSharingCards({ open, onClose }) {
                 <Share2 size={16} className="inline mr-2" />
                 Create Progress Card
               </button>
-              
-              <button className="w-full rounded-xl border border-line bg-surface px-4 py-3 text-sm font-medium text-ink hover:bg-surface2">
-                View Past Cards
-              </button>
             </div>
+
+            {/* Your cards */}
+            {cards.length > 0 && (
+              <div className="mt-6">
+                <h3 className="text-sm font-bold uppercase tracking-wider text-ink2 mb-3">Your Cards</h3>
+                <div className="space-y-3">
+                  {cards.map((card) => (
+                    <SavedCard key={card.id} card={card} />
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         ) : (
-          <CardCreator 
+          <CardCreator
             metrics={selectedMetrics}
-            onClose={() => setShowCreator(false)}
-            onBack={() => setShowCreator(false)}
+            onBack={onBack}
+            onSaved={(saved) => setCards([saved, ...readCards()])}
           />
         )}
 
-        {/* Right Panel - Gallery & Examples */}
+        {/* Right Panel - What a card looks like */}
         <div className="w-1/2 bg-surface p-6 overflow-y-auto">
-          <h2 className="text-xl font-bold text-ink mb-4">Recent Cards</h2>
-          
-          {/* Example Cards */}
-          <div className="space-y-4">
-            <ExampleCard
-              title="Week 1 Milestone 🎉"
-              subtitle="10 sessions completed!"
-              stat={{ label: "Sessions", value: "10" }}
-              highlight="Perfect consistency!"
-              gradient="from-blue-500 to-purple-500"
-            />
-            
-            <ExampleCard
-              title="Accuracy Breakthrough ⭐"
-              subtitle="Crossed 75% threshold"
-              stat={{ label: "Accuracy", value: "78%" }}
-              highlight="Up from 62% last month!"
-              gradient="from-green-500 to-emerald-500"
-            />
-            
-            <ExampleCard
-              title="Fixed 15 Weaknesses 💪"
-              subtitle="Keep building momentum"
-              stat={{ label: "Fixed", value: "15" }}
-              highlight="Grammar mastered!"
-              gradient="from-amber-500 to-orange-500"
-            />
-          </div>
-
-          {/* Share Options */}
-          <div className="mt-8 pt-6 border-t border-line">
-            <h3 className="text-sm font-bold uppercase tracking-wider text-ink2 mb-3">Share Platforms</h3>
-            <div className="grid grid-cols-3 gap-3">
-              {['Instagram', 'Twitter', 'Email'].map(platform => (
-                <button
-                  key={platform}
-                  className="rounded-xl border border-line bg-surface px-3 py-2 text-xs font-medium text-ink hover:border-primary hover:text-primary transition-colors"
-                >
-                  {platform}
-                </button>
-              ))}
-            </div>
-            <p className="mt-2 text-xs text-ink2 text-center">
-              Cards generate PNG images compatible with all platforms
-            </p>
+          <h2 className="text-xl font-bold text-ink mb-4">What a card shows</h2>
+          <p className="text-sm text-ink2 mb-4">
+            A card carries the three numbers you pick, the level you are working
+            at, and a line you choose. Nothing else.
+          </p>
+          <div className="rounded-2xl border border-line bg-surface2 p-5">
+            <h3 className="text-sm font-bold text-ink">Where the numbers come from</h3>
+            <ul className="mt-2 space-y-1 text-xs text-ink2">
+              <li>· Sessions — the sessions recorded on this device.</li>
+              <li>· Accuracy — your recorded attempts and how many were right.</li>
+              <li>· Weaknesses fixed — mistakes you have repaired and re-tested.</li>
+              <li>· Level — the level the app works out from your evidence.</li>
+            </ul>
           </div>
         </div>
       </div>
@@ -153,71 +218,82 @@ export default function SocialSharingCards({ open, onClose }) {
   );
 }
 
-/**
- * Metric selection toggle
- */
 function MetricToggle({ label, description, icon: Icon, metric, selected, onToggle }) {
-  const isSelected = selected.includes(metric);
-  
+  const isOn = selected.includes(metric);
   return (
-    <label className={`flex items-center justify-between gap-4 rounded-xl border px-4 py-3 cursor-pointer transition-colors ${
-      isSelected 
-        ? 'border-accent text-onaccent bg-accent' 
-        : 'border-line bg-surface2 hover:bg-surface'
-    }`}>
-      <div className="flex items-center gap-3">
-        <div className={`rounded-lg p-2 ${isSelected ? 'bg-primary text-white' : 'bg-surface text-ink3'}`}>
-          <Icon size={18} />
-        </div>
-        <div>
-          <p className="text-sm font-medium text-ink">{label}</p>
-          <p className="text-xs text-ink3">{description}</p>
-        </div>
-      </div>
-      <input
-        type="checkbox"
-        checked={isSelected}
-        onChange={() => onToggle(
-          isSelected 
-            ? selected.filter(m => m !== metric)
-            : [...selected, metric]
-        )}
-        className="h-5 w-5 rounded border-line text-primary focus:ring-primary"
-      />
-    </label>
+    <button
+      type="button"
+      onClick={() => onToggle(isOn ? selected.filter((m) => m !== metric) : [...selected, metric])}
+      aria-pressed={isOn}
+      className={`flex w-full items-center gap-3 rounded-xl border p-3 text-left transition ${
+        isOn ? 'border-accent bg-accent/10' : 'border-line bg-surface hover:bg-surface2'
+      }`}
+    >
+      <span className={`grid h-9 w-9 place-items-center rounded-full ${isOn ? 'bg-accent text-onaccent' : 'bg-surface2 text-ink2'}`}>
+        <Icon size={16} />
+      </span>
+      <span className="flex-1">
+        <span className="block text-sm font-semibold text-ink">{label}</span>
+        <span className="block text-xs text-ink2">{description}</span>
+      </span>
+      <span className={`grid h-5 w-5 place-items-center rounded-full border ${isOn ? 'border-accent bg-accent text-onaccent' : 'border-line'}`}>
+        {isOn && <CheckCircle size={12} />}
+      </span>
+    </button>
   );
 }
 
 /**
  * Card creation interface
  */
-function CardCreator({ metrics, onClose, onBack }) {
+function CardCreator({ metrics, onBack, onSaved }) {
   const [generating, setGenerating] = useState(false);
-  const [cardData, setCardData] = useState(generateMockCardData());
-  const themeColors = {
-    blue: 'from-blue-500 to-blue-600',
-    purple: 'from-purple-500 to-purple-600',
-    green: 'from-green-500 to-green-600',
-    amber: 'from-amber-500 to-amber-600',
-  };
+  const [error, setError] = useState(null);
+  const [theme, setTheme] = useState(THEMES[0]);
+  const [quote, setQuote] = useState(QUOTES[0]);
 
-  // Mock user stats
-  const userStats = {
-    sessionsCompleted: 47,
-    avgAccuracy: 72,
-    weaknessesFixed: 23,
-    currentStreak: 5,
-    longestStreak: 12,
-    timeSpent: '19 hours',
-    levelReached: 'B1',
-  };
+  // Read the learner's record when the creator opens, not when the panel did:
+  // the numbers on the card have to be the ones as they are now.
+  const stats = useMemo(() => realStats(), []);
 
-  const handleGenerate = () => {
+  const rows = [
+    metrics.includes('sessions') && { label: 'Sessions completed', value: fmt(stats.sessionsCompleted) },
+    metrics.includes('accuracy') && {
+      label: 'Accuracy rate',
+      value: stats.accuracy === null ? '—' : `${stats.accuracy}%`,
+    },
+    metrics.includes('weaknesses') && { label: 'Weaknesses fixed', value: fmt(stats.weaknessesFixed) },
+  ].filter(Boolean);
+
+  const handleDownload = async () => {
     setGenerating(true);
-    setTimeout(() => {
+    setError(null);
+    try {
+      const card = {
+        id: `card-${Date.now()}`,
+        createdAt: new Date().toISOString(),
+        themeId: theme.id,
+        quote,
+        rows,
+        level: stats.level,
+      };
+      const canvas = await renderCardCanvas(card, stats);
+      const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/png'));
+      if (!blob) throw new Error('The card could not be drawn.');
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `le-studio-progress-${card.id}.png`;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      const saved = [card, ...readCards()];
+      writeCards(saved);
+      if (onSaved) onSaved(card);
+    } catch (e) {
+      setError(e.message || 'The card could not be downloaded.');
+    } finally {
       setGenerating(false);
-      alert('Card generated! Would save to library and allow download/share.');
-    }, 1000);
+    }
   };
 
   return (
@@ -238,7 +314,10 @@ function CardCreator({ metrics, onClose, onBack }) {
       <main className="flex-1 flex flex-col md:flex-row">
         {/* Card Preview */}
         <div className="flex-1 p-6 flex items-center justify-center bg-gradient-to-br from-surface via-white to-surface">
-          <div className="w-full max-w-md rounded-3xl bg-gradient-to-br from-primary to-primary/80 p-8 text-white shadow-2xl">
+          <div
+            className="w-full max-w-md rounded-3xl p-8 text-white shadow-2xl"
+            style={{ backgroundImage: `linear-gradient(135deg, ${theme.from}, ${theme.to})` }}
+          >
             {/* Header */}
             <div className="flex items-center justify-between mb-6">
               <div className="text-center">
@@ -252,39 +331,23 @@ function CardCreator({ metrics, onClose, onBack }) {
 
             {/* Main Stats */}
             <div className="space-y-4">
-              {metrics.includes('sessions') && (
-                <StatRow 
-                  label="Sessions Completed" 
-                  value={`${userStats.sessionsCompleted}`}
-                  icon={Clock}
-                />
+              {rows.length === 0 && (
+                <p className="text-sm opacity-90">Pick at least one number to put on the card.</p>
               )}
-              {metrics.includes('accuracy') && (
-                <StatRow 
-                  label="Accuracy Rate" 
-                  value={`${userStats.avgAccuracy}%`}
-                  icon={Target}
-                  highlight
-                />
-              )}
-              {metrics.includes('weaknesses') && (
-                <StatRow 
-                  label="Weaknesses Fixed" 
-                  value={`${userStats.weaknessesFixed}`}
-                  icon={TrendingUp}
-                />
-              )}
+              {rows.map((row) => (
+                <StatRow key={row.label} label={row.label} value={row.value} />
+              ))}
             </div>
 
             {/* Achievement Badge */}
             <div className="mt-6 rounded-2xl bg-white/20 p-4 text-center">
               <p className="text-xs uppercase tracking-wider opacity-90">Current Level</p>
-              <p className="text-2xl font-bold">{userStats.levelReached}</p>
+              <p className="text-2xl font-bold">{stats.level}</p>
             </div>
 
             {/* Footer */}
             <div className="mt-6 pt-6 border-t border-white/20 text-center text-sm opacity-90">
-              Keep up the great work! 🇫🇷
+              {quote}
             </div>
           </div>
         </div>
@@ -292,42 +355,47 @@ function CardCreator({ metrics, onClose, onBack }) {
         {/* Controls */}
         <div className="w-full md:w-80 border-l border-line bg-surface p-6 flex flex-col">
           <h3 className="text-sm font-bold uppercase tracking-wider text-ink2 mb-4">Customization</h3>
-          
+
           <div className="space-y-4 mb-6">
             <div>
-              <label className="block text-sm font-medium text-ink mb-2">Theme Color</label>
+              <span className="block text-sm font-medium text-ink mb-2">Theme Color</span>
               <div className="flex gap-2">
-                {['primary', 'success', 'purple', 'amber'].map(color => (
+                {THEMES.map((t) => (
                   <button
-                    key={color}
-                    className={`w-8 h-8 rounded-full ${
-                      color === 'primary' ? 'bg-primary' :
-                      color === 'success' ? 'bg-success' :
-                      color === 'purple' ? 'bg-purple-500' :
-                      'bg-amber-500'
-                    }`}
+                    key={t.id}
+                    type="button"
+                    onClick={() => setTheme(t)}
+                    aria-label={`${t.label} theme`}
+                    aria-pressed={theme.id === t.id}
+                    className={`h-8 w-8 rounded-full ${t.id === 'primary' ? 'bg-primary' : t.id === 'success' ? 'bg-success' : t.id === 'purple' ? 'bg-purple-500' : 'bg-amber-500'} ${theme.id === t.id ? 'ring-2 ring-ink ring-offset-2' : ''}`}
                   />
                 ))}
               </div>
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-ink mb-2">Include Motivational Quote</label>
-              <select className="w-full rounded-xl border border-line bg-surface2 px-3 py-2 text-sm text-ink">
-                <option>"Practice makes progress!"</option>
-                <option>"Every mistake is a lesson."</option>
-                <option>"Consistency is key."</option>
-                <option>"Fluency takes time."</option>
+              <label htmlFor="card-quote" className="block text-sm font-medium text-ink mb-2">Include Motivational Quote</label>
+              <select
+                id="card-quote"
+                value={quote}
+                onChange={(e) => setQuote(e.target.value)}
+                className="w-full rounded-xl border border-line bg-surface2 px-3 py-2 text-sm text-ink"
+              >
+                {QUOTES.map((q) => <option key={q} value={q}>{q}</option>)}
               </select>
             </div>
           </div>
 
+          {error && (
+            <p role="alert" className="mb-3 rounded-xl bg-red50 px-3 py-2 text-xs text-red800">{error}</p>
+          )}
+
           <button
-            onClick={handleGenerate}
-            disabled={generating}
+            onClick={handleDownload}
+            disabled={generating || rows.length === 0}
             className="mt-auto rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-white hover:bg-primary/90 disabled:opacity-50"
           >
-            {generating ? 'Generating...' : 'Download Card'}
+            {generating ? 'Drawing your card...' : 'Download Card'}
           </button>
         </div>
       </main>
@@ -335,30 +403,31 @@ function CardCreator({ metrics, onClose, onBack }) {
   );
 }
 
-function StatRow({ label, value, icon: Icon, highlight }) {
+function StatRow({ label, value }) {
   return (
-    <div className={`flex items-center justify-between rounded-2xl p-4 ${highlight ? 'bg-white/20' : ''}`}>
-      <div className="flex items-center gap-3">
-        <Icon size={20} />
-        <span className="opacity-90">{label}</span>
-      </div>
+    <div className="flex items-center justify-between rounded-2xl p-4">
+      <span className="opacity-90">{label}</span>
       <span className="text-3xl font-bold">{value}</span>
     </div>
   );
 }
 
-function ExampleCard({ title, subtitle, stat, highlight, gradient }) {
+function SavedCard({ card }) {
+  const theme = THEMES.find((t) => t.id === card.themeId) || THEMES[0];
   return (
-    <div className="rounded-2xl bg-gradient-to-br from-primary to-primary/80 p-5 text-white shadow-lg">
-      <h4 className="font-bold text-lg">{title}</h4>
-      <p className="text-sm opacity-90 mb-4">{subtitle}</p>
-      
-      <div className="flex items-center gap-3 mb-3">
-        <div className="text-2xl font-bold">{stat.value}</div>
-        <div className="text-sm opacity-90">{stat.label}</div>
+    <div className="rounded-2xl p-4 text-white" style={{ backgroundImage: `linear-gradient(135deg, ${theme.from}, ${theme.to})` }}>
+      <div className="flex items-center justify-between text-xs opacity-90">
+        <span>Le Studio</span>
+        <span>{new Date(card.createdAt).toLocaleDateString()}</span>
       </div>
-      
-      <p className="text-xs opacity-80">{highlight}</p>
+      <div className="mt-2 space-y-1">
+        {(card.rows || []).map((row) => (
+          <div key={row.label} className="flex items-center justify-between text-sm">
+            <span className="opacity-90">{row.label}</span>
+            <span className="font-bold">{row.value}</span>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -372,13 +441,86 @@ function AwardIcon() {
   );
 }
 
-// Import X icon
-import { X } from './icons';
+/**
+ * Draw the card on a canvas so the download is a real image of the same
+ * thing the preview shows. The preview is the React markup; this is the
+ * same content drawn for the file the learner keeps.
+ */
+async function renderCardCanvas(card, stats) {
+  const theme = THEMES.find((t) => t.id === card.themeId) || THEMES[0];
+  const width = 900;
+  const height = 1160;
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) throw new Error('This browser cannot draw the card.');
 
-function generateMockCardData() {
-  return {
-    sessions: 47,
-    accuracy: 72,
-    weaknesses: 23,
-  };
+  const gradient = ctx.createLinearGradient(0, 0, width, height);
+  gradient.addColorStop(0, theme.from);
+  gradient.addColorStop(1, theme.to);
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, width, height);
+
+  ctx.fillStyle = '#ffffff';
+  ctx.textAlign = 'center';
+  ctx.font = 'bold 54px system-ui, sans-serif';
+  ctx.fillText('Le Studio', width / 2, 120);
+  ctx.font = '28px system-ui, sans-serif';
+  ctx.globalAlpha = 0.9;
+  ctx.fillText('Language Learning Journey', width / 2, 168);
+  ctx.globalAlpha = 1;
+
+  const rows = card.rows || [];
+  let y = 300;
+  ctx.textAlign = 'left';
+  for (const row of rows) {
+    ctx.globalAlpha = 0.22;
+    roundRect(ctx, 80, y - 60, width - 160, 110, 24);
+    ctx.fillStyle = '#ffffff';
+    ctx.fill();
+    ctx.globalAlpha = 0.95;
+    ctx.fillStyle = '#ffffff';
+    ctx.font = '30px system-ui, sans-serif';
+    ctx.fillText(row.label, 120, y + 8);
+    ctx.textAlign = 'right';
+    ctx.font = 'bold 48px system-ui, sans-serif';
+    ctx.fillText(row.value, width - 120, y + 12);
+    ctx.textAlign = 'left';
+    ctx.globalAlpha = 1;
+    y += 140;
+  }
+
+  // Level badge
+  ctx.globalAlpha = 0.22;
+  roundRect(ctx, 80, y + 10, width - 160, 130, 28);
+  ctx.fillStyle = '#ffffff';
+  ctx.fill();
+  ctx.globalAlpha = 1;
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#ffffff';
+  ctx.font = '22px system-ui, sans-serif';
+  ctx.globalAlpha = 0.9;
+  ctx.fillText('CURRENT LEVEL', width / 2, y + 62);
+  ctx.globalAlpha = 1;
+  ctx.font = 'bold 56px system-ui, sans-serif';
+  ctx.fillText(stats.level || card.level || '—', width / 2, y + 112);
+
+  // Quote
+  ctx.font = 'italic 30px system-ui, sans-serif';
+  ctx.globalAlpha = 0.9;
+  ctx.fillText(`"${card.quote}"`, width / 2, height - 70);
+  ctx.globalAlpha = 1;
+
+  return canvas;
+}
+
+function roundRect(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
 }

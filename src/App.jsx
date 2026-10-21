@@ -2,7 +2,7 @@ import { Component, lazy, Suspense, useEffect, useMemo, useReducer, useRef, useS
 import HomeDashboard from './components/HomeDashboard';
 import FeedbackWidget from './components/FeedbackWidget';
 import WithErrorBoundary, { createLazyWithBoundary } from './components/WithErrorBoundary';
-import { LoadingScreen, TodaySessionSkeleton, ConversationSkeleton, ProgressChartSkeleton } from './components/LoadingScreen';
+import LoadingScreen, { TodaySessionSkeleton, ConversationSkeleton, ProgressChartSkeleton } from './components/LoadingScreen';
 import ScreenLoader, { TodayLoader, ConversationLoader, VocabularyLoader, ProgressLoader } from './components/ScreenLoader';
 // Conversatios/Arena - AI conversation feature
 const ChatArena = createLazyWithBoundary(() => import('./components/ChatArena'), {
@@ -819,14 +819,6 @@ function Celebration({ data, onDone }) {
         <p className="mt-1 text-sm text-ink2">{level ? (data.newTitle ? `You’re now ${data.title}. Keep the momentum.` : 'Another level down — keep the momentum.') : 'Daily goal reached — anything more today is pure bonus.'}</p>
         <button onClick={onDone} className="btn btn-primary w-full min-h-11 rounded-xl text-sm mt-5">{level ? 'Keep going' : 'Nice work'}</button>
       </div>
-    </div>
-  );
-}
-
-function ScreenLoader() {
-  return (
-    <div className="flex-1 grid place-items-center py-20" role="status" aria-label="Loading">
-      <span className="w-6 h-6 rounded-full border-2 border-line border-t-ink animate-spin" />
     </div>
   );
 }

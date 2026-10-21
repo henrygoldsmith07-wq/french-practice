@@ -33,10 +33,13 @@ const SECTIONS_ALL = [
 
 // Additional utility sections (not language-specific)
 const UTILITY_SECTIONS = [
-  { 
-    id: 'teacherDashboard', 
-    title: 'Teacher Dashboard', 
-    subtitle: 'Free tier for educators viewing class progress', 
+  {
+    id: 'teacherDashboard',
+    title: 'Teacher Dashboard',
+    // Say what it is before the learner opens it. There is no classroom
+    // connected to the app, so this tile leads to a preview with sample
+    // numbers in it — not to a class report.
+    subtitle: 'Preview of a class view · sample data',
     icon: GraduationCap,
     action: (onOpen) => onOpen('teacherDashboard')
   },

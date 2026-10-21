@@ -1,16 +1,57 @@
 import { useState, useMemo } from 'react';
-import { BarChart2, Users, TrendingUp, Target, Clock, Mail, FileText } from './icons';
+import { BarChart2, Users, TrendingUp, Target, Clock, FileText } from './icons';
 import { CHIP } from '../components/classNames.js';
 
 /**
- * TeacherDashboard - Free tier for educators to view aggregated student progress
- * Privacy-preserving: anonymized data only, no personal information exposed
+ * TeacherDashboard - a preview of a teacher view.
+ *
+ * There is no class data source in the app: Le Studio is a single-learner,
+ * local-first PWA, so nothing here comes from a real classroom. The panel
+ * says so on screen, and the export button writes the numbers you are
+ * looking at to a CSV — a button that pretends to do something is worse than
+ * no button at all.
  */
+
+// The rows behind the panel, in the order the table shows them.
+const csvRowsFor = (classes) => {
+  const rows = [['class', 'student_id', 'sessions_completed', 'avg_accuracy', 'active_weaknesses', 'status']];
+  for (const cls of classes) {
+    for (const s of cls.students) {
+      rows.push([cls.name, s.id, s.sessionsCompleted, s.avgAccuracy, s.activeWeaknesses, s.status]);
+    }
+  }
+  return rows;
+};
+
+const downloadCsv = (classes, filename) => {
+  const csv = csvRowsFor(classes)
+    .map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(','))
+    .join('\n');
+  const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+};
+
+// Export the rows behind the panel. `target` is a class, a list of classes,
+// or nothing (which means every class).
+const exportSampleData = (target) => {
+  const classes = Array.isArray(target) ? target : target ? [target] : sampleClasses;
+  if (!classes.length) return;
+  downloadCsv(classes, 'le-studio-sample-class-data.csv');
+};
+
 export default function TeacherDashboard({ open, onClose }) {
-  if (!open) return null;
-  
+  // The hooks come BEFORE the early return. React requires the same hooks in
+  // the same order on every render, so returning early above them would make
+  // the hook count change when the dashboard is opened or closed — which
+  // React turns into a crash, not a blank screen.
   const [selectedClass, setSelectedClass] = useState(null);
   const [viewMode, setViewMode] = useState('overview'); // overview | details | reports
+
+  if (!open) return null;
 
   return (
     <div className="fixed inset-0 z-[55] overflow-y-auto bg-bg" role="dialog" aria-modal="true" aria-label="Teacher dashboard">
@@ -23,6 +64,19 @@ export default function TeacherDashboard({ open, onClose }) {
               <path d="M13.5 4.5L4.5 13.5M4.5 4.5L13.5 13.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
             </svg>
           </button>
+        </div>
+
+        {/* Say what the numbers are. Every figure on this screen is invented:
+            there is no classroom connected to the app, and a panel of made-up
+            statistics is not a class report. */}
+        <div
+          role="note"
+          className="mb-5 rounded-xl border border-yellow200 bg-yellow50 px-4 py-3 text-xs text-yellow800"
+        >
+          <strong className="font-semibold">Sample data.</strong>{' '}
+          This is a preview of what a class view would look like. No classroom is
+          connected, so every number below is made up — including the student
+          names, which are not real people.
         </div>
 
         {/* Sidebar */}
@@ -76,8 +130,8 @@ export default function TeacherDashboard({ open, onClose }) {
 
           {/* Export Section */}
           <div className="p-3 border-t border-line">
-            <button 
-              onClick={() => alert('Export functionality would generate anonymized CSV report')}
+            <button
+              onClick={() => exportSampleData(selectedClass)}
               className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-white hover:bg-primary/90"
             >
               <FileText size={14} /> Export Report
@@ -92,6 +146,7 @@ export default function TeacherDashboard({ open, onClose }) {
               classData={selectedClass} 
               viewMode={viewMode}
               onSetViewMode={setViewMode}
+              onClose={onClose}
             />
           ) : (
             <OverviewView />
@@ -254,7 +309,7 @@ function ClassCard({ classData }) {
 /**
  * Detailed class view with tabs
  */
-function ClassDetailView({ classData, viewMode, onSetViewMode }) {
+function ClassDetailView({ classData, viewMode, onSetViewMode, onClose }) {
   return (
     <div className="h-full flex flex-col">
       {/* Header */}
@@ -492,8 +547,11 @@ function ReportsView({ classData }) {
             </div>
           </div>
 
-          <button className="w-full rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-white hover:bg-primary/90">
-            Generate & Download CSV
+          <button
+            onClick={() => exportSampleData(classData)}
+            className="w-full rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-white hover:bg-primary/90"
+          >
+            Generate &amp; Download CSV
           </button>
         </div>
       </div>
@@ -504,9 +562,12 @@ function ReportsView({ classData }) {
         <div className="flex items-center justify-between rounded-xl border border-line bg-surface2 p-4">
           <div>
             <p className="text-sm font-semibold text-ink">Termly Progress Report - French GCSE</p>
-            <p className="text-xs text-ink2 mt-0.5">Generated Oct 15, 2024</p>
+            <p className="text-xs text-ink2 mt-0.5">A sample report, not one from a real class</p>
           </div>
-          <button className="inline-flex items-center gap-2 rounded-xl border border-line bg-surface px-4 py-2 text-sm font-medium text-ink hover:bg-surface3">
+          <button
+            onClick={() => exportSampleData(classData)}
+            className="inline-flex items-center gap-2 rounded-xl border border-line bg-surface px-4 py-2 text-sm font-medium text-ink hover:bg-surface3"
+          >
             Download
           </button>
         </div>

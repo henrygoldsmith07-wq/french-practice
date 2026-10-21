@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
 import { phonemesFor, weakestPhonemes, getPhonemeProfile } from '../lib/phonemeProfile';
 import { CheckCircle, Target, Volume2, ArrowRight } from './icons';
-import Chip from './Chip.jsx';
 
 /**
  * PronunciationInsightsPanel - Shows deep phoneme-level feedback

@@ -75,6 +75,3 @@ export function ProgressLoader() {
     </div>
   );
 }
-
-// Export default for backward compatibility
-export { ScreenLoader as default };
