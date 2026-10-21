@@ -1,4 +1,4 @@
-import { Component, lazy, Suspense, useEffect, useMemo, useReducer, useRef, useState } from 'react';
+import { Component, lazy, Suspense, useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import HomeDashboard from './components/HomeDashboard';
 import FeedbackWidget from './components/FeedbackWidget';
 import WithErrorBoundary, { createLazyWithBoundary } from './components/WithErrorBoundary';
@@ -185,8 +185,21 @@ export default function App() {
   // Android Back close whatever is open via useOverlayNav; opening a second
   // overlay replaces the first (modal focus, not a stack).
   const [overlay, dispatchOverlay] = useReducer(overlayReducer, initialOverlay);
-  const openOverlay = (name, payload = undefined) => dispatchOverlay({ type: 'open', overlay: name, payload });
+  const openOverlay = useCallback((name, payload = undefined) => dispatchOverlay({ type: 'open', overlay: name, payload }), []);
   const closeOverlay = () => dispatchOverlay({ type: 'close' });
+  // Some surfaces open an overlay by dispatching an event rather than taking
+  // the openOverlay function as a prop: the Profile (AI Study Assistant,
+  // Gamification Hub) and the Vocabulary screen (import a word list). Nothing
+  // listened for that event, so all three of those buttons did nothing at
+  // all — the panels behind them could not be reached.
+  useEffect(() => {
+    const onOpenOverlay = (event) => {
+      const name = event && event.detail;
+      if (name) openOverlay(name);
+    };
+    window.addEventListener('openOverlay', onOpenOverlay);
+    return () => window.removeEventListener('openOverlay', onOpenOverlay);
+  }, [openOverlay]);
   // In-flight session lifecycle (persist/restore, warm-then-heal scenario
   // resolution, language switching) and document appearance live in focused
   // hooks; App stays composition.

@@ -23,13 +23,28 @@ export const OVERLAY_TYPES = [
   'search', 'settings', 'profile', 'realWorld', 'personalise', 'offline',
   'analytics', 'reference', 'focus', 'devPanel', 'learningPath', 'pathSetup',
   'onboarding', 'today', 'dashboard',
+  // The panels added with the study assistant and gamification work. They
+  // were rendered by App.jsx but missing from this list, and the gate below
+  // rejects anything it does not know — so the AI Study Assistant, the
+  // content importer, the share cards, the teacher dashboard and the
+  // gamification hub could never be opened. Nothing said so.
+  'aiAssistant', 'gamification', 'contentImport', 'teacherDashboard', 'socialSharing',
 ];
 
 export const initialOverlay = null;
 
 /** A validated overlay descriptor (unknown names are rejected, not stored). */
 export function makeOverlay(type, payload = {}) {
-  if (!OVERLAY_TYPES.includes(type)) return null;
+  if (!OVERLAY_TYPES.includes(type)) {
+    // The gate exists so a typo'd name fails loudly. It used to fail
+    // SILENTLY: the reducer returned the current state, the panel simply
+    // never opened, and no test noticed because the suite had no way to
+    // reach those panels either.
+    if (import.meta.env && import.meta.env.DEV) {
+      console.warn(`[overlay] unknown overlay type "${type}" — the panel will not open. Add it to OVERLAY_TYPES.`);
+    }
+    return null;
+  }
   return { type, ...payload };
 }
 
