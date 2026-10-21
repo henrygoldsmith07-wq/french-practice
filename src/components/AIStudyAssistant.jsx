@@ -1,5 +1,5 @@
 // AI Study Assistant - Intelligent recommendations and personalized guidance
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Brain, TrendingUp, Target, Zap, Clock, CheckCircle } from './icons';
 import { generateAIRecommendations, generateWeeklyPlan, createMotivationalMessage } from '../lib/aiStudyAssistant';
 
@@ -7,17 +7,21 @@ export default function AIStudyAssistant({ open, onClose, userState }) {
   const [activeTab, setActiveTab] = useState('overview'); // overview | plan | insights
   const [recommendations, setRecommendations] = useState([]);
   const [weeklyPlan, setWeeklyPlan] = useState([]);
-  
+
+  // This was a `useState(() => { ... })` below the `if (!open) return null`
+  // guard. A state initialiser is not an effect: it ran on every render, and
+  // because it sat AFTER the early return it was a conditional hook — which
+  // React's rules-of-hooks check rejects, and which crashes the app the
+  // moment the panel is opened with a different `open` value than the last
+  // render. It is an effect, so it is one now.
+  useEffect(() => {
+    if (!userState) return;
+    setRecommendations(generateAIRecommendations(userState));
+    setWeeklyPlan(generateWeeklyPlan(userState, {}));
+  }, [userState]);
+
   if (!open) return null;
-  
-  // Initialize data when opened
-  useState(() => {
-    if (userState) {
-      setRecommendations(generateAIRecommendations(userState));
-      setWeeklyPlan(generateWeeklyPlan(userState, {}));
-    }
-  });
-  
+
   const handleAction = (action) => {
     // Simulate action completion for demo
     console.log('Completed:', action);

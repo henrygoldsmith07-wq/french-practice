@@ -19,7 +19,6 @@ import { localDayKey } from '../lib/localDay';
 import Stats from './Stats';
 import { X, Check, Flame, Bolt, Coins, Trophy, Lock, Brain, Zap, Award } from './icons';
 import { ICON_BTN_ROUND_SOFT, TOP_BAR } from '../components/classNames.js';
-import { useEffect } from 'react';
 
 // Player profile: level & title, coins, the weekly league, daily challenges,
 // the avatar shop, achievements, the postcard collection and the seasonal
