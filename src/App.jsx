@@ -60,6 +60,12 @@ const TeacherDashboard = lazy(() => import('./components/TeacherDashboard'));
 // Social Sharing Cards
 const SocialSharingCards = lazy(() => import('./components/SocialSharingCards'));
 
+// AI Study Assistant
+const AIStudyAssistant = lazy(() => import('./components/AIStudyAssistant'));
+
+// Gamification Hub
+const GamificationHub = lazy(() => import('./components/GamificationHub'));
+
 // Real World Scenarios
 const RealWorld = createLazyWithBoundary(() => import('./components/RealWorld'), {
   context: 'realWorld',
@@ -721,6 +727,17 @@ export default function App() {
       {overlayIs(overlay, 'contentImport') && <ContentImporter open onClose={closeOverlay} onXp={awardXp} />}
       {overlayIs(overlay, 'teacherDashboard') && <TeacherDashboard open onClose={closeOverlay} />}
       {overlayIs(overlay, 'socialSharing') && <SocialSharingCards open onClose={closeOverlay} />}
+      {overlayIs(overlay, 'aiAssistant') && <AIStudyAssistant open onClose={closeOverlay} userState={{
+        weeklyXP: 450,
+        streakCount: 12,
+        recentAverageMinutes: 25,
+        weakestArea: 'pronunciation',
+        lowAccuracyWords: ['chat', 'maison', 'homme'],
+        activityByHour: { 7: 5, 8: 8, 9: 3, 18: 7, 19: 9, 20: 6 },
+        momentum: 1.15,
+        lastActivity: Date.now() - (2 * 60 * 60 * 1000),
+      }} />}
+      {overlayIs(overlay, 'gamification') && <GamificationHub open onClose={closeOverlay} />}
       {overlayIs(overlay, 'learningPath') && (
         <div className="fixed inset-0 z-[55] overflow-y-auto bg-bg" role="dialog" aria-modal="true" aria-label="Learning path">
           <div className="mx-auto min-h-full max-w-lg px-4 py-4">
