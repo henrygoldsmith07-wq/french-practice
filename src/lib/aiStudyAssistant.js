@@ -2,7 +2,10 @@
 // Analyzes patterns in user progress, identifies weaknesses, suggests optimal
 // study times, predicts retention risks, and provides actionable insights
 
-import { getSessionData, getPhonemeProfile, getVocabProgress } from './storage';
+// `getPhonemeProfile` lives in lib/phonemeProfile.js, not in storage.js — the
+// import was pointing at the wrong module, so the bundler failed on it.
+// `getSessionData` and `getVocabProgress` were imported but never used.
+import { getPhonemeProfile } from './phonemeProfile.js';
 import { analyzeTargetText } from './phonologicalScore';
 import { wilsonInterval } from './evidenceUncertainty';
 
