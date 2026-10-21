@@ -8,19 +8,14 @@ import { DELAYED_MIN_HOURS } from '../lib/learningEvidence';
 /**
  * Calculate 95% Wilson confidence interval for a proportion
  * From evidenceUncertainty.js - reused here for visualization
+ *
+ * The shared helper returns { lower, upper, level } and null when there is
+ * nothing to measure. This view also draws the WIDTH of the interval, so the
+ * width is added here rather than by keeping a second copy of the maths.
  */
-function wilsonInterval(successes, trials, z = 1.96) {
-  if (trials === 0) return { lower: null, upper: null };
-  const p = successes / trials;
-  const denominator = 1 + z * z / trials;
-  const center = (p + z * z / (2 * trials)) / denominator;
-  const halfWidth = (z / denominator) * Math.sqrt((p * (1 - p) + z * z / (4 * trials)) / trials);
-  return {
-    lower: Math.max(0, center - halfWidth),
-    upper: Math.min(1, center + halfWidth),
-    center: center,
-    width: halfWidth * 2,
-  };
+function withWidth(interval) {
+  if (!interval) return null;
+  return { ...interval, width: interval.upper - interval.lower };
 }
 
 /**
@@ -76,7 +71,7 @@ export default function EnhancedProgressInsights() {
       {momentumCard(insights.momentum)}
 
       {/* Weakness Breakdown - With confidence intervals */}
-      <WeaknessCards weaknesses={insights.weaknessAnalysis} />
+      <WeaknessCards weaknesses={insights.weaknessAnalysis.weaknesses} />
 
       {/* Evidence Timeline - Last 30 days */}
       {insights.hasData && <EvidenceTimeline cycles={insights.weaknessAnalysis.cycles || []} />}
@@ -140,7 +135,20 @@ function momentumCard(momentum) {
 
   const trendIcon = momentum.direction === 'up' ? TrendingUp : momentum.direction === 'flat' ? Clock : TrendingUp;
   const trendColor = momentum.direction === 'up' ? 'text-success' : momentum.direction === 'down' ? 'text-amber500' : 'text-ink3';
-  
+
+  // No events in the last week means there is nothing to plot. Say that
+  // instead of drawing an empty chart under a number.
+  if (!momentum.dailyRates || momentum.dailyRates.length === 0) {
+    return (
+      <div className="rounded-2xl border border-line bg-surface p-5">
+        <h3 className="text-sm font-bold uppercase tracking-wider text-ink2">Improvement Momentum</h3>
+        <p className="mt-1 text-sm text-ink2">
+          Not enough evidence yet — practise over a few days and the trend appears here.
+        </p>
+      </div>
+    );
+  }
+
   return (
     <div className="rounded-2xl border border-line bg-surface p-5">
       <div className="flex items-center justify-between">
@@ -155,15 +163,16 @@ function momentumCard(momentum) {
           <span className="font-semibold">{momentum.rate.toFixed(1)}%</span>
         </div>
       </div>
-      
-      {/* Mini trend line visualization */}
+
+      {/* One bar per day with recorded evidence. The bar height is that day's
+          success rate, so the chart is the evidence, not a decoration. */}
       <div className="mt-4 h-16 flex items-end gap-1">
-        {momentum.dailyRates.slice(-7).map((rate, i) => (
+        {momentum.dailyRates.slice(-7).map((d) => (
           <div
-            key={i}
+            key={d.day}
             className="flex-1 rounded-t bg-primary/40 hover:bg-primary transition-colors"
-            style={{ height: `${Math.max(10, rate * 3)}%` }}
-            title={`Day ${i + 1}: ${rate.toFixed(1)}%`}
+            style={{ height: `${Math.max(4, Math.min(100, d.rate))}%` }}
+            title={`${d.day}: ${d.rate.toFixed(0)}% correct`}
           />
         ))}
       </div>
@@ -291,12 +300,25 @@ function WeaknessCard({ weakness }) {
 function EvidenceTimeline({ cycles }) {
   const groupedEvents = useMemo(() => {
     const eventsByDate = {};
-    
+
+    // The lane a phase lives in is not always the phase name with an "s" on
+    // the end: the evidence model stores `baseline` (singular) and `delayed`
+    // (singular) next to `interventions`, `transfers` and `recurrences`
+    // (plural). Reading `cycle['baselines']` and `cycle['delayeds']` found
+    // nothing, so the timeline silently dropped the first attempt and the
+    // delayed retest — the two phases that matter most. This is the same
+    // field/phase pairing the evidence model itself uses.
+    const lanes = [
+      ['baseline', 'baseline'],
+      ['interventions', 'intervention'],
+      ['transfers', 'transfer'],
+      ['delayed', 'delayed'],
+      ['recurrences', 'recurrence'],
+    ];
+
     (cycles || []).forEach(cycle => {
-      const phases = ['baseline', 'intervention', 'transfer', 'delayed', 'recurrence'];
-      
-      phases.forEach(phase => {
-        const events = cycle[`${phase}s`] || [];
+      lanes.forEach(([field, phase]) => {
+        const events = cycle[field] || [];
         events.forEach(event => {
           const date = new Date(event.at).toLocaleDateString();
           if (!eventsByDate[date]) {
@@ -401,8 +423,8 @@ function analyzeWeaknesses(errorEntries, cycles, sessions) {
 
     // Calculate Wilson confidence interval
     const confidences = {
-      success: wilsonInterval(successfulAttempts, totalAttempts),
-      recent: recentAttempts > 0 ? wilsonInterval(recentSuccessful, recentAttempts) : null,
+      success: withWidth(wilsonInterval(successfulAttempts, totalAttempts)),
+      recent: recentAttempts > 0 ? withWidth(wilsonInterval(recentSuccessful, recentAttempts)) : null,
     };
 
     analyzed.push({
@@ -426,10 +448,13 @@ function analyzeWeaknesses(errorEntries, cycles, sessions) {
 function calculateMomentum(cycles, sessions) {
   // Simple momentum calculation: change in average success rate over time
   const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-  
+
   let oldRate = 0;
   let newRate = 0;
-  let dailyRates = [];
+  // The daily bars are counted from the same events the rate comes from, so
+  // the chart and the number above it cannot disagree. (They used to be
+  // random values, labelled "based on practice over the last 7 days".)
+  const byDay = new Map();
 
   cycles.forEach(cycle => {
     const allEvents = [
@@ -448,18 +473,36 @@ function calculateMomentum(cycles, sessions) {
     if (newEvents.length > 0) {
       newRate += newEvents.filter(e => e.correct).length / newEvents.length;
     }
+
+    for (const e of newEvents) {
+      const day = new Date(e.at).toISOString().slice(0, 10);
+      const bucket = byDay.get(day) || { attempts: 0, correct: 0 };
+      bucket.attempts += 1;
+      if (e.correct) bucket.correct += 1;
+      byDay.set(day, bucket);
+    }
   });
 
   const numCycles = cycles.length || 1;
   oldRate = oldRate / numCycles;
   newRate = newRate / numCycles;
 
-  const rateOfChange = ((newRate - oldRate) / oldRate) * 100;
+  // No earlier evidence means there is no change to report — not a 0% change
+  // and not a division by zero.
+  const rateOfChange = oldRate > 0 ? ((newRate - oldRate) / oldRate) * 100 : 0;
+
+  const dailyRates = [...byDay.entries()]
+    .sort((a, b) => (a[0] < b[0] ? -1 : 1))
+    .slice(-7)
+    .map(([day, bucket]) => ({
+      day,
+      rate: bucket.attempts ? (bucket.correct / bucket.attempts) * 100 : 0,
+    }));
 
   return {
     direction: rateOfChange > 5 ? 'up' : rateOfChange < -5 ? 'down' : 'flat',
     rate: Math.abs(rateOfChange),
-    dailyRates: generateMockDailyRates(), // Would calculate from actual session data
+    dailyRates,
   };
 }
 
@@ -548,14 +591,4 @@ function determineActionUrl(entry) {
     return '/speak';
   }
   return null;
-}
-
-function generateMockDailyRates() {
-  // In production, this would pull from actual session data
-  return Array.from({ length: 7 }, (_, i) => {
-    const baseRate = 0.15;
-    const variance = (Math.random() - 0.5) * 0.1;
-    const dayEffect = i / 20; // Slight upward bias
-    return Math.max(0, Math.min(0.5, baseRate + variance + dayEffect));
-  });
 }

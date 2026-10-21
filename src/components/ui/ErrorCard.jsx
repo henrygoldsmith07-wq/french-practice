@@ -1,5 +1,5 @@
 import { AlertCircle, RefreshCw, HelpCircle, X } from '../icons';
-import { ICON_BTN_ROUND_SOFT } from './classNames.js';
+import { ICON_BTN_ROUND_SOFT } from '../classNames.js';
 
 /**
  * Context-specific error message mappings
@@ -156,7 +156,10 @@ export default function ErrorCard({
       </div>
 
       {/* Developer info (hidden in production) */}
-      {process.env.NODE_ENV === 'development' && children && (
+      {/* import.meta.env.DEV, not process.env.NODE_ENV — `process` does not
+          exist in a browser bundle, so the Node idiom would throw a
+          ReferenceError inside the very component that exists to show errors. */}
+      {import.meta.env.DEV && children && (
         <details className="mt-6 w-full max-w-md">
           <summary className="cursor-pointer text-xs text-ink3">
             Technical details (development mode)
