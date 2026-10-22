@@ -33,14 +33,17 @@ globalThis.document = dom.window.document;
 globalThis.localStorage = dom.window.localStorage;
 
 // The provider's real response shape — copied from the repo's own relay test
-// fixtures (server/relay.test.js), not invented here.
-const providerReply = () => ({
-  choices: [{ message: { content: '{"hint":"Une baguette, s\'il vous plaît."}' } }],
+// fixtures (server/relay.test.js), not invented here. Every model this app
+// talks to is an OpenAI-compatible /chat/completions endpoint, so this ONE
+// shape is what comes back over the wire, whatever the model is doing.
+const providerReply = (content = '{"hint":"Une baguette, s\'il vous plaît."}') => ({
+  choices: [{ message: { content } }],
   usage: { total_tokens: 12 },
 });
 
 let mode = 'ok';
 let calls = 0;
+let reply = providerReply();
 globalThis.fetch = async (_url, init = {}) => {
   calls += 1;
   if (mode === 'reject' && calls === 1) {
@@ -53,11 +56,11 @@ globalThis.fetch = async (_url, init = {}) => {
     ok: true,
     status: 200,
     headers: { get: () => null },
-    json: async () => providerReply(),
+    json: async () => reply,
   };
 };
 
-const { getHint, explainMistake } = await import('../src/lib/groq.js');
+const { getHint, explainMistake, generateVocabFromImage, transcribe } = await import('../src/lib/groq.js');
 
 const scenario = { title: 'At the bakery', setup: 'You want bread.' };
 
@@ -102,11 +105,17 @@ test('the fallback model path returns the same envelope', async () => {
   mode = 'ok';
 });
 
-test('the transcript and the vision path read the payload directly', async () => {
+test('the two response conventions in this file are deliberate', async () => {
   // These two call sendChat() and read `data.choices` on the payload itself.
   // They are the reason sendChat() must keep returning the bare payload — so
   // this test documents that the two conventions in this file are BOTH
   // deliberate, and that the bug was chatCompletion() losing the envelope.
+  //
+  // Note what this test does NOT do: it cannot tell you whether the code
+  // WORKS. Switching sendChat() to the other convention leaves every line
+  // below untouched, so this test keeps passing while the vision and the
+  // transcription path break. The behavioural tests above are what actually
+  // pin it — they were added for exactly that reason.
   const { readFileSync } = await import('node:fs');
   const src = readFileSync(new URL('../src/lib/groq.js', import.meta.url), 'utf8');
 
@@ -116,4 +125,34 @@ test('the transcript and the vision path read the payload directly', async () =>
     'the vision path reads the provider payload directly');
   assert.match(src, /data\?\.choices\?\.\[0\]\?\.message\?\.content/,
     'the transcript path reads the provider payload directly');
+});
+
+test('the vocabulary-from-photo path survives the real provider response shape', async () => {
+  // The Snap&learn path reads the payload directly off sendChat(). It is the
+  // other side of the same coin: if sendChat() ever changes what it returns,
+  // THIS is the test that says so — a source-level regex cannot, because the
+  // line "data = await sendChat(...)" looks identical either way.
+  mode = 'ok';
+  reply = providerReply(JSON.stringify({
+    caption: 'Une boulangerie',
+    captionEn: 'A bakery',
+    items: [{ fr: 'le pain', en: 'bread', emoji: '🍞' }],
+  }));
+  const vocab = await generateVocabFromImage('key', {
+    imageDataUrl: 'data:image/png;base64,iVBORw0KGgo=',
+    level: 'A2',
+  });
+  assert.equal(vocab.caption, 'Une boulangerie');
+  assert.equal(vocab.items[0].fr, 'le pain');
+});
+
+test('the spoken transcription path survives the real provider response shape', async () => {
+  // The ASR path reads the payload directly too, and it does so QUIETLY: a
+  // shape mismatch here does not throw, it returns an empty string and the
+  // learner is silently dropped back to typing. So this path needs a test
+  // more than the others do.
+  mode = 'ok';
+  reply = providerReply('Je voudrais une baguette, s\'il vous plaît.');
+  const text = await transcribe('key', new Blob([new Uint8Array([1, 2, 3, 4])]), {});
+  assert.equal(text, 'Je voudrais une baguette, s\'il vous plaît.');
 });

@@ -63,6 +63,9 @@ const SocialSharingCards = lazy(() => import('./components/SocialSharingCards'))
 // AI Study Assistant
 const AIStudyAssistant = lazy(() => import('./components/AIStudyAssistant'));
 
+// Gamification Hub
+const GamificationHub = lazy(() => import('./components/GamificationHub'));
+
 // Real World Scenarios
 const RealWorld = createLazyWithBoundary(() => import('./components/RealWorld'), {
   context: 'realWorld',
@@ -185,9 +188,9 @@ export default function App() {
   const openOverlay = useCallback((name, payload = undefined) => dispatchOverlay({ type: 'open', overlay: name, payload }), []);
   const closeOverlay = () => dispatchOverlay({ type: 'close' });
   // Some surfaces open an overlay by dispatching an event rather than taking
-  // the openOverlay function as a prop: the Profile (AI Study Assistant)
-  // and the Vocabulary screen (import a word list). Nothing
-  // listened for that event, so those buttons did nothing at
+  // the openOverlay function as a prop: the Profile (AI Study Assistant,
+  // Gamification Hub) and the Vocabulary screen (import a word list). Nothing
+  // listened for that event, so all three of those buttons did nothing at
   // all — the panels behind them could not be reached.
   useEffect(() => {
     const onOpenOverlay = (event) => {
@@ -746,6 +749,14 @@ export default function App() {
           open
           onClose={closeOverlay}
           onGo={(target) => { closeOverlay(); resumeActivity(target); }}
+        />
+      )}
+      {overlayIs(overlay, 'gamification') && (
+        <GamificationHub
+          open
+          onClose={closeOverlay}
+          onXp={awardXp}
+          onChange={refreshRewards}
         />
       )}
       {overlayIs(overlay, 'learningPath') && (

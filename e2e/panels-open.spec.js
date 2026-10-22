@@ -40,12 +40,17 @@ const LEARNER = ({ today }) => {
 test('every panel behind a button opens', async ({ page }) => {
   await seed(page, LEARNER, { today: dayKey(0) });
 
-  // From the profile: the study assistant.
+  // From the profile: the study assistant and the gamification hub.
   await page.getByRole('button', { name: /open your stats/ }).first().click();
   await page.getByRole('button', { name: 'AI Study Assistant' }).click();
   await expect(page.getByRole('dialog', { name: 'AI Study Assistant' })).toBeVisible({ timeout: 15_000 });
   await page.getByRole('button', { name: 'Close AI assistant' }).click();
   await expect(page.getByRole('dialog', { name: 'AI Study Assistant' })).toBeHidden();
+
+  await page.getByRole('button', { name: /open your stats/ }).first().click();
+  await page.getByRole('button', { name: 'Gamification Hub' }).click();
+  await expect(page.getByRole('dialog', { name: 'Gamification Hub' })).toBeVisible({ timeout: 15_000 });
+  await page.keyboard.press('Escape');
 
   // From the Learn tab: the share cards and the teacher dashboard.
   await page.getByRole('button', { name: 'Learn', exact: true }).first().click();

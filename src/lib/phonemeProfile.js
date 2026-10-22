@@ -129,13 +129,23 @@ const MINIMAL_PAIRS = {
   'beau-bon': [['beau','bon']],
 };
 
-export function nextMinimalPair(weakId, lang = contentLang()){
+// The contrast pairs authored for one sound.
+//
+// null when there are none. A caller that shows a pair has to show the pair
+// for the sound it names - borrowing another sound's pair and labelling it
+// with this one is how a learner ends up practising the wrong contrast.
+export function minimalPairsFor(weakId) {
   const own = MINIMAL_PAIRS[weakId];
+  return own && own.length ? own : null;
+}
+
+export function nextMinimalPair(weakId, lang = contentLang()){
+  const own = minimalPairsFor(weakId);
   if (own && own.length) return own[Math.floor(Math.random()*own.length)];
   // Unknown id (e.g. a shared acoustic component on a language that has no
   // authored pair for it): fall back to that language's first phoneme pair.
   const cat = PROFILES[lang] || PHONEMES;
-  const fallback = cat.length ? MINIMAL_PAIRS[cat[0].id] : null;
+  const fallback = cat.length ? minimalPairsFor(cat[0].id) : null;
   if (fallback && fallback.length) return fallback[Math.floor(Math.random()*fallback.length)];
   return null;
 }
