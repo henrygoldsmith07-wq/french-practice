@@ -60,7 +60,7 @@ const TeacherDashboard = lazy(() => import('./components/TeacherDashboard'));
 // Social Sharing Cards
 const SocialSharingCards = lazy(() => import('./components/SocialSharingCards'));
 
-// Study assistant
+// AI Study Assistant
 const AIStudyAssistant = lazy(() => import('./components/AIStudyAssistant'));
 
 // Real World Scenarios
@@ -185,9 +185,9 @@ export default function App() {
   const openOverlay = useCallback((name, payload = undefined) => dispatchOverlay({ type: 'open', overlay: name, payload }), []);
   const closeOverlay = () => dispatchOverlay({ type: 'close' });
   // Some surfaces open an overlay by dispatching an event rather than taking
-  // the openOverlay function as a prop: the Profile (AI Study Assistant,
-  // Gamification Hub) and the Vocabulary screen (import a word list). Nothing
-  // listened for that event, so all three of those buttons did nothing at
+  // the openOverlay function as a prop: the Profile (AI Study Assistant)
+  // and the Vocabulary screen (import a word list). Nothing
+  // listened for that event, so those buttons did nothing at
   // all — the panels behind them could not be reached.
   useEffect(() => {
     const onOpenOverlay = (event) => {
@@ -430,8 +430,6 @@ export default function App() {
     closeOverlay();
     if (type === 'arena' || type === 'speak') { setTab('speak'); return; }
     if (type === 'cards' || type === 'review') { setTab('review'); return; }
-    if (type === 'today') { openOverlay('today'); return; }
-    if (type === 'pronunciation') { setSkillArea('speaking'); setSpeakingMode('pronunciation'); setLearnView('skills'); setTab('learn'); return; }
     if (type === 'field-notes') { setTab('learn'); setLearnView('field-notes'); return; }
     if (type === 'grammar') {
       // The grammar library is French-authored: a beta recommendation is
@@ -484,6 +482,10 @@ export default function App() {
       setTab('learn');
     }
     else if (la.type === 'cards') setTab('review');
+    // The speaking skill area is where pronunciation practice lives. The AI
+    // Study Assistant sends the learner there when a sound contrast needs
+    // work, so the button lands on the thing it talks about.
+    else if (la.type === 'speaking') { setSkillArea('speaking'); setLearnView('skills'); setTab('learn'); }
     else if (la.type === 'dictation') { setSkillArea('listening'); setListeningMode('dictation'); setLearnView('skills'); setTab('learn'); }
     else if (la.type === 'quickfire') { setSkillArea('speaking'); setSpeakingMode('quickfire'); setLearnView('skills'); setTab('learn'); }
     else if (la.type === 'field-note') { setTab('learn'); setLearnView('field-notes'); }
@@ -739,7 +741,13 @@ export default function App() {
       {overlayIs(overlay, 'contentImport') && <ContentImporter open onClose={closeOverlay} onXp={awardXp} />}
       {overlayIs(overlay, 'teacherDashboard') && <TeacherDashboard open onClose={closeOverlay} />}
       {overlayIs(overlay, 'socialSharing') && <SocialSharingCards open onClose={closeOverlay} />}
-      {overlayIs(overlay, 'aiAssistant') && <AIStudyAssistant open onClose={closeOverlay} onRun={runRecommendation} />}
+      {overlayIs(overlay, 'aiAssistant') && (
+        <AIStudyAssistant
+          open
+          onClose={closeOverlay}
+          onGo={(target) => { closeOverlay(); resumeActivity(target); }}
+        />
+      )}
       {overlayIs(overlay, 'learningPath') && (
         <div className="fixed inset-0 z-[55] overflow-y-auto bg-bg" role="dialog" aria-modal="true" aria-label="Learning path">
           <div className="mx-auto min-h-full max-w-lg px-4 py-4">

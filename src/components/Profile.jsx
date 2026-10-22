@@ -100,8 +100,8 @@ export default function Profile({ open, onClose, onXp, onHeaderChange, onMemberS
         <button
           onClick={() => window.dispatchEvent(new CustomEvent('openOverlay', { detail: 'aiAssistant' }))}
           className={`ml-2 grid place-items-center ${ICON_BTN_ROUND_SOFT}`}
-          aria-label="Study assistant"
-          title="Study assistant"
+          aria-label="AI Study Assistant"
+          title="AI Study Assistant"
         >
           <Brain size={16} className="text-purple-600" />
         </button>

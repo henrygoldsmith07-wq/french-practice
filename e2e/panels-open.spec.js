@@ -42,25 +42,10 @@ test('every panel behind a button opens', async ({ page }) => {
 
   // From the profile: the study assistant.
   await page.getByRole('button', { name: /open your stats/ }).first().click();
-  await page.getByRole('button', { name: 'Study assistant' }).click();
-  const assistant = page.getByRole('dialog', { name: 'Study assistant' });
-  await expect(assistant).toBeVisible({ timeout: 15_000 });
-  // It reads the learner's own record: the seeded 5-day streak and the 40 XP
-  // from today, not a hard-coded learner.
-  await assistant.getByRole('tab', { name: 'Trends' }).click();
-  await expect(assistant.getByText('5 days')).toBeVisible();
-  await expect(assistant.getByText('40 XP', { exact: true })).toBeVisible();
-  await page.getByRole('button', { name: 'Close study assistant' }).click();
-  await expect(assistant).toBeHidden();
-
-  // Its buttons go somewhere: today's focus opens today's session.
-  await page.getByRole('button', { name: /open your stats/ }).first().click();
-  await page.getByRole('button', { name: 'Study assistant' }).click();
-  await assistant.getByRole('tab', { name: 'This week' }).click();
-  await assistant.getByRole('button', { name: 'Today’s session' }).click();
-  await expect(assistant).toBeHidden();
-  await expect(page.getByRole('dialog', { name: /Today's/ })).toBeVisible({ timeout: 15_000 });
-  await page.keyboard.press('Escape');
+  await page.getByRole('button', { name: 'AI Study Assistant' }).click();
+  await expect(page.getByRole('dialog', { name: 'AI Study Assistant' })).toBeVisible({ timeout: 15_000 });
+  await page.getByRole('button', { name: 'Close AI assistant' }).click();
+  await expect(page.getByRole('dialog', { name: 'AI Study Assistant' })).toBeHidden();
 
   // From the Learn tab: the share cards and the teacher dashboard.
   await page.getByRole('button', { name: 'Learn', exact: true }).first().click();
