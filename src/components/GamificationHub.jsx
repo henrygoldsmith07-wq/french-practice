@@ -1,105 +1,142 @@
-// Comprehensive Gamification Hub - Achievements, Challenges, Leaderboards, Power-ups
-import { useState } from 'react';
-import { Trophy, Star, Award, Zap, Shield, Gem, Flame, Target, MapPin } from './icons';
-import { ACHIEVEMENTS, getAvailableChallenge, checkAchievements, getLeaderboardData, POWERUPS } from '../lib/gamification';
+// Gamification Hub - the learner's own game, in one place.
+//
+// This panel used to be a fiction. It was handed a fixed object (47 sessions,
+// 523 words learned, a 12-day streak, 87% accuracy, 250 coins) and it
+// invented the rest: four rivals called Alex, Sam, Jordan and Taylor with
+// random XP, a random rank out of an invented field of 15,000 players, a
+// percentile derived from that rank, a random challenge picked on every
+// render, and a "Complete Challenge" button with no handler behind it.
+//
+// None of that was the app's game. The app has one: fifteen badges with real
+// conditions, three deterministic daily challenges, a weekly league against
+// seeded pace-setters, coins, and a streak freeze you can buy with them.
+// The hub shows those, and the numbers are the learner's.
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Trophy, Star, Award, Zap, Shield, CheckCircle, Lock, Coins } from './icons';
+import {
+  getAchievements, getChallengeState, claimChallenge, getTodayXp, addCoins,
+  getCoins, getFreezes, buyFreeze, FREEZE_COST, MAX_FREEZES,
+} from '../lib/storage.js';
+import { ACHIEVEMENTS, dailyChallenges, levelFromXp } from '../lib/game.js';
+import { buildGameStats } from '../lib/gameStats.js';
+import { grantEarnedRewards } from '../lib/gameGrants.js';
+import WeeklyLeague from './WeeklyLeague.jsx';
 
-export default function GamificationHub({ open, onClose }) {
-  const [activeTab, setActiveTab] = useState('achievements'); // achievements | challenges | leaderboard | powerups
-  
+export default function GamificationHub({ open, onClose, onXp, onChange }) {
+  const [tab, setTab] = useState('badges'); // badges | challenges | league | boosts
+  const [tick, setTick] = useState(0);
+  const [fresh, setFresh] = useState([]);
+
+  // App passes an inline callback (new identity each render), so the effect
+  // below must not depend on it directly - that would re-run the grant on
+  // every render. The latest-ref pattern: the effect always calls the
+  // freshest callback.
+  const onChangeRef = useRef(onChange);
+  onChangeRef.current = onChange;
+
+  // Opening the hub grants what has been earned, the same way the profile
+  // does — one set of rules, in lib/gameGrants.js. The grant pays coins, so
+  // the header has to be told to re-read them.
+  useEffect(() => {
+    if (!open) return;
+    const { unlockedNow } = grantEarnedRewards();
+    setFresh(unlockedNow);
+    setTick((t) => t + 1);
+    onChangeRef.current?.();
+  }, [open]);
+
+  const data = useMemo(() => {
+    void tick; // re-read when a reward is granted
+    const stats = buildGameStats();
+    return {
+      stats,
+      level: levelFromXp(stats.xp),
+      coins: getCoins(),
+      freezes: getFreezes(),
+      achievements: getAchievements(),
+      challenges: getChallengeState(),
+    };
+  }, [tick]);
+
   if (!open) return null;
-  
-  const userState = {
-    sessionsCompleted: 47,
-    vocabularyLearned: 523,
-    streakDays: 12,
-    conversationsCompleted: 38,
-    avgAccuracy: 0.87,
-    pronunciationScore: 82,
-    unlockedAchievements: ['first_steps', 'vocabulary_beginner'],
-    completedChallenges: [],
-    weeklyXP: 450,
-    cefrLevel: 'A2',
-    currentStreak: 12,
-  };
-  
-  const { newlyUnlocked } = checkAchievements(userState);
-  const challenge = getAvailableChallenge(userState);
-  const leaderboard = getLeaderboardData('user1', userState.weeklyXP);
-  
+
+  const unlockedCount = Object.keys(data.achievements).length;
+
   return (
     <div className="fixed inset-0 z-[60] overflow-y-auto bg-bg" role="dialog" aria-modal="true" aria-label="Gamification Hub">
       <div className="mx-auto min-h-full max-w-4xl px-4 py-4">
         {/* Header */}
-        <div className="mb-6 flex items-center justify-between">
+        <div className="mb-6 flex items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-yellow-400 to-orange-500 grid place-items-center">
               <Trophy size={24} className="text-white" />
             </div>
             <div>
               <h2 className="text-lg font-bold text-ink">Gamification Hub</h2>
-              <p className="text-xs text-ink2">Achievements, challenges & more</p>
+              <p className="text-xs text-ink2">
+                Niveau {data.level.level} · {data.stats.xp.toLocaleString('en-GB')} XP · {data.coins} <Coins size={10} className="inline" /> · {data.stats.streak}-day streak
+              </p>
             </div>
           </div>
-          
-          {newlyUnlocked.length > 0 && (
-            <NewUnlockBadge count={newlyUnlocked.length} onDismiss={() => {}} />
+
+          {fresh.length > 0 && (
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-yellow-100 px-3 py-1.5 text-xs font-semibold text-yellow-800">
+              <Star size={12} />
+              {fresh.length} new badge{fresh.length === 1 ? '' : 's'}
+            </span>
           )}
-          
+
           <button onClick={onClose} aria-label="Close gamification hub" className="grid h-9 w-9 place-items-center rounded-full text-ink2 hover:bg-surface2 hover:text-ink">
             <svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg">
               <path d="M13.5 4.5L4.5 13.5M4.5 4.5L13.5 13.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
             </svg>
           </button>
         </div>
-        
+
         {/* Tab Navigation */}
         <div className="flex gap-2 mb-6 p-1 bg-surface border border-line rounded-xl">
-          <TabButton 
-            active={activeTab === 'achievements'} 
-            onClick={() => setActiveTab('achievements')}
+          <TabButton
+            active={tab === 'badges'}
+            onClick={() => setTab('badges')}
             icon={Award}
             label="Badges"
-            badge={newlyUnlocked.length}
+            badge={unlockedCount}
           />
-          <TabButton 
-            active={activeTab === 'challenges'} 
-            onClick={() => setActiveTab('challenges')}
-            icon={Target}
+          <TabButton
+            active={tab === 'challenges'}
+            onClick={() => setTab('challenges')}
+            icon={Zap}
             label="Challenges"
           />
-          <TabButton 
-            active={activeTab === 'leaderboard'} 
-            onClick={() => setActiveTab('leaderboard')}
-            icon={MapPin}
-            label={`#${leaderboard.globalRank}`}
+          <TabButton
+            active={tab === 'league'}
+            onClick={() => setTab('league')}
+            icon={Trophy}
+            label="League"
           />
-          <TabButton 
-            active={activeTab === 'powerups'} 
-            onClick={() => setActiveTab('powerups')}
-            icon={Zap}
+          <TabButton
+            active={tab === 'boosts'}
+            onClick={() => setTab('boosts')}
+            icon={Shield}
             label="Boosts"
           />
         </div>
-        
-        {/* Content by Tab */}
-        {activeTab === 'achievements' && (
-          <AchievementsView 
-            userState={userState}
-            allAchievements={ACHIEVEMENTS}
-            newlyUnlocked={newlyUnlocked}
+
+        {tab === 'badges' && <BadgesView data={data} />}
+        {tab === 'challenges' && (
+          <ChallengesView
+            data={data}
+            onXp={onXp}
+            onChange={() => { setTick((t) => t + 1); onChange?.(); }}
           />
         )}
-        
-        {activeTab === 'challenges' && (
-          <ChallengesView challenge={challenge} userState={userState} />
-        )}
-        
-        {activeTab === 'leaderboard' && (
-          <LeaderboardView leaderboard={leaderboard} />
-        )}
-        
-        {activeTab === 'powerups' && (
-          <PowerUpsView userCoins={250} />
+        {tab === 'league' && <WeeklyLeague level={data.level.level} />}
+        {tab === 'boosts' && (
+          <BoostsView
+            coins={data.coins}
+            freezes={data.freezes}
+            onChange={() => { setTick((t) => t + 1); onChange?.(); }}
+          />
         )}
       </div>
     </div>
@@ -110,10 +147,8 @@ function TabButton({ active, onClick, icon: Icon, label, badge }) {
   return (
     <button
       onClick={onClick}
-      className={`flex-1 px-3 py-2 rounded-lg text-sm font-semibold transition-colors relative ${
-        active 
-          ? 'bg-accent text-onaccent' 
-          : 'text-ink3 hover:bg-surface2'
+      className={`relative flex-1 px-3 py-2 rounded-lg text-sm font-semibold transition-colors ${
+        active ? 'bg-accent text-onaccent' : 'text-ink3 hover:bg-surface2'
       }`}
     >
       <div className="flex items-center justify-center gap-2">
@@ -121,7 +156,7 @@ function TabButton({ active, onClick, icon: Icon, label, badge }) {
         {label}
       </div>
       {badge > 0 && (
-        <span className="absolute top-1 right-1.5 w-5 h-5 bg-red-500 text-white text-[10px] font-bold rounded-full grid place-items-center">
+        <span className="absolute top-1 right-1.5 w-5 h-5 bg-accent text-onaccent text-[10px] font-bold rounded-full grid place-items-center">
           {badge}
         </span>
       )}
@@ -129,345 +164,160 @@ function TabButton({ active, onClick, icon: Icon, label, badge }) {
   );
 }
 
-function NewUnlockBadge({ count, onDismiss }) {
-  return (
-    <div className="relative animate-bounce">
-      <span className="w-8 h-8 rounded-full bg-gradient-to-r from-yellow-400 to-orange-500 grid place-items-center text-white text-xs font-bold">
-        🎉
-      </span>
-      <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-[10px] font-bold rounded-full grid place-items-center">
-        {count}
-      </span>
-    </div>
-  );
-}
+/**
+ * The fifteen real badges, with how far along the learner is on each one.
+ *
+ * The number beside a locked badge comes from the same stats the unlock
+ * condition is written against, so "4 / 5 sessions" and the moment the badge
+ * unlocks cannot disagree.
+ */
+function BadgesView({ data }) {
+  const total = ACHIEVEMENTS.length;
+  const unlocked = Object.keys(data.achievements).length;
+  const percentage = Math.round((unlocked / total) * 100);
 
-function AchievementsView({ userState, allAchievements, newlyUnlocked }) {
-  const unlockedCount = userState.unlockedAchievements?.length || 0;
-  const totalCount = allAchievements.length;
-  const progressPercentage = Math.round((unlockedCount / totalCount) * 100);
-  
   return (
     <div className="space-y-4 fade-in">
-      {/* Progress Overview */}
       <div className="rounded-xl bg-gradient-to-r from-purple-500 to-pink-500 p-5 text-white">
         <div className="flex items-center justify-between mb-2">
-          <h3 className="font-bold text-lg">Collection Progress</h3>
-          <span className="text-2xl">{progressPercentage}%</span>
+          <h3 className="font-bold text-lg">Badges</h3>
+          <span className="text-2xl font-bold tabular-nums">{unlocked}/{total}</span>
         </div>
-        
         <div className="h-2 bg-white/20 rounded-full overflow-hidden mb-1">
-          <div 
-            className="h-full bg-white rounded-full transition-all"
-            style={{ width: `${progressPercentage}%` }}
-          />
+          <div className="h-full bg-white rounded-full transition-all" style={{ width: `${percentage}%` }} />
         </div>
-        
-        <p className="text-sm opacity-90">{unlockedCount}/{totalCount} badges collected</p>
+        <p className="text-sm opacity-90">{percentage}% earned</p>
       </div>
-      
-      {/* Newly Unlocked Section */}
-      {newlyUnlocked.length > 0 && (
-        <div className="rounded-xl bg-yellow-50 border border-yellow-200 p-4">
-          <h4 className="font-bold text-yellow-800 mb-2 flex items-center gap-2">
-            <Star className="text-yellow-600" size={16} />
-            Recently Unlocked!
-          </h4>
-          {newlyUnlocked.map(achievement => (
-            <div key={achievement.id} className="flex items-center gap-3 py-2">
-              <span className="text-2xl">{achievement.icon}</span>
-              <div className="flex-1">
-                <p className="font-semibold text-ink">{achievement.title}</p>
-                <p className="text-xs text-ink2">{achievement.description}</p>
+
+      <div className="grid gap-2.5 sm:grid-cols-2">
+        {ACHIEVEMENTS.map((a) => {
+          const got = Boolean(data.achievements[a.id]);
+          const current = Math.min(a.value(data.stats), a.target);
+          const pct = Math.round((current / a.target) * 100);
+          return (
+            <div key={a.id} className="rounded-xl border border-line bg-surface p-3.5 space-y-2">
+              <div className="flex items-start gap-3">
+                <span className={`text-2xl shrink-0 ${got ? '' : 'grayscale opacity-60'}`} role="img" aria-hidden="true">{a.emoji}</span>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <p className="font-semibold text-ink text-sm truncate">{a.title}</p>
+                    {got
+                      ? <CheckCircle size={13} className="text-green600 shrink-0" />
+                      : <Lock size={12} className="text-ink3 shrink-0" />}
+                  </div>
+                  <p className="text-xs text-ink2">{a.desc}</p>
+                </div>
               </div>
-              <span className="text-xs font-semibold text-green-600">+{achievement.rewardXp} XP</span>
+              {got ? (
+                <p className="text-[11px] font-semibold text-green600">Earned · {a.coins} <Coins size={9} className="inline" /> paid</p>
+              ) : (
+                <div className="space-y-1">
+                  <div className="h-1.5 rounded-full bg-surface2 overflow-hidden">
+                    <div className="h-full rounded-full bg-accent transition-all" style={{ width: `${pct}%` }} />
+                  </div>
+                  <p className="text-[11px] text-ink3 tabular-nums">
+                    {current} / {a.target} · worth {a.coins} <Coins size={9} className="inline" />
+                  </p>
+                </div>
+              )}
             </div>
-          ))}
-        </div>
-      )}
-      
-      {/* Achievement Categories */}
-      <div className="space-y-3">
-        {[
-          { title: 'Streak Masters 🔥', data: filterByCategory('streak'), color: 'from-orange-400 to-red-500' },
-          { title: 'Skill Development 💪', data: filterByCategory('skills'), color: 'from-blue-400 to-cyan-500' },
-          { title: 'Learning Milestones 🏆', data: filterByCategory('milestone'), color: 'from-purple-400 to-pink-500' },
-        ].map((section, i) => (
-          <AchievementSection 
-            key={i}
-            title={section.title}
-            achievements={section.data}
-            gradient={section.color}
-          />
-        ))}
+          );
+        })}
       </div>
     </div>
   );
 }
 
-function AchievementSection({ title, achievements, gradient }) {
-  const unlocked = achievements.filter(a => a.tier === 'legendary' || a.tier === 'epic');
-  
-  return (
-    <div className="rounded-xl border border-line overflow-hidden">
-      <div className={`bg-gradient-to-r ${gradient} p-3 text-white font-bold`}>
-        {title}
-      </div>
-      <div className="p-3 space-y-2">
-        {achievements.slice(0, 3).map((achievement, i) => (
-          <AchievementRow key={i} achievement={achievement} />
-        ))}
-      </div>
-    </div>
-  );
-}
+/**
+ * Today's three challenges — the same three the profile shows, picked
+ * deterministically from the day's seed — with the learner's real progress
+ * against each one, and a button that really claims it.
+ */
+function ChallengesView({ data, onXp, onChange }) {
+  const todays = useMemo(() => dailyChallenges(data.challenges.day), [data.challenges.day]);
 
-function AchievementRow({ achievement }) {
-  return (
-    <div className="flex items-center gap-3 p-2 rounded-lg hover:bg-surface2 transition-colors">
-      <span className="text-2xl shrink-0">{achievement.icon}</span>
-      <div className="flex-1 min-w-0">
-        <p className="font-medium text-ink text-sm">{achievement.title}</p>
-        <p className="text-xs text-ink2 truncate">{achievement.description}</p>
-      </div>
-      <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold uppercase ${
-        achievement.tier === 'legendary' ? 'bg-yellow-100 text-yellow-700' :
-        achievement.tier === 'epic' ? 'bg-purple-100 text-purple-700' :
-        achievement.tier === 'rare' ? 'bg-blue-100 text-blue-700' :
-        'bg-gray-100 text-gray-700'
-      }`}>
-        {achievement.tier}
-      </span>
-    </div>
-  );
-}
+  const progressOf = (c) => (c.metric === 'xp' ? getTodayXp() : (data.challenges.counts[c.metric] || 0));
 
-function ChallengesView({ challenge, userState }) {
+  const claim = (c) => {
+    claimChallenge(c.id);
+    addCoins(c.coins);
+    onXp?.(c.xp);
+    onChange?.();
+  };
+
   return (
-    <div className="space-y-4 fade-in">
-      {/* Active Challenge Card */}
-      <div className="rounded-xl bg-gradient-to-br from-green-400 to-emerald-500 p-6 text-white">
-        <div className="flex items-start justify-between mb-3">
-          <h3 className="font-bold text-lg">Daily Challenge</h3>
-          <Flame size={20} className="shrink-0" />
-        </div>
-        
-        <h4 className="font-bold text-xl mb-1">{challenge.title}</h4>
-        <p className="text-sm opacity-90 mb-4">{challenge.description}</p>
-        
-        <div className="flex items-center justify-between">
-          <div className="text-center">
-            <p className="text-2xl font-black">{Math.floor(Math.random() * 5) + 3}</p>
-            <p className="text-xs opacity-75">days remaining</p>
-          </div>
-          
-          <div className="flex-1 mx-4">
-            <div className="h-2 bg-white/20 rounded-full overflow-hidden">
-              <div className="h-full bg-white rounded-full" style={{ width: '40%' }} />
+    <div className="space-y-3 fade-in">
+      <p className="text-xs text-ink2">
+        Three challenges a day, the same three every time you open this. Clear all three to earn the next postcard.
+      </p>
+      {todays.map((c) => {
+        const progress = Math.min(c.target, progressOf(c));
+        const complete = progress >= c.target;
+        const claimed = data.challenges.claimed.includes(c.id);
+        return (
+          <div key={c.id} className="rounded-xl border border-line bg-surface p-4 space-y-2">
+            <div className="flex items-center gap-3">
+              <div className="flex-1 min-w-0">
+                <p className="font-semibold text-ink" lang="fr">{c.title}</p>
+                <p className="text-xs text-ink3">{c.desc} · +{c.coins} <Coins size={10} className="inline" /> +{c.xp} XP</p>
+              </div>
+              {claimed ? (
+                <span className="inline-flex items-center gap-1 text-xs font-semibold text-ink2"><CheckCircle size={13} /> Claimed</span>
+              ) : complete ? (
+                <button onClick={() => claim(c)} className="btn btn-primary min-h-9 px-3.5 rounded-lg text-xs">Claim</button>
+              ) : (
+                <span className="text-xs text-ink3 tabular-nums">{progress}/{c.target}</span>
+              )}
+            </div>
+            <div className="h-1.5 rounded-full bg-surface2 overflow-hidden">
+              <div className={`h-full rounded-full transition-all ${claimed ? 'bg-line' : 'bg-accent'}`} style={{ width: `${Math.round((progress / c.target) * 100)}%` }} />
             </div>
           </div>
-          
-          <div className="text-center">
-            <p className="text-2xl font-black">{challenge.rewardXp}</p>
-            <p className="text-xs opacity-75">XP reward</p>
-          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+/**
+ * The only boost the studio actually sells: a streak freeze. It costs
+ * FREEZE_COST coins, you can hold MAX_FREEZES of them, and one is used
+ * automatically if a single day is missed. The other two boosts this panel
+ * used to offer - a double-XP boost and an instant review pack - were never
+ * part of the game, and buying them did nothing.
+ */
+function BoostsView({ coins, freezes, onChange }) {
+  const canBuy = freezes < MAX_FREEZES && coins >= FREEZE_COST;
+
+  const buy = () => {
+    if (buyFreeze()) onChange?.();
+  };
+
+  return (
+    <div className="space-y-3 fade-in">
+      <div className="rounded-xl border border-line bg-surface p-4 flex items-start gap-3">
+        <span className="text-3xl" role="img" aria-hidden="true">🧊</span>
+        <div className="flex-1 min-w-0">
+          <p className="font-semibold text-ink">Streak freeze</p>
+          <p className="text-xs text-ink2">
+            If you miss a single day, a freeze covers it and your streak survives. It is used automatically.
+          </p>
+          <p className="mt-1.5 text-xs text-ink3 tabular-nums">
+            You have {freezes} of a possible {MAX_FREEZES} · {FREEZE_COST} coins each · you have {coins} <Coins size={10} className="inline" />
+          </p>
         </div>
-        
-        <button className="mt-4 w-full bg-white text-green-600 font-bold py-2 rounded-lg hover:bg-white/90 transition-colors">
-          Complete Challenge
+        <button
+          onClick={buy}
+          disabled={!canBuy}
+          className="btn btn-primary min-h-9 px-3.5 rounded-lg text-xs disabled:opacity-50"
+        >
+          {freezes >= MAX_FREEZES ? 'Full' : canBuy ? `Buy for ${FREEZE_COST}` : `Needs ${FREEZE_COST - coins} more`}
         </button>
       </div>
-      
-      {/* Other Challenges */}
-      <div className="rounded-xl bg-surface2 border border-line p-4">
-        <h4 className="font-semibold text-ink mb-3">Weekly Challenges</h4>
-        <div className="space-y-2">
-          {['Weekly 100 XP Challenge', 'Vocabulary Sprint'].map((title, i) => (
-            <ChallengeListItem 
-              key={i}
-              title={title}
-              progress={Math.floor(Math.random() * 60) + 20}
-              reward={Math.floor(Math.random() * 200) + 100}
-            />
-          ))}
-        </div>
-      </div>
+      <p className="text-[11px] text-ink3 leading-snug">
+        A double-XP boost and an instant review pack used to be offered here. Neither was ever part of the
+        studio — buying them spent coins and changed nothing — so they are not on offer now.
+      </p>
     </div>
   );
-}
-
-function ChallengeListItem({ title, progress, reward }) {
-  return (
-    <div className="flex items-center gap-3 p-2 rounded-lg hover:bg-surface transition-colors">
-      <div className="flex-1">
-        <p className="font-medium text-ink text-sm">{title}</p>
-        <div className="flex items-center gap-2 mt-1">
-          <div className="flex-1 h-1.5 bg-surface rounded-full overflow-hidden">
-            <div 
-              className="h-full bg-green-500 rounded-full"
-              style={{ width: `${progress}%` }}
-            />
-          </div>
-          <span className="text-xs text-ink3 tabular-nums">{progress}%</span>
-        </div>
-      </div>
-      <span className="text-xs font-semibold text-green-600 whitespace-nowrap">+{reward} XP</span>
-    </div>
-  );
-}
-
-function LeaderboardView({ leaderboard }) {
-  return (
-    <div className="space-y-4 fade-in">
-      {/* Your Rank */}
-      <div className="rounded-xl bg-gradient-to-r from-purple-500 to-pink-500 p-6 text-white text-center">
-        <p className="text-sm opacity-90 mb-1">Your Global Rank</p>
-        <p className="text-5xl font-black mb-2">#{leaderboard.globalRank}</p>
-        <div className="flex items-center justify-center gap-4 mb-4">
-          <div className="text-center">
-            <p className="text-2xl font-bold">{leaderboard.percentile}<sup className="text-sm">th</sup></p>
-            <p className="text-xs opacity-75">Percentile</p>
-          </div>
-          <div className="w-px h-8 bg-white/30" />
-          <div className="text-center">
-            <p className="text-2xl font-bold">{leaderboard.totalPlayers.toLocaleString()}</p>
-            <p className="text-xs opacity-75">Players</p>
-          </div>
-        </div>
-        <p className="text-sm">Earn {leaderboard.weeklyXP} XP this week!</p>
-      </div>
-      
-      {/* Friends Ranking */}
-      <div className="rounded-xl bg-surface2 border border-line p-4">
-        <h4 className="font-semibold text-ink mb-3">Friends Rankings</h4>
-        <div className="space-y-2">
-          {leaderboard.friends.map((friend, i) => (
-            <FriendRow key={i} friend={friend} rank={i + 1} yourRank={leaderboard.globalRank <= friend.rank} />
-          ))}
-        </div>
-      </div>
-      
-      {/* Top Players Preview */}
-      <div className="rounded-xl bg-surface border border-line p-4">
-        <h4 className="font-semibold text-ink mb-3">Top Players This Week</h4>
-        <div className="space-y-2">
-          {generateMockTopPlayers().slice(0, 5).map((player, i) => (
-            <PlayerRow key={i} player={player} rank={i + 1} />
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function FriendRow({ friend, rank, yourRank }) {
-  return (
-    <div className={`flex items-center gap-3 p-2 rounded-lg ${yourRank ? 'bg-yellow-50' : ''}`}>
-      <span className="text-lg">{friend.avatar}</span>
-      <div className="flex-1">
-        <p className="font-medium text-ink text-sm flex items-center gap-2">
-          {friend.name}
-          {rank === 1 && <Gem size={12} className="text-yellow-600" />}
-        </p>
-      </div>
-      <span className="text-xs font-semibold text-ink3 whitespace-nowrap">{friend.xp} XP</span>
-    </div>
-  );
-}
-
-function PlayerRow({ player, rank }) {
-  const colors = { 1: 'text-yellow-600', 2: 'text-gray-600', 3: 'text-amber-700' };
-  
-  return (
-    <div className="flex items-center gap-3 p-2 rounded-lg hover:bg-surface2 transition-colors">
-      <span className={`font-bold text-lg ${colors[rank] || 'text-ink3'}`}>#{rank}</span>
-      <span className="text-xl">{player.avatar}</span>
-      <div className="flex-1">
-        <p className="font-medium text-ink text-sm">{player.name}</p>
-      </div>
-      <span className="text-xs font-semibold text-ink3 whitespace-nowrap">{player.xp} XP</span>
-    </div>
-  );
-}
-
-function PowerUpsView({ userCoins }) {
-  return (
-    <div className="space-y-4 fade-in">
-      <div className="rounded-xl bg-surface2 border border-line p-4">
-        <div className="flex items-center justify-between mb-3">
-          <h4 className="font-semibold text-ink">Your Coins</h4>
-          <span className="text-lg font-bold text-ink">{userCoins}</span>
-        </div>
-        
-        <div className="grid gap-3">
-          {POWERUPS.map((powerUp, i) => (
-            <PowerUpCard key={i} powerUp={powerUp} userCoins={userCoins} />
-          ))}
-        </div>
-      </div>
-      
-      <div className="rounded-xl bg-blue-50 border border-blue-200 p-4 text-center">
-        <Shield size={24} className="mx-auto mb-2 text-blue-600" />
-        <p className="text-sm font-medium text-blue-800">Power-up Tips</p>
-        <p className="text-xs text-blue-600 mt-1">
-          Use Double XP Boost during practice sessions for maximum rewards!
-        </p>
-      </div>
-    </div>
-  );
-}
-
-function PowerUpCard({ powerUp, userCoins }) {
-  const canAfford = userCoins >= powerUp.cost;
-  
-  return (
-    <div className="flex items-center gap-3 p-3 rounded-lg border border-line bg-surface hover:border-accent transition-colors">
-      <div className={`w-10 h-10 rounded-lg grid place-items-center ${
-        powerUp.rarity === 'legendary' ? 'bg-yellow-100' :
-        powerUp.rarity === 'epic' ? 'bg-purple-100' :
-        'bg-blue-100'
-      }`}>
-        {powerUp.id === 'double_xp' ? <Zap size={20} className="text-blue-600" /> :
-         powerUp.id === 'streak_freeze' ? <Shield size={20} className="text-purple-600" /> :
-         <Target size={20} className="text-green-600" />}
-      </div>
-      
-      <div className="flex-1">
-        <p className="font-semibold text-ink text-sm">{powerUp.name}</p>
-        <p className="text-xs text-ink2">{powerUp.description}</p>
-      </div>
-      
-      <button
-        disabled={!canAfford}
-        className={`px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap ${
-          canAfford 
-            ? 'bg-accent text-onaccent hover:opacity-90' 
-            : 'bg-surface2 text-ink3 cursor-not-allowed'
-        }`}
-      >
-        {powerUp.cost} 💰
-      </button>
-    </div>
-  );
-}
-
-function filterByCategory(category) {
-  const categories = {
-    skills: ['conversation_star', 'accuracy_master', 'pronunciation_pro'],
-    milestone: ['level_cefr_a1', 'level_cefr_b1', 'level_cefr_c1'],
-    streak: ['week_streak', 'month_streak', 'year_streak'],
-  };
-  
-  const ids = categories[category];
-  return ACHIEVEMENTS.filter(a => ids.includes(a.id));
-}
-
-function generateMockTopPlayers() {
-  return [
-    { name: 'Marie L.', xp: 5234, avatar: '👩‍💻' },
-    { name: 'Pierre D.', xp: 4987, avatar: '👨‍💼' },
-    { name: 'Sophie M.', xp: 4756, avatar: '👧' },
-    { name: 'Lucas B.', xp: 4521, avatar: '👦' },
-    { name: 'Camille R.', xp: 4398, avatar: '👩' },
-  ];
 }

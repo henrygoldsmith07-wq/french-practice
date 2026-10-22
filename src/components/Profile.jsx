@@ -1,21 +1,21 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  getXp, getStreak, getSessions, getReviewLog, getGrammarProgress, getNotebook,
+  getXp, getStreak,
   getCoins, addCoins, spendCoins,
   getAchievements, unlockAchievement,
   getChallengeState, claimChallenge, getTodayXp,
   getAvatar, setAvatar, getOwnedAvatars, ownAvatar,
   getCollectibles, awardCollectible, getEventXp,
-  getWeekXp, getSettings, getMetrics, getStarredLines,
+  getSettings,
   getHousehold, addHouseholdMember, switchHouseholdMember,
 } from '../lib/storage';
 import {
   levelFromXp, AVATARS, ACHIEVEMENTS, dailyChallenges, COLLECTIBLES,
   nextCollectible, earnedBadgeCollectibles, activeEvent,
-  leagueTier, weeklyLeague, LEAGUE_TIERS,
 } from '../lib/game';
-import { totalReviews } from '../lib/memory';
-import { localDayKey } from '../lib/localDay';
+import { buildGameStats } from '../lib/gameStats.js';
+import { grantEarnedRewards } from '../lib/gameGrants.js';
+import WeeklyLeague from './WeeklyLeague.jsx';
 import Stats from './Stats';
 import { X, Check, Flame, Bolt, Coins, Trophy, Lock, Brain, Zap, Award } from './icons';
 import { ICON_BTN_ROUND_SOFT, TOP_BAR } from '../components/classNames.js';
@@ -32,30 +32,12 @@ export default function Profile({ open, onClose, onXp, onHeaderChange, onMemberS
   const refresh = () => setTick((t) => t + 1);
 
   // On open: evaluate achievements, grant their coins/avatars, then hand
-  // out any badge-count or seasonal collectibles that are now earned.
+  // out any badge-count or seasonal collectibles that are now earned. The
+  // rules live in lib/gameGrants.js so the Gamification Hub grants the same
+  // things the same way.
   useEffect(() => {
     if (!open) return;
-    const unlockedNow = [];
-    const cardsNow = [];
-    const stats = buildStats();
-    for (const a of ACHIEVEMENTS) {
-      if (!getAchievements()[a.id] && a.check(stats)) {
-        unlockAchievement(a.id);
-        addCoins(a.coins);
-        const gift = AVATARS.find((av) => av.achievement === a.id);
-        if (gift) ownAvatar(gift.id);
-        unlockedNow.push(a.id);
-      }
-    }
-    const badgeCount = Object.keys(getAchievements()).length;
-    for (const c of earnedBadgeCollectibles(getCollectibles(), badgeCount)) {
-      awardCollectible(c.id);
-      cardsNow.push(c.id);
-    }
-    const event = activeEvent();
-    if (event && getEventXp(event.id) >= event.goal && awardCollectible(event.collectible)) {
-      cardsNow.push(event.collectible);
-    }
+    const { unlockedNow, cardsNow } = grantEarnedRewards();
     setNewBadges(unlockedNow);
     setNewCards(cardsNow);
     refresh();
@@ -264,100 +246,9 @@ function Household({ onChange, onMemberSwitch }) {
   );
 }
 
-function buildStats() {
-  const xp = getXp();
-  return {
-    xp,
-    level: levelFromXp(xp).level,
-    streak: getStreak().count,
-    sessions: getSessions().length,
-    reviews: totalReviews(getReviewLog()),
-    grammarMastered: Object.values(getGrammarProgress()).filter((g) => g.best >= 80).length,
-    notebook: getNotebook().length,
-    collectibles: Object.keys(getCollectibles()).length,
-    drills: getMetrics().filter((m) => m.skill === 'drill').length,
-    starred: getStarredLines().length,
-  };
-}
-
-// Weekly league: a local leaderboard against seeded pace-setters (no backend,
-// so never real people). Ranked by this week's XP; the tier follows the
-// learner's level, so promotion means levelling up.
-function WeeklyLeague({ level }) {
-  const board = useMemo(() => {
-    const now = new Date();
-    // Monday-anchored week, matching getWeekXp; progress is the fraction elapsed.
-    const dow = (now.getDay() + 6) % 7; // 0 = Monday
-    const weekProgress = (dow * 86400 + now.getHours() * 3600 + now.getMinutes() * 60) / (7 * 86400);
-    const monday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - dow);
-    // Local Y/M/D key from the canonical identity (localDay.js) — matching
-    // isoWeekKey in storage.js; toISOString put Sunday-evening users in the
-    // following week's league.
-    const weekKey = localDayKey(monday);
-    const tier = leagueTier(level);
-    const settings = getSettings();
-    const avatar = AVATARS.find((a) => a.id === getAvatar());
-    const league = weeklyLeague(weekKey, getWeekXp(), weekProgress, tier.index, {
-      name: settings.name || 'You',
-      avatar: avatar?.emoji || '🙂',
-    });
-    return { tier, ...league };
-  }, [level]);
-
-  const { tier, standings, rank, ahead, count, promoteZone, relegateZone } = board;
-  const nextTier = LEAGUE_TIERS[tier.index + 1];
-
-  return (
-    <section className="bg-surface border border-line rounded-2xl p-5 space-y-3">
-      <div className="flex items-center justify-between gap-2">
-        <h3 className="text-[11px] font-bold uppercase tracking-wider text-ink2 inline-flex items-center gap-1.5">
-          <span aria-hidden="true">{tier.emoji}</span> {tier.name} league
-        </h3>
-        <span className="text-[11px] text-ink3 tabular-nums">#{rank} of {count}</span>
-      </div>
-
-      <p className="text-xs text-ink2 leading-relaxed">
-        {rank === 1
-          ? 'You’re topping the league this week — hold the lead.'
-          : ahead
-            ? <>Just <span className="font-semibold text-ink tabular-nums">{ahead.xp - standings[rank - 1].xp} XP</span> behind {ahead.name}. Overtake them before Monday.</>
-            : 'Earn XP this week to climb the ladder.'}
-      </p>
-
-      <ol className="space-y-1">
-        {standings.map((s, i) => {
-          const place = i + 1;
-          const zone = place <= promoteZone ? 'promote' : place > count - relegateZone ? 'relegate' : 'hold';
-          return (
-            <li
-              key={s.isUser ? 'you' : s.name}
-              className={`flex items-center gap-2.5 rounded-xl px-3 py-2 border ${
-                s.isUser ? 'bg-surface2 border-ink3' : 'bg-surface border-line'
-              }`}
-            >
-              <span className={`w-5 shrink-0 text-center text-[11px] font-bold tabular-nums ${
-                zone === 'promote' ? 'text-ink' : zone === 'relegate' ? 'text-ink3' : 'text-ink2'
-              }`}>{place}</span>
-              <span className="text-lg shrink-0" aria-hidden="true">{s.avatar}</span>
-              <span className={`flex-1 min-w-0 truncate text-sm ${s.isUser ? 'font-bold text-ink' : 'text-ink2'}`}>
-                {s.isUser ? `${s.name} (you)` : s.name}
-              </span>
-              <span className="shrink-0 text-xs tabular-nums text-ink2">{s.xp} XP</span>
-            </li>
-          );
-        })}
-      </ol>
-
-      <div className="flex items-center justify-between text-[11px] text-ink3">
-        <span className="inline-flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-ink" aria-hidden="true" /> Top {promoteZone} {nextTier ? `→ ${nextTier.name}` : 'promote'}</span>
-        <span>Resets Monday</span>
-      </div>
-      <p className="text-[10px] text-ink3 leading-snug">
-        Pace-setters are seeded practice challengers, not real players — the studio stays fully offline. Your league tier follows your level.
-      </p>
-    </section>
-  );
-}
+// The numbers the achievements are measured against live in lib/gameStats.js,
+// so the Gamification Hub reads the same ones and cannot disagree with this
+// screen about how far along the learner is.
 
 // Three deterministic challenges per day; completing all three earns the
 // next postcard in the challenge set.

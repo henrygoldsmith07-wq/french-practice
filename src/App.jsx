@@ -751,7 +751,14 @@ export default function App() {
           onGo={(target) => { closeOverlay(); resumeActivity(target); }}
         />
       )}
-      {overlayIs(overlay, 'gamification') && <GamificationHub open onClose={closeOverlay} />}
+      {overlayIs(overlay, 'gamification') && (
+        <GamificationHub
+          open
+          onClose={closeOverlay}
+          onXp={awardXp}
+          onChange={refreshRewards}
+        />
+      )}
       {overlayIs(overlay, 'learningPath') && (
         <div className="fixed inset-0 z-[55] overflow-y-auto bg-bg" role="dialog" aria-modal="true" aria-label="Learning path">
           <div className="mx-auto min-h-full max-w-lg px-4 py-4">
