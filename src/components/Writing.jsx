@@ -2,7 +2,7 @@ import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { langName, activeLanguage } from '../lib/i18n';
 import { hasCapabilityNow } from '../lib/capabilities';
 import { randomPoolSentence, toWords, diffWords, displayHits } from '../lib/sentences';
-import { COMPLETION_STARTERS, randomFrom } from '../lib/writing';
+import { COMPLETION_STARTERS, pickForLevel } from '../lib/writing';
 import { judgeCompletion, friendlyError } from '../lib/groq';
 import WritingStudio from './WritingStudio';
 import AccentDrill from './AccentDrill';
@@ -187,7 +187,10 @@ function TypingDrill({ onXp }) {
 }
 
 function Completion({ apiKey, mockMode, level, onXp }) {
-  const [starter, setStarter] = useState(() => randomFrom(COMPLETION_STARTERS));
+  // The starter is picked at the learner's own level: a B1 learner is not
+  // handed a B2 subordinate clause on their first attempt. The level is shown
+  // on the card, so the difficulty is never a surprise.
+  const [starter, setStarter] = useState(() => pickForLevel(COMPLETION_STARTERS, undefined, level));
   const [completion, setCompletion] = useState('');
   const [checking, setChecking] = useState(false);
   const [result, setResult] = useState(null);
@@ -216,7 +219,7 @@ function Completion({ apiKey, mockMode, level, onXp }) {
   };
 
   const next = () => {
-    setStarter(randomFrom(COMPLETION_STARTERS, starter));
+    setStarter(pickForLevel(COMPLETION_STARTERS, starter, level));
     setCompletion('');
     setResult(null);
     setError(null);
@@ -225,7 +228,10 @@ function Completion({ apiKey, mockMode, level, onXp }) {
   return (
     <div className="space-y-4">
       <div className="bg-surface border border-line rounded-2xl p-5 space-y-1.5">
-        <p className="text-[10px] font-bold uppercase tracking-wider text-ink3">Finish this sentence · {starter.hint}</p>
+        <div className="flex items-start justify-between gap-3">
+          <p className="text-[10px] font-bold uppercase tracking-wider text-ink3">Finish this sentence · {starter.hint}</p>
+          <span className="shrink-0 rounded-md bg-surface2 px-1.5 py-0.5 text-[10px] font-bold text-ink3">{starter.cefr}</span>
+        </div>
         <p className="text-[17px] text-ink font-medium" lang="fr">{starter.fr} …</p>
         <p className="text-xs text-ink3 italic">{starter.en} …</p>
       </div>
