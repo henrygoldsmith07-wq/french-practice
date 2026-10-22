@@ -83,7 +83,7 @@ export default function TeacherDashboard({ open, onClose }) {
         <aside className="w-72 border-r border-line bg-surface flex flex-col">
           <div className="p-5 border-b border-line">
             <h2 className="text-lg font-bold text-ink">Teacher Dashboard</h2>
-            <p className="mt-1 text-xs text-ink2">Free educator tier</p>
+            <p className="mt-1 text-xs text-ink2">Preview</p>
           </div>
 
           {/* Class List */}
@@ -123,9 +123,10 @@ export default function TeacherDashboard({ open, onClose }) {
             ))}
 
             {/* Add New Class Button */}
-            <button className="w-full mt-3 rounded-xl border border-dashed border-line bg-transparent px-4 py-3 text-sm text-ink2 hover:border-primary hover:text-primary transition-colors">
-              + Create new class
-            </button>
+            <p className="mt-3 rounded-xl border border-dashed border-line px-4 py-3 text-[11px] leading-snug text-ink3">
+              There is no way to add a class: the studio is a single-learner app with no
+              accounts and no server, so a class cannot be created here.
+            </p>
           </div>
 
           {/* Export Section */}
@@ -142,14 +143,14 @@ export default function TeacherDashboard({ open, onClose }) {
         {/* Main Content */}
         <main className="flex-1 overflow-y-auto bg-white">
           {selectedClass ? (
-            <ClassDetailView 
-              classData={selectedClass} 
+            <ClassDetailView
+              classData={selectedClass}
               viewMode={viewMode}
               onSetViewMode={setViewMode}
               onClose={onClose}
             />
           ) : (
-            <OverviewView />
+            <OverviewView onOpenClass={(cls) => { setSelectedClass(cls); setViewMode('overview'); }} />
           )}
         </main>
       </div>
@@ -160,7 +161,7 @@ export default function TeacherDashboard({ open, onClose }) {
 /**
  * Overview view showing all classes at a glance
  */
-function OverviewView() {
+function OverviewView({ onOpenClass }) {
   const totalStudents = sampleClasses.reduce((sum, cls) => sum + cls.students.length, 0);
   const avgEngagement = Math.round(sampleClasses.reduce((sum, cls) => sum + cls.avgEngagement, 0) / sampleClasses.length);
 
@@ -168,7 +169,7 @@ function OverviewView() {
     <div className="p-6 space-y-6">
       <header>
         <h2 className="text-2xl font-bold text-ink">All Classes Overview</h2>
-        <p className="mt-1 text-sm text-ink2">Privacy-preserving aggregated metrics</p>
+        <p className="mt-1 text-sm text-ink2">Sample class data, generated on this device</p>
       </header>
 
       {/* Summary Cards */}
@@ -200,21 +201,22 @@ function OverviewView() {
       <h3 className="text-sm font-bold uppercase tracking-wider text-ink2 mt-8">Your Classes</h3>
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {sampleClasses.map(cls => (
-          <ClassCard key={cls.id} classData={cls} />
+          <ClassCard key={cls.id} classData={cls} onOpenClass={onOpenClass} />
         ))}
       </div>
 
-      {/* Privacy Notice */}
+      {/* What this panel does and does not do */}
       <div className="rounded-2xl border border-primary/20 bg-primary/5 p-4">
         <div className="flex items-start gap-3">
           <div className="rounded-full bg-primary/20 p-2">
             <Target size={16} className="text-primary" />
           </div>
           <div>
-            <h4 className="text-sm font-semibold text-ink">Privacy-Preserving Analytics</h4>
+            <h4 className="text-sm font-semibold text-ink">Nothing here is collected</h4>
             <p className="mt-1 text-xs text-ink2 leading-relaxed">
-              All student data is completely anonymized. You see aggregate progress patterns, not individual names or personal information. 
-              This protects student privacy while giving you actionable insights into your class performance.
+              There is no class, no student and no server behind this preview. The names are made up,
+              the figures are made up, and none of it leaves this device — the studio keeps a single
+              learner's progress on this device and sends it nowhere.
             </p>
           </div>
         </div>
@@ -252,9 +254,9 @@ function SummaryCard({ title, value, subtitle, icon: Icon, color = 'primary' }) 
 /**
  * Individual class overview card
  */
-function ClassCard({ classData }) {
+function ClassCard({ classData, onOpenClass }) {
   return (
-    <div className="rounded-2xl border border-line bg-surface p-5 hover:border-ink3/50 transition-colors cursor-pointer">
+    <div className="rounded-2xl border border-line bg-surface p-5 hover:border-ink3/50 transition-colors">
       <div className="flex items-start justify-between mb-4">
         <div className="flex items-center gap-3">
           <div className={`w-3 h-3 rounded-full ${classData.color}`} />
@@ -295,11 +297,11 @@ function ClassCard({ classData }) {
 
       {/* Quick actions */}
       <div className="mt-4 flex gap-2">
-        <button className="flex-1 rounded-xl border border-line bg-surface2 px-3 py-2 text-xs font-medium text-ink hover:bg-surface3 transition-colors">
+        <button
+          onClick={() => onOpenClass(classData)}
+          className="flex-1 rounded-xl border border-line bg-surface2 px-3 py-2 text-xs font-medium text-ink hover:bg-surface3 transition-colors"
+        >
           View Details
-        </button>
-        <button className="flex-1 rounded-xl border border-line bg-surface2 px-3 py-2 text-xs font-medium text-ink hover:bg-surface3 transition-colors">
-          Send Message
         </button>
       </div>
     </div>
