@@ -1,341 +1,212 @@
-// AI Study Assistant - Personalized recommendations based on user data analysis
-// Analyzes patterns in user progress, identifies weaknesses, suggests optimal
-// study times, predicts retention risks, and provides actionable insights
+// Study assistant: suggestions drawn from the learner's own record.
+//
+// The first version of this panel was fed a hard-coded learner from App.jsx
+// (a 12-day streak, 450 XP this week, "chat, maison, homme" as weak words,
+// "4 areas improved"), so every learner saw the same advice. Its action
+// buttons only logged to the console. It also had two bugs of its own: the
+// pronunciation check looked for `byLang` on a profile that getPhonemeProfile
+// had already unwrapped, so it never fired, and the weekend "best time"
+// shift split "7:00PM" on ':' and printed "09:NaN".
+//
+// Everything here now reads the learner's real record. `readStudyState`
+// takes the snapshot; every other function is pure over that snapshot (and
+// an explicit `now`) so it can be unit-tested without storage.
 
-// `getPhonemeProfile` lives in lib/phonemeProfile.js, not in storage.js — the
-// import was pointing at the wrong module, so the bundler failed on it.
-// `getSessionData` and `getVocabProgress` were imported but never used.
-import { getPhonemeProfile } from './phonemeProfile.js';
-import { analyzeTargetText } from './phonologicalScore';
-import { wilsonInterval } from './evidenceUncertainty';
+import {
+  getStreak, getXpLog, getTimeLog, getReviewEvents, getStudyEvents,
+  getWeaknessSummary, getSettings,
+} from './storage.js';
+import { weakestPhonemes } from './phonemeProfile.js';
+import { localDayKey } from './localDay.js';
 
-/**
- * Analyze user data and generate personalized recommendations
- */
-export function generateAIRecommendations(userState) {
-  const recommendations = [];
-  
-  // Analyze performance patterns
-  const weakAreas = identifyWeakAreas(userState);
-  weakAreas.forEach(area => {
-    recommendations.push({
-      type: 'focus_area',
-      priority: area.priority,
-      title: area.title,
-      description: area.description,
-      action: `Practice ${area.action}`,
-      estimatedTime: area.estimatedTime,
-    });
-  });
-  
-  // Check for streak threats
-  const streakRisk = assessStreakRisk(userState);
-  if (streakRisk.level === 'high') {
-    recommendations.push({
-      type: 'motivation',
+const DAY_MS = 86400000;
+const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+/** A snapshot of everything the assistant reasons over. */
+export function readStudyState(now = Date.now()) {
+  return {
+    now,
+    streak: getStreak(),
+    xpLog: getXpLog(),
+    timeLog: getTimeLog(),
+    reviewEvents: getReviewEvents(),
+    studyEvents: getStudyEvents(),
+    weakPhonemes: weakestPhonemes(3).filter((p) => p.stats.weak && p.stats.attempts >= 3),
+    weaknesses: getWeaknessSummary(),
+    dailyGoal: Number(getSettings().dailyGoal) || 30,
+  };
+}
+
+const dayKey = (now, offset = 0) => localDayKey(new Date(now - offset * DAY_MS));
+
+function sumDays(log, now, from, to) {
+  let total = 0;
+  for (let i = from; i < to; i++) total += Number(log?.[dayKey(now, i)]) || 0;
+  return total;
+}
+
+/** Cards the learner keeps missing: at least 3 reviews in the last 30 days
+ *  and under 70% recalled, weakest first. */
+export function strugglingItems(reviewEvents = [], now = Date.now(), limit = 5) {
+  const since = now - 30 * DAY_MS;
+  const byItem = new Map();
+  for (const e of reviewEvents) {
+    const at = new Date(e.reviewedAt).getTime();
+    if (!(at >= since)) continue;
+    const cur = byItem.get(e.itemId) || { id: e.itemId, label: e.itemLabel || e.itemId, reviews: 0, correct: 0 };
+    cur.reviews += 1;
+    if (e.correct) cur.correct += 1;
+    if (e.itemLabel) cur.label = e.itemLabel;
+    byItem.set(e.itemId, cur);
+  }
+  return [...byItem.values()]
+    .filter((x) => x.reviews >= 3 && x.correct / x.reviews < 0.7)
+    .sort((a, b) => a.correct / a.reviews - b.correct / b.reviews || b.reviews - a.reviews)
+    .slice(0, limit);
+}
+
+/** The hour the learner most often practises, from the last 30 days of
+ *  review and study events. Needs 10 events over 3 separate days before it
+ *  will name an hour — two evenings are not a habit. */
+export function peakPracticeHour(state) {
+  const since = state.now - 30 * DAY_MS;
+  const hours = new Array(24).fill(0);
+  const days = new Set();
+  let total = 0;
+  const stamps = [
+    ...(state.reviewEvents || []).map((e) => e.reviewedAt),
+    ...(state.studyEvents || []).filter((e) => e.type !== 'review').map((e) => e.at),
+  ];
+  for (const stamp of stamps) {
+    const d = new Date(stamp);
+    const t = d.getTime();
+    if (!(t >= since && t <= state.now)) continue;
+    hours[d.getHours()] += 1;
+    days.add(localDayKey(d));
+    total += 1;
+  }
+  if (total < 10 || days.size < 3) return null;
+  const hour = hours.indexOf(Math.max(...hours));
+  return { hour, label: formatHour(hour), count: hours[hour], total };
+}
+
+export function formatHour(hour) {
+  const h = ((Number(hour) % 24) + 24) % 24;
+  return `${h % 12 || 12} ${h >= 12 ? 'PM' : 'AM'}`;
+}
+
+const PRIORITY = { urgent: 4, high: 3, medium: 2, low: 1 };
+
+/** Ranked suggestions. Each carries an `action` the app can route (`run`),
+ *  or none when it is information only. */
+export function generateRecommendations(state) {
+  const recs = [];
+  const today = dayKey(state.now);
+  const streak = state.streak || {};
+
+  if (streak.count > 0 && streak.lastDay !== today) {
+    recs.push({
+      id: 'streak',
       priority: 'urgent',
-      title: 'Streak at Risk!',
-      description: `You haven't practiced in ${streakRisk.days}. Keep your streak alive!`,
-      action: 'Complete a quick 5-minute session',
+      title: `Keep your ${streak.count}-day streak`,
+      description: 'You have not practised yet today. One short session keeps it alive.',
+      action: { label: 'Start today’s session', run: 'today' },
       estimatedTime: 5,
     });
   }
-  
-  // Optimal timing suggestions
-  const bestTime = suggestOptimalTime(userState);
-  if (bestTime) {
-    recommendations.push({
-      type: 'timing',
-      priority: 'medium',
-      title: 'Best Practice Time',
-      description: bestTime.reason,
-      action: `Set reminder for ${bestTime.time}`,
+
+  const due = state.weaknesses?.due || 0;
+  if (due > 0) {
+    recs.push({
+      id: 'retests',
+      priority: 'high',
+      title: `${due} weak ${due === 1 ? 'spot is' : 'spots are'} due for a retest`,
+      description: 'A retest on a later day is what shows a fix has stuck.',
+      action: { label: 'Retest in today’s session', run: 'today' },
+      estimatedTime: Math.min(15, due * 2),
+    });
+  }
+
+  const phonemes = state.weakPhonemes || [];
+  if (phonemes.length) {
+    recs.push({
+      id: 'pronunciation',
+      priority: 'high',
+      title: phonemes.length === 1 ? 'One sound needs work' : `${phonemes.length} sounds need work`,
+      description: `You miss these most often: ${phonemes.map((p) => p.label).join(', ')}.`,
+      action: { label: 'Practise pronunciation', run: 'pronunciation' },
+      estimatedTime: 10,
+    });
+  }
+
+  const struggling = strugglingItems(state.reviewEvents, state.now);
+  if (struggling.length) {
+    recs.push({
+      id: 'cards',
+      priority: struggling.length >= 3 ? 'high' : 'medium',
+      title: struggling.length === 1 ? 'One word keeps slipping' : `${struggling.length} words keep slipping`,
+      description: `Recalled under 70% of the time this month: ${struggling.map((x) => x.label).join(', ')}.`,
+      action: { label: 'Review cards', run: 'cards' },
+      estimatedTime: struggling.length * 2,
+    });
+  }
+
+  const peak = peakPracticeHour(state);
+  if (peak) {
+    recs.push({
+      id: 'timing',
+      priority: 'low',
+      title: `You practise most around ${peak.label}`,
+      description: `${peak.count} of your last ${peak.total} practice events were in that hour. Keeping to it makes the habit easier to hold.`,
+      action: null,
       estimatedTime: null,
     });
   }
-  
-  // Retention risk alerts
-  const atRiskWords = predictRetentionRisks(userState);
-  if (atRiskWords.length > 0) {
-    recommendations.push({
-      type: 'review',
-      priority: 'high',
-      title: `${atRiskWords.length} Words at Risk`,
-      description: 'These vocabulary items need attention before they slip away',
-      action: 'Review at-risk vocabulary',
-      estimatedTime: atRiskWords.length * 2,
-    });
-  }
-  
-  return recommendations.sort((a, b) => priorityOrder(b.priority) - priorityOrder(a.priority));
+
+  return recs.sort((a, b) => PRIORITY[b.priority] - PRIORITY[a.priority]);
 }
 
-/**
- * Identify weak areas based on phoneme confusion stats and vocab accuracy
- */
-function identifyWeakAreas(state) {
-  const weaknesses = [];
-  
-  // Phoneme weaknesses
-  const phonemes = getPhonemeProfile();
-  if (phonemes && phonemes.byLang) {
-    Object.values(phonemes.byLang).forEach(langStats => {
-      const weakPhonemes = Object.entries(langStats)
-        .filter(([_, stats]) => (stats.misses / Math.max(1, stats.attempts)) > 0.3)
-        .slice(0, 2);
-      
-      if (weakPhonemes.length > 0) {
-        weaknesses.push({
-          priority: 'high',
-          title: 'Pronunciation Improvement Needed',
-          description: `${weakPhonemes.length} sound contrasts need practice`,
-          action: 'Complete pronunciation drills',
-          estimatedTime: 10,
-        });
-      }
-    });
-  }
-  
-  // Vocab accuracy issues
-  const lowAccuracyWords = state.lowAccuracyWords || [];
-  if (lowAccuracyWords.length >= 5) {
-    weaknesses.push({
-      priority: 'high',
-      title: 'Vocabulary Accuracy',
-      description: `${lowAccuracyWords.length} words have <70% accuracy`,
-      action: 'Review low-accuracy vocabulary',
-      estimatedTime: lowAccuracyWords.length * 3,
-    });
-  }
-  
-  // Conversation hesitation
-  if (state.conversationHesitationRate > 0.4) {
-    weaknesses.push({
-      priority: 'medium',
-      title: 'Conversation Flow',
-      description: 'You hesitate frequently during conversations',
-      action: 'Try Quick Fire exercises',
-      estimatedTime: 15,
-    });
-  }
-  
-  return weaknesses;
-}
-
-/**
- * Assess risk to maintaining daily streak
- */
-function assessStreakRisk(state) {
-  const lastSession = getLastActivityTimestamp(state);
-  const hoursSinceLastSession = (Date.now() - lastSession) / (1000 * 60 * 60);
-  const streakLength = state.streakCount || 0;
-  
-  let level = 'low';
-  if (hoursSinceLastSession > 18 || (hoursSinceLastSession > 12 && streakLength >= 7)) {
-    level = 'high';
-  } else if (hoursSinceLastSession > 6 && streakLength >= 3) {
-    level = 'medium';
-  }
-  
-  return {
-    level,
-    days: Math.ceil(hoursSinceLastSession / 24),
-    streakLength,
-  };
-}
-
-/**
- * Suggest optimal practice time based on historical patterns
- */
-function suggestOptimalTime(state) {
-  const activityHours = state.activityByHour || {};
-  const bestHour = Object.entries(activityHours)
-    .sort((a, b) => b[1] - a[1])[0];
-  
-  if (!bestHour) return null;
-  
-  const hour = parseInt(bestHour[0]);
-  const timeStr = formatTime(hour);
-  
-  // Weekend vs weekday adjustment
-  const today = new Date();
-  const dayOfWeek = today.getDay();
-  const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
-  const adjustedTime = isWeekend ? adjustForWeekend(timeStr) : timeStr;
-  
-  return {
-    time: adjustedTime,
-    reason: isWeekend 
-      ? 'Your weekend peak usage time' 
-      : 'Your historical peak learning period',
-  };
-}
-
-function adjustForWeekend(timeStr) {
-  const [hour, minute] = timeStr.split(':').map(Number);
-  const adjustedHour = hour + 2; // Shift 2 hours later on weekends
-  return `${String(adjustedHour % 24).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
-}
-
-/**
- * Predict vocabulary retention risks using Wilson intervals
- */
-function predictRetentionRisks(state) {
-  const vocabEntries = state.vocabulary || [];
-  const risky = [];
-  
-  for (const entry of vocabEntries) {
-    const attempts = entry.reviews?.length || 0;
-    if (attempts < 3) continue; // Need minimum data
-    
-    const correct = entry.reviews.filter(r => r.correct).length;
-    const interval = wilsonInterval(correct, attempts);
-    
-    if (!interval) continue;
-    
-    // If Wilson lower bound < 0.6 and interval width is large, high uncertainty
-    if (interval.lower < 0.6 && (interval.upper - interval.lower) > 0.3) {
-      risky.push(entry.target);
-    }
-  }
-  
-  return risky.slice(0, 10); // Return top 10 at-risk words
-}
-
-/**
- * Get timestamp of most recent activity
- */
-function getLastActivityTimestamp(state) {
-  return state.lastActivity || Date.now() - (24 * 60 * 60 * 1000); // Default 1 day ago
-}
-
-/**
- * Format hour to readable time string
- */
-function formatTime(hour) {
-  const period = hour >= 12 ? 'PM' : 'AM';
-  const displayHour = hour % 12 || 12;
-  return `${displayHour}:00${period}`;
-}
-
-/**
- * Priority ordering for sorting
- */
-function priorityOrder(priority) {
-  const order = { urgent: 4, high: 3, medium: 2, low: 1 };
-  return order[priority] || 0;
-}
-
-/**
- * Generate study plan for next week
- */
-export function generateWeeklyPlan(userState, preferences) {
+/** This week, Monday to Sunday: XP earned against the daily goal on days
+ *  that have happened, and a focus drawn from the suggestions for the days
+ *  still to come. */
+export function generateWeeklyPlan(state, recommendations = generateRecommendations(state)) {
+  const now = new Date(state.now);
+  const sinceMonday = (now.getDay() + 6) % 7;
+  const focuses = recommendations.filter((r) => r.action && r.id !== 'streak').map((r) => r.action);
+  const fallback = { label: 'Today’s session', run: 'today' };
   const plan = [];
-  const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
-  
   for (let i = 0; i < 7; i++) {
-    const targetMinutes = calculateDailyTarget(userState, i, preferences.dailyGoal);
-    
+    const offset = sinceMonday - i; // >0 past, 0 today, <0 future
+    const date = new Date(state.now - offset * DAY_MS);
+    const key = localDayKey(date);
+    const xp = Number(state.xpLog?.[key]) || 0;
+    const status = offset > 0 ? 'past' : offset === 0 ? 'today' : 'future';
     plan.push({
-      day: days[i],
-      targetMinutes,
-      recommendedModes: selectRecommendedModes(userState, targetMinutes),
-      milestones: generateMilestones(targetMinutes),
+      key,
+      day: WEEKDAYS[date.getDay()],
+      status,
+      xp,
+      goal: state.dailyGoal,
+      met: xp >= state.dailyGoal,
+      focus: status === 'past' ? null : (focuses.length ? focuses[(i - sinceMonday) % focuses.length] : fallback),
     });
   }
-  
   return plan;
 }
 
-/**
- * Calculate daily study target based on current pace
- */
-function calculateDailyTarget(state, dayIndex, defaultGoal) {
-  const recentPerformance = state.recentAverageMinutes || 20;
-  const momentumFactor = state.momentum || 1.0;
-  
-  // Increase target if user is consistently exceeding
-  if (momentumFactor > 1.2) {
-    return Math.min(60, Math.round(recentPerformance * 1.1));
-  }
-  
-  return defaultGoal || recentPerformance;
-}
-
-/**
- * Select best practice modes for given time allocation
- */
-function selectRecommendedModes(state, minutes) {
-  const modes = [];
-  
-  if (minutes >= 10) modes.push('conversation');
-  if (minutes >= 15) modes.push('vocabulary_review');
-  if (minutes >= 20) modes.push('pronunciation_drills');
-  if (minutes >= 30) modes.push('grammar_topics');
-  
-  // Add weakness-focused activities
-  const weakestArea = state.weakestArea;
-  if (weakestArea === 'pronunciation') {
-    modes.unshift('phoneme_training');
-  } else if (weakestArea === 'vocabulary') {
-    modes.unshift('vocab_memorization');
-  }
-  
-  return modes;
-}
-
-/**
- * Generate achievement milestones for practice session
- */
-function generateMilestones(minutes) {
-  const milestones = [
-    { at: 5, type: 'quick_win', title: 'Quick Session Complete', description: "5 minutes down!" },
-    { at: 15, type: 'commitment', title: 'Commitment Reached', description: 'Solid practice session!' },
-    { at: 30, type: 'master_mode', title: 'Deep Work Mode', description: 'You are in flow state!' },
-  ];
-  
-  return milestones.filter(m => m.at <= minutes);
-}
-
-/**
- * Create motivational message based on performance
- */
-export function createMotivationalMessage(actionResult, state) {
-  const messages = [];
-  
-  // XP gain celebration
-  if (actionResult.xpGain > 0) {
-    const tiers = [
-      { threshold: 50, text: 'Awesome! Great progress!' },
-      { threshold: 100, text: 'On fire! Keep it up!' },
-      { threshold: 200, text: 'Incredible! You\'re crushing it!' },
-    ];
-    
-    const tier = tiers.find(t => actionResult.xpGain >= t.threshold);
-    if (tier) {
-      messages.push(tier.text);
-    }
-  }
-  
-  // Streak milestone
-  if (state.streakCount && state.streakCount % 7 === 0) {
-    messages.push(`🔥 ${state.streakCount}-day streak! Week ${Math.ceil(state.streakCount / 7)} complete!`);
-  }
-  
-  // Learning velocity
-  const weeklyXP = state.weeklyXP || 0;
-  if (weeklyXP >= 500) {
-    messages.push(`🚀 ${weeklyXP} XP this week - you're on track!`);
-  }
-  
-  // Weakness improvement
-  if (actionResult.improvedWeakness) {
-    messages.push(`💪 Improved your weakest area: ${actionResult.improvedWeakness}!`);
-  }
-  
-  if (messages.length === 0) {
-    messages.push('Keep making progress!');
-  }
-  
-  return messages.join(' ');
+/** Last 7 days against the 7 before them. A trend is only claimed when
+ *  there is an earlier week to compare with. */
+export function weeklyInsights(state) {
+  const xpThis = sumDays(state.xpLog, state.now, 0, 7);
+  const xpPrev = sumDays(state.xpLog, state.now, 7, 14);
+  const minThis = Math.round(sumDays(state.timeLog, state.now, 0, 7) / 60);
+  const minPrev = Math.round(sumDays(state.timeLog, state.now, 7, 14) / 60);
+  const trend = (a, b) => (b === 0 ? null : a > b ? 'up' : a < b ? 'down' : 'flat');
+  const w = state.weaknesses || { total: 0, byStatus: {} };
+  return {
+    xp: { value: xpThis, previous: xpPrev, trend: trend(xpThis, xpPrev) },
+    minutes: { value: minThis, previous: minPrev, trend: trend(minThis, minPrev) },
+    streak: state.streak?.count || 0,
+    weaknesses: { total: w.total || 0, resolved: w.byStatus?.resolved || 0, recovering: w.byStatus?.recovering || 0 },
+  };
 }

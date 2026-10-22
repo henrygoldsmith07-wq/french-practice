@@ -28,7 +28,7 @@ export const OVERLAY_TYPES = [
   // rejects anything it does not know — so the AI Study Assistant, the
   // content importer, the share cards, the teacher dashboard and the
   // gamification hub could never be opened. Nothing said so.
-  'aiAssistant', 'gamification', 'contentImport', 'teacherDashboard', 'socialSharing',
+  'aiAssistant', 'contentImport', 'teacherDashboard', 'socialSharing',
 ];
 
 export const initialOverlay = null;

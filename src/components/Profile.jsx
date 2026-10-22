@@ -17,7 +17,7 @@ import {
 import { totalReviews } from '../lib/memory';
 import { localDayKey } from '../lib/localDay';
 import Stats from './Stats';
-import { X, Check, Flame, Bolt, Coins, Trophy, Lock, Brain, Zap, Award } from './icons';
+import { X, Check, Flame, Bolt, Coins, Trophy, Lock, Brain } from './icons';
 import { ICON_BTN_ROUND_SOFT, TOP_BAR } from '../components/classNames.js';
 
 // Player profile: level & title, coins, the weekly league, daily challenges,
@@ -97,30 +97,14 @@ export default function Profile({ open, onClose, onXp, onHeaderChange, onMemberS
         <button onClick={onClose} aria-label="Close profile" className={ICON_BTN_ROUND_SOFT}>
           <X size={18} />
         </button>
-        
-        {/* Quick Access Buttons */}
-        <div className="flex items-center gap-1 ml-2">
-          <button 
-            onClick={() => {
-              window.dispatchEvent(new CustomEvent('openOverlay', { detail: 'aiAssistant' }));
-            }}
-            className={`grid place-items-center ${ICON_BTN_ROUND_SOFT}`}
-            aria-label="AI Study Assistant"
-            title="AI Study Assistant"
-          >
-            <Brain size={16} className="text-purple-600" />
-          </button>
-          <button 
-            onClick={() => {
-              window.dispatchEvent(new CustomEvent('openOverlay', { detail: 'gamification' }));
-            }}
-            className={`grid place-items-center ${ICON_BTN_ROUND_SOFT}`}
-            aria-label="Gamification Hub"
-            title="Achievements & Challenges"
-          >
-            <Trophy size={16} className="text-yellow-600" />
-          </button>
-        </div>
+        <button
+          onClick={() => window.dispatchEvent(new CustomEvent('openOverlay', { detail: 'aiAssistant' }))}
+          className={`ml-2 grid place-items-center ${ICON_BTN_ROUND_SOFT}`}
+          aria-label="Study assistant"
+          title="Study assistant"
+        >
+          <Brain size={16} className="text-purple-600" />
+        </button>
       </div>
 
       <div className="flex-1 overflow-y-auto nice-scroll px-4 py-5">
