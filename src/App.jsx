@@ -485,6 +485,10 @@ export default function App() {
       setTab('learn');
     }
     else if (la.type === 'cards') setTab('review');
+    // The speaking skill area is where pronunciation practice lives. The AI
+    // Study Assistant sends the learner there when a sound contrast needs
+    // work, so the button lands on the thing it talks about.
+    else if (la.type === 'speaking') { setSkillArea('speaking'); setLearnView('skills'); setTab('learn'); }
     else if (la.type === 'dictation') { setSkillArea('listening'); setListeningMode('dictation'); setLearnView('skills'); setTab('learn'); }
     else if (la.type === 'quickfire') { setSkillArea('speaking'); setSpeakingMode('quickfire'); setLearnView('skills'); setTab('learn'); }
     else if (la.type === 'field-note') { setTab('learn'); setLearnView('field-notes'); }
@@ -740,16 +744,13 @@ export default function App() {
       {overlayIs(overlay, 'contentImport') && <ContentImporter open onClose={closeOverlay} onXp={awardXp} />}
       {overlayIs(overlay, 'teacherDashboard') && <TeacherDashboard open onClose={closeOverlay} />}
       {overlayIs(overlay, 'socialSharing') && <SocialSharingCards open onClose={closeOverlay} />}
-      {overlayIs(overlay, 'aiAssistant') && <AIStudyAssistant open onClose={closeOverlay} userState={{
-        weeklyXP: 450,
-        streakCount: 12,
-        recentAverageMinutes: 25,
-        weakestArea: 'pronunciation',
-        lowAccuracyWords: ['chat', 'maison', 'homme'],
-        activityByHour: { 7: 5, 8: 8, 9: 3, 18: 7, 19: 9, 20: 6 },
-        momentum: 1.15,
-        lastActivity: Date.now() - (2 * 60 * 60 * 1000),
-      }} />}
+      {overlayIs(overlay, 'aiAssistant') && (
+        <AIStudyAssistant
+          open
+          onClose={closeOverlay}
+          onGo={(target) => { closeOverlay(); resumeActivity(target); }}
+        />
+      )}
       {overlayIs(overlay, 'gamification') && <GamificationHub open onClose={closeOverlay} />}
       {overlayIs(overlay, 'learningPath') && (
         <div className="fixed inset-0 z-[55] overflow-y-auto bg-bg" role="dialog" aria-modal="true" aria-label="Learning path">
