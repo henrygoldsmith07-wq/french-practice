@@ -1,23 +1,21 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   getXp, getStreak,
-  getCoins, addCoins, spendCoins,
-  getAchievements, unlockAchievement,
-  getChallengeState, claimChallenge, getTodayXp,
+  getCoins, spendCoins,
+  getAchievements,
+  getChallengeState, getTodayXp,
   getAvatar, setAvatar, getOwnedAvatars, ownAvatar,
-  getCollectibles, awardCollectible, getEventXp,
-  getSettings,
+  getCollectibles, getEventXp,
   getHousehold, addHouseholdMember, switchHouseholdMember,
 } from '../lib/storage';
 import {
-  levelFromXp, AVATARS, ACHIEVEMENTS, dailyChallenges, COLLECTIBLES,
-  nextCollectible, earnedBadgeCollectibles, activeEvent,
+  levelFromXp, AVATARS, ACHIEVEMENTS, dailyChallenges, COLLECTIBLES, activeEvent,
 } from '../lib/game';
 import { buildGameStats } from '../lib/gameStats.js';
-import { grantEarnedRewards } from '../lib/gameGrants.js';
+import { grantEarnedRewards, claimDailyChallenge } from '../lib/gameGrants.js';
 import WeeklyLeague from './WeeklyLeague.jsx';
 import Stats from './Stats';
-import { X, Check, Flame, Bolt, Coins, Trophy, Lock, Brain, Zap, Award } from './icons';
+import { X, Check, Flame, Bolt, Coins, Trophy, Lock, Brain } from './icons';
 import { ICON_BTN_ROUND_SOFT, TOP_BAR } from '../components/classNames.js';
 
 // Player profile: level & title, coins, the weekly league, daily challenges,
@@ -259,17 +257,9 @@ function DailyChallenges({ data, onXp, onChange, onNewCard }) {
     c.metric === 'xp' ? getTodayXp() : (data.challenges.counts[c.metric] || 0);
 
   const claim = (c) => {
-    claimChallenge(c.id);
-    addCoins(c.coins);
+    const card = claimDailyChallenge(c, todays);
     onXp(c.xp);
-    const nowClaimed = getChallengeState().claimed;
-    if (todays.every((t) => nowClaimed.includes(t.id))) {
-      const card = nextCollectible(getCollectibles(), 'challenges');
-      if (card) {
-        awardCollectible(card.id);
-        onNewCard(card.id);
-      }
-    }
+    if (card) onNewCard(card);
     onChange();
   };
 

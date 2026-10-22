@@ -96,3 +96,34 @@ test('the two boosts that never existed are not on offer', async () => {
   assert.match(code, /FREEZE_COST/);
   assert.match(code, /buyFreeze/);
 });
+
+test('claiming the last daily challenge awards the postcard', async () => {
+  // The profile has always paid out the postcard when the third challenge of
+  // the day is claimed. The hub claims challenges too, so it has to pay out
+  // the same way - otherwise a learner who claims from the hub is short of
+  // the postcard they earned.
+  installMemoryStorage();
+  const storage = await import(`../src/lib/storage.js${freshModuleTag()}`);
+  const { dailyChallenges } = await import(`../src/lib/game.js${freshModuleTag()}`);
+  const { claimDailyChallenge } = await import(`../src/lib/gameGrants.js${freshModuleTag()}`);
+
+  const todays = dailyChallenges(storage.getChallengeState().day);
+  assert.equal(todays.length, 3);
+
+  // Meet every target, so each one can be claimed.
+  for (const c of todays) {
+    storage.bumpChallengeMetric(c.metric, c.target);
+  }
+
+  let postcard = null;
+  for (const c of todays) {
+    postcard = claimDailyChallenge(c, todays);
+  }
+
+  assert.ok(postcard, 'the third challenge of the day did not award a postcard');
+  const owned = storage.getCollectibles();
+  assert.ok(owned[postcard], 'the postcard was not recorded as owned');
+  // The coins were paid, once per challenge.
+  const coins = todays.reduce((sum, c) => sum + c.coins, 0);
+  assert.equal(storage.getCoins(), coins, 'the challenge coins were not paid');
+});

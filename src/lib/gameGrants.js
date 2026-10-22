@@ -10,9 +10,11 @@
 // been earned, so it lives here and both call it.
 import {
   getAchievements, unlockAchievement, addCoins, getCollectibles,
-  awardCollectible, getEventXp, ownAvatar,
+  awardCollectible, getEventXp, ownAvatar, getChallengeState, claimChallenge,
 } from './storage.js';
-import { ACHIEVEMENTS, AVATARS, earnedBadgeCollectibles, activeEvent } from './game.js';
+import {
+  ACHIEVEMENTS, AVATARS, earnedBadgeCollectibles, activeEvent, nextCollectible,
+} from './game.js';
 import { buildGameStats } from './gameStats.js';
 
 /**
@@ -49,4 +51,29 @@ export function grantEarnedRewards() {
   }
 
   return { unlockedNow, cardsNow };
+}
+
+/**
+ * Claim a daily challenge.
+ *
+ * The challenge is recorded and its coins are paid. If this was the last of
+ * today's three, the next postcard in the challenge set is awarded as well —
+ * the profile does that, and so must the Gamification Hub, or a learner who
+ * claims from the hub would come away short of the postcard they earned.
+ *
+ * @param {{ id: string, coins: number }} challenge the challenge claimed
+ * @param {Array<{ id: string }>} todays every challenge offered today
+ * @returns {string|null} the postcard awarded, if one was
+ */
+export function claimDailyChallenge(challenge, todays) {
+  claimChallenge(challenge.id);
+  addCoins(challenge.coins);
+
+  const nowClaimed = getChallengeState().claimed;
+  if (!todays.every((t) => nowClaimed.includes(t.id))) return null;
+
+  const card = nextCollectible(getCollectibles(), 'challenges');
+  if (!card) return null;
+  awardCollectible(card.id);
+  return card.id;
 }

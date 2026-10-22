@@ -7,19 +7,19 @@
 // percentile derived from that rank, a random challenge picked on every
 // render, and a "Complete Challenge" button with no handler behind it.
 //
-// None of that was the app's game. The app has one: fifteen badges with real
+// None of that was the app's game. The app has one: fourteen badges with real
 // conditions, three deterministic daily challenges, a weekly league against
 // seeded pace-setters, coins, and a streak freeze you can buy with them.
 // The hub shows those, and the numbers are the learner's.
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Trophy, Star, Award, Zap, Shield, CheckCircle, Lock, Coins } from './icons';
 import {
-  getAchievements, getChallengeState, claimChallenge, getTodayXp, addCoins,
+  getAchievements, getChallengeState, getTodayXp,
   getCoins, getFreezes, buyFreeze, FREEZE_COST, MAX_FREEZES,
 } from '../lib/storage.js';
-import { ACHIEVEMENTS, dailyChallenges, levelFromXp } from '../lib/game.js';
+import { ACHIEVEMENTS, COLLECTIBLES, dailyChallenges, levelFromXp } from '../lib/game.js';
 import { buildGameStats } from '../lib/gameStats.js';
-import { grantEarnedRewards } from '../lib/gameGrants.js';
+import { grantEarnedRewards, claimDailyChallenge } from '../lib/gameGrants.js';
 import WeeklyLeague from './WeeklyLeague.jsx';
 
 export default function GamificationHub({ open, onClose, onXp, onChange }) {
@@ -165,7 +165,7 @@ function TabButton({ active, onClick, icon: Icon, label, badge }) {
 }
 
 /**
- * The fifteen real badges, with how far along the learner is on each one.
+ * The fourteen real badges, with how far along the learner is on each one.
  *
  * The number beside a locked badge comes from the same stats the unlock
  * condition is written against, so "4 / 5 sessions" and the moment the badge
@@ -235,13 +235,16 @@ function BadgesView({ data }) {
  */
 function ChallengesView({ data, onXp, onChange }) {
   const todays = useMemo(() => dailyChallenges(data.challenges.day), [data.challenges.day]);
+  const [newCard, setNewCard] = useState(null);
 
   const progressOf = (c) => (c.metric === 'xp' ? getTodayXp() : (data.challenges.counts[c.metric] || 0));
 
   const claim = (c) => {
-    claimChallenge(c.id);
-    addCoins(c.coins);
+    // The same claim the profile makes: the challenge is recorded, its coins
+    // are paid, and clearing all three awards the next postcard.
+    const card = claimDailyChallenge(c, todays);
     onXp?.(c.xp);
+    if (card) setNewCard(card);
     onChange?.();
   };
 
@@ -250,6 +253,11 @@ function ChallengesView({ data, onXp, onChange }) {
       <p className="text-xs text-ink2">
         Three challenges a day, the same three every time you open this. Clear all three to earn the next postcard.
       </p>
+      {newCard && (
+        <p role="status" className="rounded-xl border border-line bg-surface px-3.5 py-2.5 text-xs font-semibold text-ink">
+          Postcard earned: {COLLECTIBLES.find((c) => c.id === newCard)?.title || newCard}
+        </p>
+      )}
       {todays.map((c) => {
         const progress = Math.min(c.target, progressOf(c));
         const complete = progress >= c.target;
