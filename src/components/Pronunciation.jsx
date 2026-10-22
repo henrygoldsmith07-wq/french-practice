@@ -9,7 +9,7 @@ import { recordSkillScore, recordPronunciationGap, getMistakeGraph, saveMistakeG
 import { newEncounterId } from '../lib/evidenceIdentity';
 import { speak, stopSpeaking, adaptiveTtsRate } from '../lib/tts';
 import { SpeakButton, Spinner } from './ui';
-import { accentToleranceScore, calibratedConfidence, PHONEMES, phonemesFor, getPhonemeProfile, nextMinimalPair, recordPhonemeAttempt, weakestPhonemes } from '../lib/phonemeProfile';
+import { accentToleranceScore, calibratedConfidence, PHONEMES, phonemesFor, getPhonemeProfile, nextMinimalPair, minimalPairsFor, recordPhonemeAttempt, weakestPhonemes } from '../lib/phonemeProfile';
 import { noiseGate } from '../lib/adaptivePractice';
 import { evaluateFluency, PAUSE_MIN_MS } from '../lib/speakingEvaluation';
 import { decodeToMono16k } from '../lib/acoustics';
@@ -389,15 +389,23 @@ function MinimalPairStrip(){
   // the label and the audio must agree on the very first render. The whole
   // strip is language-aware: the catalogue, the pair and the lang attribute
   // all follow the active content language.
+  //
+  // The label names the sound the pair actually contrasts. Some sounds have
+  // no pair written for them (liaison, gn, j), and nextMinimalPair falls back
+  // to another sound's pair — under the weak sound's name that would be a
+  // lie, so the fallback carries its own id.
   const langId = activeLanguage().id;
   const cat = phonemesFor(langId);
   const weak = weakestPhonemes(1, langId)[0];
   const phoneme = weak?.id || cat[0]?.id || 'u-ou';
+  const own = minimalPairsFor(phoneme);
+  const shown = own && own.length ? phoneme : (cat[0]?.id || phoneme);
   const [pair, setPair] = useState(() => nextMinimalPair(phoneme, langId));
+  if (!pair) return null;
   return (
     <div className="bg-surface border border-line rounded-2xl p-4 flex items-center gap-3">
       <div className="flex-1">
-        <p className="text-[11px] font-bold uppercase tracking-wider text-ink3">Minimal pair · {phoneme}</p>
+        <p className="text-[11px] font-bold uppercase tracking-wider text-ink3">Minimal pair · {shown}</p>
         <p className="text-sm text-ink" lang={activeLanguage().id}>{pair[0]} — {pair[1]}</p>
       </div>
       <SpeakButton text={pair[0]} label={pair[0]} />
