@@ -87,24 +87,22 @@ export function generateAIRecommendations(userState) {
 function identifyWeakAreas(state) {
   const weaknesses = [];
 
-  // Phoneme weaknesses
-  const phonemes = getPhonemeProfile();
-  if (phonemes && phonemes.byLang) {
-    Object.values(phonemes.byLang).forEach(langStats => {
-      const weakPhonemes = Object.entries(langStats)
-        .filter(([_, stats]) => (stats.misses / Math.max(1, stats.attempts)) > 0.3)
-        .slice(0, 2);
-
-      if (weakPhonemes.length > 0) {
-        weaknesses.push({
-          priority: 'high',
-          title: 'Pronunciation Improvement Needed',
-          description: `${weakPhonemes.length} sound contrast${weakPhonemes.length === 1 ? '' : 's'} need${weakPhonemes.length === 1 ? 's' : ''} practice`,
-          action: 'Complete pronunciation drills',
-          estimatedTime: 10,
-          target: { type: 'speaking' },
-        });
-      }
+  // Phoneme weaknesses. getPhonemeProfile() already returns the active
+  // language's `{ [phonemeId]: stats }` bucket. This used to look for
+  // `byLang` on it — a key only the raw stored profile has — so the
+  // pronunciation card could never appear.
+  const langStats = getPhonemeProfile() || {};
+  const weakPhonemes = Object.entries(langStats)
+    .filter(([, stats]) => stats && (stats.misses / Math.max(1, stats.attempts)) > 0.3)
+    .slice(0, 2);
+  if (weakPhonemes.length > 0) {
+    weaknesses.push({
+      priority: 'high',
+      title: 'Pronunciation Improvement Needed',
+      description: `${weakPhonemes.length} sound contrast${weakPhonemes.length === 1 ? '' : 's'} need${weakPhonemes.length === 1 ? 's' : ''} practice`,
+      action: 'Complete pronunciation drills',
+      estimatedTime: 10,
+      target: { type: 'speaking' },
     });
   }
 

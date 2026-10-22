@@ -187,3 +187,18 @@ test('the hour pattern counts real moments, not days practised', async () => {
   assert.equal(state.activitySample, 0, 'three days of time logged is not an hour pattern');
   assert.deepEqual(state.activityByHour, {}, 'and no hour is invented from it');
 });
+
+test('a sound the learner keeps missing produces a pronunciation card', async () => {
+  const { generateAIRecommendations } = await loadLib();
+  assert.equal(
+    generateAIRecommendations(emptyState).find((r) => r.target?.type === 'speaking'), undefined,
+    'no pronunciation attempts, no pronunciation card',
+  );
+  // The shape recordPhonemeAttempt writes: one bucket per content language.
+  globalThis.localStorage.setItem('fp.phonemeProfile', JSON.stringify({
+    byLang: { fr: { r: { attempts: 4, correct: 1, misses: 3, avgConf: 0.4, lastAt: null, weak: true } } },
+  }));
+  const card = generateAIRecommendations(emptyState).find((r) => r.target?.type === 'speaking');
+  assert.ok(card, 'the weak uvular r reaches the panel');
+  assert.match(card.description, /1 sound contrast needs practice/);
+});
