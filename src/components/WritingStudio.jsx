@@ -1,5 +1,5 @@
 import { useMemo, useState, useRef, useEffect } from 'react';
-import { WRITING_PROMPTS, ESSAY_PROMPTS, randomFrom } from '../lib/writing';
+import { WRITING_PROMPTS, ESSAY_PROMPTS, pickForLevel } from '../lib/writing';
 import { writingFeedback, friendlyError } from '../lib/groq';
 import { recordSkillScore, recordLearnerError } from '../lib/storage';
 import { newEncounterId } from '../lib/evidenceIdentity';
@@ -44,7 +44,7 @@ export default function WritingStudio({ depth, apiKey, mockMode, level, onXp, on
   const prompts = essay ? ESSAY_PROMPTS : WRITING_PROMPTS;
   const minWords = essay ? 80 : 25;
 
-  const [prompt, setPrompt] = useState(() => randomFrom(prompts));
+  const [prompt, setPrompt] = useState(() => pickForLevel(prompts, undefined, level));
   const [text, setText] = useState('');
   const [reviewing, setReviewing] = useState(false);
   const [review, setReview] = useState(null);
@@ -136,7 +136,7 @@ export default function WritingStudio({ depth, apiKey, mockMode, level, onXp, on
     }
     if (aliveRef.current) setReviewing(false);
   };  const restart = (newPrompt) => {
-    if (newPrompt) setPrompt(randomFrom(prompts, prompt));
+    if (newPrompt) setPrompt(pickForLevel(prompts, prompt, level));
     setText('');
     setReview(null);
     setError(null);
@@ -149,9 +149,12 @@ export default function WritingStudio({ depth, apiKey, mockMode, level, onXp, on
           <p className="text-[10px] font-bold uppercase tracking-wider text-ink3">
             {essay ? 'Essay topic' : 'Prompt'} · aim for {minWords}+ words
           </p>
-          <button onClick={() => restart(true)} className="text-[11px] text-ink3 hover:text-ink shrink-0">
-            Change
-          </button>
+          <div className="flex items-center gap-2 shrink-0">
+            <span className="rounded-md bg-surface2 px-1.5 py-0.5 text-[10px] font-bold text-ink3">{prompt.cefr}</span>
+            <button onClick={() => restart(true)} className="text-[11px] text-ink3 hover:text-ink shrink-0">
+              Change
+            </button>
+          </div>
         </div>
         <p className="text-[15px] text-ink font-medium leading-snug" lang="fr">{prompt.fr}</p>
         <p className="text-xs text-ink3 italic">{prompt.en}</p>
