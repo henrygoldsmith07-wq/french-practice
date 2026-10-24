@@ -45,6 +45,30 @@ const LearningPath = createLazyWithBoundary(() => import('./components/LearningP
   loadingFallback: <LoadingScreen message="Loading learning path..." />,
 });
 
+// Pronunciation Coach - AI-powered speech analysis
+const PronunciationCoach = lazy(() => import('./components/PronunciationCoach'));
+
+// Study Groups - collaborative learning
+const StudyGroups = lazy(() => import('./components/StudyGroups'));
+
+// Immersive Learning Mode - context-aware vocabulary acquisition
+const ImmersiveLearningMode = lazy(() => import('./components/ImmersiveLearningMode'));
+
+// Group Practice Sessions - real-time collaborative voice practice
+const GroupPracticeSessions = lazy(() => import('./components/GroupPracticeSessions'));
+
+// AI Writing Coach - intelligent writing feedback with cultural nuance training
+const AIWritingCoach = lazy(() => import('./components/AIWritingCoach'));
+
+// Personalized Learning Pathway - adaptive curriculum with dynamic difficulty adjustment
+const PersonalizedLearningPathway = lazy(() => import('./components/PersonalizedLearningPathway'));
+
+// AI Flashcard Mastery - intelligent spaced repetition with confidence-based scheduling
+const AIFlashcardMastery = lazy(() => import('./components/AIFlashcardMastery'));
+
+// AI Conversation Partner - always-available conversational practice companion
+const AIConversationPartner = lazy(() => import('./components/AIConversationPartner'));
+
 // User Profile & Account
 const Profile = createLazyWithBoundary(() => import('./components/Profile'), {
   context: 'profile',
@@ -754,6 +778,14 @@ export default function App() {
       {overlayIs(overlay, 'realWorld') && (<RealWorld open onClose={closeOverlay} onRoleplay={startRoleplay} onXp={awardXp} />)}
       {overlayIs(overlay, 'profile') && (<Profile open onClose={closeOverlay} onXp={awardXp} weeklyGoal={settings.weeklyGoal} onMemberSwitch={refreshRewards} onHeaderChange={({ coins: c, avatarId: a }) => { setCoins(c); setAvatarId(a); }} />)}
       {overlayIs(overlay, 'pathSetup') && (<PathSetup open onClose={closeOverlay} onCreated={(p) => { setPath(p); closeOverlay(); updateSettings({ ...settings, level: p.cefr }); }} />)}
+      {overlayIs(overlay, 'pronunciationCoach') && <PronunciationCoach open onClose={closeOverlay} />}
+      {overlayIs(overlay, 'studyGroups') && <StudyGroups open onClose={closeOverlay} />}
+      {overlayIs(overlay, 'groupPracticeSessions') && <GroupPracticeSessions open onClose={closeOverlay} />}
+      {overlayIs(overlay, 'aiWritingCoach') && <AIWritingCoach open onClose={closeOverlay} />}
+      {overlayIs(overlay, 'personalizedPathway') && <PersonalizedLearningPathway open onClose={closeOverlay} />}
+      {overlayIs(overlay, 'aiFlashcardMastery') && <AIFlashcardMastery open onClose={closeOverlay} />}
+      {overlayIs(overlay, 'aiConversationPartner') && <AIConversationPartner open onClose={closeOverlay} />}
+      {overlayIs(overlay, 'immersiveLearning') && <ImmersiveLearningMode open onClose={closeOverlay} />}
       </Suspense>
       {overlayIs(overlay, 'today') && (
         <Suspense fallback={<ScreenLoader />}>

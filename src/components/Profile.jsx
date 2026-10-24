@@ -17,7 +17,7 @@ import {
 import { totalReviews } from '../lib/memory';
 import { localDayKey } from '../lib/localDay';
 import Stats from './Stats';
-import { X, Check, Flame, Bolt, Coins, Trophy, Lock, Brain, Zap, Award } from './icons';
+import { X, Check, Flame, Bolt, Coins, Trophy, Lock, Brain, Zap, Award, MessageCircle, Sparkles } from './icons';
 import { ICON_BTN_ROUND_SOFT, TOP_BAR } from '../components/classNames.js';
 import { useEffect } from 'react';
 
@@ -120,6 +120,76 @@ export default function Profile({ open, onClose, onXp, onHeaderChange, onMemberS
             title="Achievements & Challenges"
           >
             <Trophy size={16} className="text-yellow-600" />
+          </button>
+          <button 
+            onClick={() => {
+              window.dispatchEvent(new CustomEvent('openOverlay', { detail: 'pronunciationCoach' }));
+            }}
+            className={`grid place-items-center ${ICON_BTN_ROUND_SOFT}`}
+            aria-label="Pronunciation Coach"
+            title="Speech Analysis"
+          >
+            <Zap size={16} className="text-red-500" />
+          </button>
+          <button 
+            onClick={() => {
+              window.dispatchEvent(new CustomEvent('openOverlay', { detail: 'studyGroups' }));
+            }}
+            className={`grid place-items-center ${ICON_BTN_ROUND_SOFT}`}
+            aria-label="Study Groups"
+            title="Community Learning"
+          >
+            <Award size={16} className="text-blue-500" />
+          </button>
+          <button 
+            onClick={() => {
+              window.dispatchEvent(new CustomEvent('openOverlay', { detail: 'groupPracticeSessions' }));
+            }}
+            className={`grid place-items-center ${ICON_BTN_ROUND_SOFT}`}
+            aria-label="Group Practice Sessions"
+            title="Live Voice Practice"
+          >
+            <Check size={16} className="text-green-500" />
+          </button>
+          <button 
+            onClick={() => {
+              window.dispatchEvent(new CustomEvent('openOverlay', { detail: 'aiWritingCoach' }));
+            }}
+            className={`grid place-items-center ${ICON_BTN_ROUND_SOFT}`}
+            aria-label="AI Writing Coach"
+            title="Intelligent Writing Feedback"
+          >
+            <Award size={16} className="text-pink-500 hover:text-pink-700 transition-colors" />
+          </button>
+          <button 
+            onClick={() => {
+              window.dispatchEvent(new CustomEvent('openOverlay', { detail: 'personalizedPathway' }));
+            }}
+            className={`grid place-items-center ${ICON_BTN_ROUND_SOFT}`}
+            aria-label="Personalized Learning Pathway"
+            title="Adaptive Learning Roadmap"
+          >
+            <Check size={16} className="text-teal-500 hover:text-teal-700 transition-colors" />
+          </button>
+          <button 
+            onClick={() => {
+              window.dispatchEvent(new CustomEvent('openOverlay', { detail: 'aiConversationPartner' }));
+            }}
+            className={`grid place-items-center ${ICON_BTN_ROUND_SOFT}`}
+            aria-label="AI Conversation Partner"
+            title="Always-Available Practice Companion"
+          >
+            <MessageCircle size={16} className="text-indigo-500 hover:text-indigo-700 transition-colors" />
+          </button>
+          <button 
+            onClick={() => {
+              window.dispatchEvent(new CustomEvent('openOverlay', { detail: 'aiFlashcardMastery' }));
+            }}
+            className={`grid place-items-center ${ICON_BTN_ROUND_SOFT}`}
+            aria-label="AI Flashcard Mastery"
+            title="Smart Spaced Repetition Decks"
+          >
+            <Sparkles size={16} className="text-teal-500 hover:text-teal-700 transition-colors animate-pulse" />
           </button>
         </div>
       </div>
