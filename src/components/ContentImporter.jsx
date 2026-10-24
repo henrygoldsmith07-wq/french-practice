@@ -5,12 +5,10 @@
 // the learner explicitly exports to a remote service. The extracted content
 // is merged into the spaced repetition schedule with conservative initial intervals.
 
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef } from 'react';
 import { Upload, FileText, BookOpen, CheckCircle, AlertCircle, X, Download, RefreshCw } from './icons';
-import { classNames } from './classNames';
 import { addVocabEntry, getVocabularyBySource } from '../lib/vocabAsync';
-import { readSettings } from '../lib/storage';
-import { activeLanguage } from '../lib/content/active';
+import { contentLang } from '../lib/content/active';
 
 const ACCEPTED_PDF = '.pdf';
 const ACCEPTED_CSV = '.csv';
@@ -23,6 +21,7 @@ export default function ContentImporter({ open, onClose, onXp }) {
   const [extractedWords, setExtractedWords] = useState([]);
   const [stats, setStats] = useState({ total: 0, new: 0, duplicates: 0, added: 0 });
   const [mergeMode, setMergeMode] = useState('append'); // append | replace
+  const [pastedText, setPastedText] = useState('');
   const fileInputRef = useRef(null);
 
   const detectFileType = (file) => {
@@ -88,7 +87,7 @@ export default function ContentImporter({ open, onClose, onXp }) {
     }
   };
 
-  const handleDrop = useCallback(async (e) => {
+  const handleDrop = async (e) => {
     e.preventDefault();
     e.stopPropagation();
     setDragActive(false);
@@ -97,7 +96,7 @@ export default function ContentImporter({ open, onClose, onXp }) {
     if (files && files[0]) {
       await processFile(files[0]);
     }
-  }, []);
+  };
 
   const handleFileSelect = async (e) => {
     const files = e.target.files;
@@ -176,8 +175,7 @@ export default function ContentImporter({ open, onClose, onXp }) {
   };
 
   const importWords = async () => {
-    const settings = readSettings();
-    const lang = activeLanguage().id;
+    const lang = contentLang();
     const existing = getVocabularyBySource(lang) || [];
     const existingTargets = new Set(existing.map(e => e.target?.toLowerCase()));
 
@@ -203,9 +201,14 @@ export default function ContentImporter({ open, onClose, onXp }) {
       return;
     }
 
-    // Add new entries with conservative SRS intervals (new words start easy)
+    // Add new entries with conservative SRS intervals (new words start easy).
+    // The count is what was ACTUALLY stored, not what we tried to store: the
+    // learner's own word list has a cap, and a duplicate is skipped. Reporting
+    // the attempt count would tell the learner their words are in when they
+    // are not.
+    let addedCount = 0;
     for (const word of toAdd) {
-      await addVocabEntry({
+      const saved = await addVocabEntry({
         ...word,
         lang,
         interval: 1, // Start with 1 day (conservative for imported content)
@@ -216,18 +219,19 @@ export default function ContentImporter({ open, onClose, onXp }) {
         priority: 'medium',
         tags: ['imported'],
       });
+      if (saved) addedCount += 1;
     }
 
     setStats({
       total: extractedWords.length,
       new: newCount,
       duplicates: dupCount,
-      added: toAdd.length
+      added: addedCount
     });
 
     // Award XP for successful imports
-    if (toAdd.length > 0) {
-      onXp(Math.min(50, Math.round(toAdd.length * 2))); // Up to 50 XP max
+    if (addedCount > 0) {
+      onXp(Math.min(50, Math.round(addedCount * 2))); // Up to 50 XP max
     }
 
     // Auto-dismiss after 3 seconds
@@ -235,15 +239,14 @@ export default function ContentImporter({ open, onClose, onXp }) {
   };
 
   const handlePasteInputToWords = () => {
-    const pasteInput = document.getElementById('paste-input');
-    if (!pasteInput || !pasteInput.value.trim()) return;
-    
-    const text = pasteInput.value;
+    const text = pastedText.trim();
+    if (!text) return;
+
     // Create a virtual file object
     const blob = new Blob([text], { type: 'text/plain' });
     const file = new File([blob], 'pasted.txt', { type: 'text/plain' });
-    
-    pasteInput.value = ''; // Clear input
+
+    setPastedText('');
     processFile(file);
   };
 
@@ -315,10 +318,12 @@ export default function ContentImporter({ open, onClose, onXp }) {
                   className="w-full min-h-[120px] px-3 py-2 border border-line rounded-lg text-xs bg-surface focus:border-ink focus:outline-none resize-vertical"
                   placeholder="Paste your vocabulary list here..."
                   id="paste-input"
+                  value={pastedText}
+                  onChange={(e) => setPastedText(e.target.value)}
                 />
                 <button
                   onClick={() => handlePasteInputToWords()}
-                  disabled={!document.getElementById('paste-input')?.value.trim()}
+                  disabled={!pastedText.trim()}
                   className="mt-2 btn btn-secondary min-h-9 px-3 rounded-lg text-xs disabled:opacity-50"
                 >
                   Process Pasted Text

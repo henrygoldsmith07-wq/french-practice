@@ -64,22 +64,28 @@ export const AVATARS = [
 ];
 
 // ---- achievements ----
+//
+// `value` and `target` say how far along the learner is, so a screen can
+// show "4 / 5 sessions" instead of a locked badge with no explanation. The
+// invariant is checked in tests/game-progress.test.js: `check(stats)` must
+// agree with `value(stats) >= target`, so the number on screen and the
+// moment it unlocks can never disagree.
 
 export const ACHIEVEMENTS = [
-  { id: 'premier-pas', emoji: '👣', title: 'Premiers pas', desc: 'Earn your first XP', coins: 10, check: (s) => s.xp > 0 },
-  { id: 'causeur', emoji: '💬', title: 'Causeur', desc: 'Finish 5 Arena sessions', coins: 25, check: (s) => s.sessions >= 5 },
-  { id: 'serie-3', emoji: '🔥', title: 'Bien parti', desc: 'A 3-day streak', coins: 15, check: (s) => s.streak >= 3 },
-  { id: 'serie-7', emoji: '🌋', title: 'Inarrêtable', desc: 'A 7-day streak', coins: 50, check: (s) => s.streak >= 7 },
-  { id: 'mille', emoji: '⚡', title: 'Millier', desc: 'Reach 1,000 XP', coins: 30, check: (s) => s.xp >= 1000 },
-  { id: 'cinq-mille', emoji: '🏆', title: 'Grand fond', desc: 'Reach 5,000 XP', coins: 100, check: (s) => s.xp >= 5000 },
-  { id: 'niveau-5', emoji: '🎖️', title: 'Niveau 5', desc: 'Reach level 5', coins: 25, check: (s) => s.level >= 5 },
-  { id: 'niveau-10', emoji: '🏅', title: 'Niveau 10', desc: 'Reach level 10', coins: 60, check: (s) => s.level >= 10 },
-  { id: 'studieux', emoji: '🃏', title: 'Studieux', desc: 'Review 100 flashcards', coins: 40, check: (s) => s.reviews >= 100 },
-  { id: 'grammairien', emoji: '📐', title: 'Grammairien', desc: 'Master a grammar topic (80+)', coins: 25, check: (s) => s.grammarMastered >= 1 },
-  { id: 'lexicographe', emoji: '📔', title: 'Lexicographe', desc: 'Save 20 words to your notebook', coins: 25, check: (s) => s.notebook >= 20 },
-  { id: 'collectionneur', emoji: '🖼️', title: 'Collectionneur', desc: 'Own 5 collectibles', coins: 50, check: (s) => s.collectibles >= 5 },
-  { id: 'repetiteur', emoji: '🎤', title: 'Répétiteur', desc: 'Complete 5 phrase drills', coins: 30, check: (s) => (s.drills || 0) >= 5 },
-  { id: 'surligneur', emoji: '⭐', title: 'Surligneur', desc: 'Star 10 survival lines', coins: 20, check: (s) => (s.starred || 0) >= 10 },
+  { id: 'premier-pas', emoji: '👣', title: 'Premiers pas', desc: 'Earn your first XP', coins: 10, check: (s) => s.xp > 0, value: (s) => (s.xp > 0 ? 1 : 0), target: 1 },
+  { id: 'causeur', emoji: '💬', title: 'Causeur', desc: 'Finish 5 Arena sessions', coins: 25, check: (s) => s.sessions >= 5, value: (s) => s.sessions, target: 5 },
+  { id: 'serie-3', emoji: '🔥', title: 'Bien parti', desc: 'A 3-day streak', coins: 15, check: (s) => s.streak >= 3, value: (s) => s.streak, target: 3 },
+  { id: 'serie-7', emoji: '🌋', title: 'Inarrêtable', desc: 'A 7-day streak', coins: 50, check: (s) => s.streak >= 7, value: (s) => s.streak, target: 7 },
+  { id: 'mille', emoji: '⚡', title: 'Millier', desc: 'Reach 1,000 XP', coins: 30, check: (s) => s.xp >= 1000, value: (s) => s.xp, target: 1000 },
+  { id: 'cinq-mille', emoji: '🏆', title: 'Grand fond', desc: 'Reach 5,000 XP', coins: 100, check: (s) => s.xp >= 5000, value: (s) => s.xp, target: 5000 },
+  { id: 'niveau-5', emoji: '🎖️', title: 'Niveau 5', desc: 'Reach level 5', coins: 25, check: (s) => s.level >= 5, value: (s) => s.level, target: 5 },
+  { id: 'niveau-10', emoji: '🏅', title: 'Niveau 10', desc: 'Reach level 10', coins: 60, check: (s) => s.level >= 10, value: (s) => s.level, target: 10 },
+  { id: 'studieux', emoji: '🃏', title: 'Studieux', desc: 'Review 100 flashcards', coins: 40, check: (s) => s.reviews >= 100, value: (s) => s.reviews, target: 100 },
+  { id: 'grammairien', emoji: '📐', title: 'Grammairien', desc: 'Master a grammar topic (80+)', coins: 25, check: (s) => s.grammarMastered >= 1, value: (s) => s.grammarMastered, target: 1 },
+  { id: 'lexicographe', emoji: '📔', title: 'Lexicographe', desc: 'Save 20 words to your notebook', coins: 25, check: (s) => s.notebook >= 20, value: (s) => s.notebook, target: 20 },
+  { id: 'collectionneur', emoji: '🖼️', title: 'Collectionneur', desc: 'Own 5 collectibles', coins: 50, check: (s) => s.collectibles >= 5, value: (s) => s.collectibles, target: 5 },
+  { id: 'repetiteur', emoji: '🎤', title: 'Répétiteur', desc: 'Complete 5 phrase drills', coins: 30, check: (s) => (s.drills || 0) >= 5, value: (s) => (s.drills || 0), target: 5 },
+  { id: 'surligneur', emoji: '⭐', title: 'Surligneur', desc: 'Star 10 survival lines', coins: 20, check: (s) => (s.starred || 0) >= 10, value: (s) => (s.starred || 0), target: 10 },
 ];
 
 // ---- daily challenges (3 per day, deterministic pick) ----

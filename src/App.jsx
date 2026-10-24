@@ -1,8 +1,8 @@
-import { Component, lazy, Suspense, useEffect, useMemo, useReducer, useRef, useState } from 'react';
+import { Component, lazy, Suspense, useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import HomeDashboard from './components/HomeDashboard';
 import FeedbackWidget from './components/FeedbackWidget';
 import WithErrorBoundary, { createLazyWithBoundary } from './components/WithErrorBoundary';
-import { LoadingScreen, TodaySessionSkeleton, ConversationSkeleton, ProgressChartSkeleton } from './components/LoadingScreen';
+import LoadingScreen, { TodaySessionSkeleton, ConversationSkeleton, ProgressChartSkeleton } from './components/LoadingScreen';
 import ScreenLoader, { TodayLoader, ConversationLoader, VocabularyLoader, ProgressLoader } from './components/ScreenLoader';
 // Conversatios/Arena - AI conversation feature
 const ChatArena = createLazyWithBoundary(() => import('./components/ChatArena'), {
@@ -209,8 +209,21 @@ export default function App() {
   // Android Back close whatever is open via useOverlayNav; opening a second
   // overlay replaces the first (modal focus, not a stack).
   const [overlay, dispatchOverlay] = useReducer(overlayReducer, initialOverlay);
-  const openOverlay = (name, payload = undefined) => dispatchOverlay({ type: 'open', overlay: name, payload });
+  const openOverlay = useCallback((name, payload = undefined) => dispatchOverlay({ type: 'open', overlay: name, payload }), []);
   const closeOverlay = () => dispatchOverlay({ type: 'close' });
+  // Some surfaces open an overlay by dispatching an event rather than taking
+  // the openOverlay function as a prop: the Profile (AI Study Assistant,
+  // Gamification Hub) and the Vocabulary screen (import a word list). Nothing
+  // listened for that event, so all three of those buttons did nothing at
+  // all — the panels behind them could not be reached.
+  useEffect(() => {
+    const onOpenOverlay = (event) => {
+      const name = event && event.detail;
+      if (name) openOverlay(name);
+    };
+    window.addEventListener('openOverlay', onOpenOverlay);
+    return () => window.removeEventListener('openOverlay', onOpenOverlay);
+  }, [openOverlay]);
   // In-flight session lifecycle (persist/restore, warm-then-heal scenario
   // resolution, language switching) and document appearance live in focused
   // hooks; App stays composition.
@@ -496,6 +509,10 @@ export default function App() {
       setTab('learn');
     }
     else if (la.type === 'cards') setTab('review');
+    // The speaking skill area is where pronunciation practice lives. The AI
+    // Study Assistant sends the learner there when a sound contrast needs
+    // work, so the button lands on the thing it talks about.
+    else if (la.type === 'speaking') { setSkillArea('speaking'); setLearnView('skills'); setTab('learn'); }
     else if (la.type === 'dictation') { setSkillArea('listening'); setListeningMode('dictation'); setLearnView('skills'); setTab('learn'); }
     else if (la.type === 'quickfire') { setSkillArea('speaking'); setSpeakingMode('quickfire'); setLearnView('skills'); setTab('learn'); }
     else if (la.type === 'field-note') { setTab('learn'); setLearnView('field-notes'); }
@@ -751,17 +768,21 @@ export default function App() {
       {overlayIs(overlay, 'contentImport') && <ContentImporter open onClose={closeOverlay} onXp={awardXp} />}
       {overlayIs(overlay, 'teacherDashboard') && <TeacherDashboard open onClose={closeOverlay} />}
       {overlayIs(overlay, 'socialSharing') && <SocialSharingCards open onClose={closeOverlay} />}
-      {overlayIs(overlay, 'aiAssistant') && <AIStudyAssistant open onClose={closeOverlay} userState={{
-        weeklyXP: 450,
-        streakCount: 12,
-        recentAverageMinutes: 25,
-        weakestArea: 'pronunciation',
-        lowAccuracyWords: ['chat', 'maison', 'homme'],
-        activityByHour: { 7: 5, 8: 8, 9: 3, 18: 7, 19: 9, 20: 6 },
-        momentum: 1.15,
-        lastActivity: Date.now() - (2 * 60 * 60 * 1000),
-      }} />}
-      {overlayIs(overlay, 'gamification') && <GamificationHub open onClose={closeOverlay} />}
+      {overlayIs(overlay, 'aiAssistant') && (
+        <AIStudyAssistant
+          open
+          onClose={closeOverlay}
+          onGo={(target) => { closeOverlay(); resumeActivity(target); }}
+        />
+      )}
+      {overlayIs(overlay, 'gamification') && (
+        <GamificationHub
+          open
+          onClose={closeOverlay}
+          onXp={awardXp}
+          onChange={refreshRewards}
+        />
+      )}
       {overlayIs(overlay, 'learningPath') && (
         <div className="fixed inset-0 z-[55] overflow-y-auto bg-bg" role="dialog" aria-modal="true" aria-label="Learning path">
           <div className="mx-auto min-h-full max-w-lg px-4 py-4">
@@ -851,14 +872,6 @@ function Celebration({ data, onDone }) {
         <p className="mt-1 text-sm text-ink2">{level ? (data.newTitle ? `You’re now ${data.title}. Keep the momentum.` : 'Another level down — keep the momentum.') : 'Daily goal reached — anything more today is pure bonus.'}</p>
         <button onClick={onDone} className="btn btn-primary w-full min-h-11 rounded-xl text-sm mt-5">{level ? 'Keep going' : 'Nice work'}</button>
       </div>
-    </div>
-  );
-}
-
-function ScreenLoader() {
-  return (
-    <div className="flex-1 grid place-items-center py-20" role="status" aria-label="Loading">
-      <span className="w-6 h-6 rounded-full border-2 border-line border-t-ink animate-spin" />
     </div>
   );
 }

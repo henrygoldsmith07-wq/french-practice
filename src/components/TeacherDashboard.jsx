@@ -1,16 +1,57 @@
 import { useState, useMemo } from 'react';
-import { BarChart2, Users, TrendingUp, Target, Clock, Mail, FileText } from './icons';
+import { BarChart2, Users, TrendingUp, Target, Clock, FileText } from './icons';
 import { CHIP } from '../components/classNames.js';
 
 /**
- * TeacherDashboard - Free tier for educators to view aggregated student progress
- * Privacy-preserving: anonymized data only, no personal information exposed
+ * TeacherDashboard - a preview of a teacher view.
+ *
+ * There is no class data source in the app: Le Studio is a single-learner,
+ * local-first PWA, so nothing here comes from a real classroom. The panel
+ * says so on screen, and the export button writes the numbers you are
+ * looking at to a CSV — a button that pretends to do something is worse than
+ * no button at all.
  */
+
+// The rows behind the panel, in the order the table shows them.
+const csvRowsFor = (classes) => {
+  const rows = [['class', 'student_id', 'sessions_completed', 'avg_accuracy', 'active_weaknesses', 'status']];
+  for (const cls of classes) {
+    for (const s of cls.students) {
+      rows.push([cls.name, s.id, s.sessionsCompleted, s.avgAccuracy, s.activeWeaknesses, s.status]);
+    }
+  }
+  return rows;
+};
+
+const downloadCsv = (classes, filename) => {
+  const csv = csvRowsFor(classes)
+    .map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(','))
+    .join('\n');
+  const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+};
+
+// Export the rows behind the panel. `target` is a class, a list of classes,
+// or nothing (which means every class).
+const exportSampleData = (target) => {
+  const classes = Array.isArray(target) ? target : target ? [target] : sampleClasses;
+  if (!classes.length) return;
+  downloadCsv(classes, 'le-studio-sample-class-data.csv');
+};
+
 export default function TeacherDashboard({ open, onClose }) {
-  if (!open) return null;
-  
+  // The hooks come BEFORE the early return. React requires the same hooks in
+  // the same order on every render, so returning early above them would make
+  // the hook count change when the dashboard is opened or closed — which
+  // React turns into a crash, not a blank screen.
   const [selectedClass, setSelectedClass] = useState(null);
   const [viewMode, setViewMode] = useState('overview'); // overview | details | reports
+
+  if (!open) return null;
 
   return (
     <div className="fixed inset-0 z-[55] overflow-y-auto bg-bg" role="dialog" aria-modal="true" aria-label="Teacher dashboard">
@@ -25,11 +66,24 @@ export default function TeacherDashboard({ open, onClose }) {
           </button>
         </div>
 
+        {/* Say what the numbers are. Every figure on this screen is invented:
+            there is no classroom connected to the app, and a panel of made-up
+            statistics is not a class report. */}
+        <div
+          role="note"
+          className="mb-5 rounded-xl border border-yellow200 bg-yellow50 px-4 py-3 text-xs text-yellow800"
+        >
+          <strong className="font-semibold">Sample data.</strong>{' '}
+          This is a preview of what a class view would look like. No classroom is
+          connected, so every number below is made up — including the student
+          names, which are not real people.
+        </div>
+
         {/* Sidebar */}
         <aside className="w-72 border-r border-line bg-surface flex flex-col">
           <div className="p-5 border-b border-line">
             <h2 className="text-lg font-bold text-ink">Teacher Dashboard</h2>
-            <p className="mt-1 text-xs text-ink2">Free educator tier</p>
+            <p className="mt-1 text-xs text-ink2">Preview</p>
           </div>
 
           {/* Class List */}
@@ -69,15 +123,16 @@ export default function TeacherDashboard({ open, onClose }) {
             ))}
 
             {/* Add New Class Button */}
-            <button className="w-full mt-3 rounded-xl border border-dashed border-line bg-transparent px-4 py-3 text-sm text-ink2 hover:border-primary hover:text-primary transition-colors">
-              + Create new class
-            </button>
+            <p className="mt-3 rounded-xl border border-dashed border-line px-4 py-3 text-[11px] leading-snug text-ink3">
+              There is no way to add a class: the studio is a single-learner app with no
+              accounts and no server, so a class cannot be created here.
+            </p>
           </div>
 
           {/* Export Section */}
           <div className="p-3 border-t border-line">
-            <button 
-              onClick={() => alert('Export functionality would generate anonymized CSV report')}
+            <button
+              onClick={() => exportSampleData(selectedClass)}
               className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-white hover:bg-primary/90"
             >
               <FileText size={14} /> Export Report
@@ -88,13 +143,14 @@ export default function TeacherDashboard({ open, onClose }) {
         {/* Main Content */}
         <main className="flex-1 overflow-y-auto bg-white">
           {selectedClass ? (
-            <ClassDetailView 
-              classData={selectedClass} 
+            <ClassDetailView
+              classData={selectedClass}
               viewMode={viewMode}
               onSetViewMode={setViewMode}
+              onClose={onClose}
             />
           ) : (
-            <OverviewView />
+            <OverviewView onOpenClass={(cls) => { setSelectedClass(cls); setViewMode('overview'); }} />
           )}
         </main>
       </div>
@@ -105,7 +161,7 @@ export default function TeacherDashboard({ open, onClose }) {
 /**
  * Overview view showing all classes at a glance
  */
-function OverviewView() {
+function OverviewView({ onOpenClass }) {
   const totalStudents = sampleClasses.reduce((sum, cls) => sum + cls.students.length, 0);
   const avgEngagement = Math.round(sampleClasses.reduce((sum, cls) => sum + cls.avgEngagement, 0) / sampleClasses.length);
 
@@ -113,7 +169,7 @@ function OverviewView() {
     <div className="p-6 space-y-6">
       <header>
         <h2 className="text-2xl font-bold text-ink">All Classes Overview</h2>
-        <p className="mt-1 text-sm text-ink2">Privacy-preserving aggregated metrics</p>
+        <p className="mt-1 text-sm text-ink2">Sample class data, generated on this device</p>
       </header>
 
       {/* Summary Cards */}
@@ -145,21 +201,22 @@ function OverviewView() {
       <h3 className="text-sm font-bold uppercase tracking-wider text-ink2 mt-8">Your Classes</h3>
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {sampleClasses.map(cls => (
-          <ClassCard key={cls.id} classData={cls} />
+          <ClassCard key={cls.id} classData={cls} onOpenClass={onOpenClass} />
         ))}
       </div>
 
-      {/* Privacy Notice */}
+      {/* What this panel does and does not do */}
       <div className="rounded-2xl border border-primary/20 bg-primary/5 p-4">
         <div className="flex items-start gap-3">
           <div className="rounded-full bg-primary/20 p-2">
             <Target size={16} className="text-primary" />
           </div>
           <div>
-            <h4 className="text-sm font-semibold text-ink">Privacy-Preserving Analytics</h4>
+            <h4 className="text-sm font-semibold text-ink">Nothing here is collected</h4>
             <p className="mt-1 text-xs text-ink2 leading-relaxed">
-              All student data is completely anonymized. You see aggregate progress patterns, not individual names or personal information. 
-              This protects student privacy while giving you actionable insights into your class performance.
+              There is no class, no student and no server behind this preview. The names are made up,
+              the figures are made up, and none of it leaves this device — the studio keeps a single
+              learner's progress on this device and sends it nowhere.
             </p>
           </div>
         </div>
@@ -197,9 +254,9 @@ function SummaryCard({ title, value, subtitle, icon: Icon, color = 'primary' }) 
 /**
  * Individual class overview card
  */
-function ClassCard({ classData }) {
+function ClassCard({ classData, onOpenClass }) {
   return (
-    <div className="rounded-2xl border border-line bg-surface p-5 hover:border-ink3/50 transition-colors cursor-pointer">
+    <div className="rounded-2xl border border-line bg-surface p-5 hover:border-ink3/50 transition-colors">
       <div className="flex items-start justify-between mb-4">
         <div className="flex items-center gap-3">
           <div className={`w-3 h-3 rounded-full ${classData.color}`} />
@@ -240,11 +297,11 @@ function ClassCard({ classData }) {
 
       {/* Quick actions */}
       <div className="mt-4 flex gap-2">
-        <button className="flex-1 rounded-xl border border-line bg-surface2 px-3 py-2 text-xs font-medium text-ink hover:bg-surface3 transition-colors">
+        <button
+          onClick={() => onOpenClass(classData)}
+          className="flex-1 rounded-xl border border-line bg-surface2 px-3 py-2 text-xs font-medium text-ink hover:bg-surface3 transition-colors"
+        >
           View Details
-        </button>
-        <button className="flex-1 rounded-xl border border-line bg-surface2 px-3 py-2 text-xs font-medium text-ink hover:bg-surface3 transition-colors">
-          Send Message
         </button>
       </div>
     </div>
@@ -254,7 +311,7 @@ function ClassCard({ classData }) {
 /**
  * Detailed class view with tabs
  */
-function ClassDetailView({ classData, viewMode, onSetViewMode }) {
+function ClassDetailView({ classData, viewMode, onSetViewMode, onClose }) {
   return (
     <div className="h-full flex flex-col">
       {/* Header */}
@@ -492,8 +549,11 @@ function ReportsView({ classData }) {
             </div>
           </div>
 
-          <button className="w-full rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-white hover:bg-primary/90">
-            Generate & Download CSV
+          <button
+            onClick={() => exportSampleData(classData)}
+            className="w-full rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-white hover:bg-primary/90"
+          >
+            Generate &amp; Download CSV
           </button>
         </div>
       </div>
@@ -504,9 +564,12 @@ function ReportsView({ classData }) {
         <div className="flex items-center justify-between rounded-xl border border-line bg-surface2 p-4">
           <div>
             <p className="text-sm font-semibold text-ink">Termly Progress Report - French GCSE</p>
-            <p className="text-xs text-ink2 mt-0.5">Generated Oct 15, 2024</p>
+            <p className="text-xs text-ink2 mt-0.5">A sample report, not one from a real class</p>
           </div>
-          <button className="inline-flex items-center gap-2 rounded-xl border border-line bg-surface px-4 py-2 text-sm font-medium text-ink hover:bg-surface3">
+          <button
+            onClick={() => exportSampleData(classData)}
+            className="inline-flex items-center gap-2 rounded-xl border border-line bg-surface px-4 py-2 text-sm font-medium text-ink hover:bg-surface3"
+          >
             Download
           </button>
         </div>
