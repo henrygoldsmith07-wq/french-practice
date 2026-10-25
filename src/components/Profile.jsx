@@ -170,6 +170,26 @@ export default function Profile({ open, onClose, onXp, onHeaderChange, onMemberS
           >
             <Sparkles size={16} className="text-teal-500 hover:text-teal-700 transition-colors animate-pulse" />
           </button>
+          <button 
+            onClick={() => {
+              window.dispatchEvent(new CustomEvent('openOverlay', { detail: 'peerLeaderboard' }));
+            }}
+            className={`grid place-items-center ${ICON_BTN_ROUND_SOFT}`}
+            aria-label="Peer Leaderboard"
+            title="Competitive Learning Dashboard"
+          >
+            <Trophy size={16} className="text-amber-500 hover:text-amber-700 transition-colors" />
+          </button>
+          <button 
+            onClick={() => {
+              window.dispatchEvent(new CustomEvent('openOverlay', { detail: 'habitTracker' }));
+            }}
+            className={`grid place-items-center ${ICON_BTN_ROUND_SOFT}`}
+            aria-label="Habit Tracker"
+            title="Daily Streak & Motivational Reminders"
+          >
+            <Flame size={16} className="text-orange-500 hover:text-orange-700 transition-colors animate-pulse" />
+          </button>
         </div>
       </div>
 

@@ -66,6 +66,12 @@ const PersonalizedLearningPathway = lazy(() => import('./components/Personalized
 // AI Flashcard Mastery - intelligent spaced repetition with confidence-based scheduling
 const AIFlashcardMastery = lazy(() => import('./components/AIFlashcardMastery'));
 
+// Peer Comparison Leaderboard - competitive learning dashboard
+const PeerComparisonLeaderboard = lazy(() => import('./components/PeerComparisonLeaderboard'));
+
+// Habit Formation Tracker - behavioral psychology-powered streak system
+const HabitTracker = lazy(() => import('./components/HabitTracker'));
+
 // AI Conversation Partner - always-available conversational practice companion
 const AIConversationPartner = lazy(() => import('./components/AIConversationPartner'));
 
@@ -805,6 +811,8 @@ export default function App() {
       {overlayIs(overlay, 'aiWritingCoach') && <AIWritingCoach open onClose={closeOverlay} />}
       {overlayIs(overlay, 'personalizedPathway') && <PersonalizedLearningPathway open onClose={closeOverlay} />}
       {overlayIs(overlay, 'aiFlashcardMastery') && <AIFlashcardMastery open onClose={closeOverlay} />}
+      {overlayIs(overlay, 'peerLeaderboard') && <PeerComparisonLeaderboard open onClose={closeOverlay} />}
+      {overlayIs(overlay, 'habitTracker') && <HabitTracker open onClose={closeOverlay} />}
       {overlayIs(overlay, 'aiConversationPartner') && <AIConversationPartner open onClose={closeOverlay} />}
       {overlayIs(overlay, 'immersiveLearning') && <ImmersiveLearningMode open onClose={closeOverlay} />}
       </Suspense>
