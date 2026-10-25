@@ -200,6 +200,16 @@ export default function Profile({ open, onClose, onXp, onHeaderChange, onMemberS
           >
             <BarChart size={16} className="text-indigo-500 hover:text-indigo-700 transition-colors" />
           </button>
+          <button 
+            onClick={() => {
+              window.dispatchEvent(new CustomEvent('openOverlay', { detail: 'smartRecommendations' }));
+            }}
+            className={`grid place-items-center ${ICON_BTN_ROUND_SOFT}`}
+            aria-label="Smart Recommendations"
+            title="AI-Powered Learning Suggestions"
+          >
+            <Sparkles size={16} className="text-pink-500 hover:text-pink-700 transition-colors animate-bounce" />
+          </button>
         </div>
       </div>
 
