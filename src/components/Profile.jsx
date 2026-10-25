@@ -15,7 +15,7 @@ import { buildGameStats } from '../lib/gameStats.js';
 import { grantEarnedRewards, claimDailyChallenge } from '../lib/gameGrants.js';
 import WeeklyLeague from './WeeklyLeague.jsx';
 import Stats from './Stats';
-import { X, Check, Flame, Bolt, Coins, Trophy, Lock, Brain, Zap, Award, MessageCircle, Sparkles } from './icons';
+import { X, Check, Flame, Bolt, Coins, Trophy, Lock, Brain, Zap, Award, MessageCircle, Sparkles, BarChart } from './icons';
 import { ICON_BTN_ROUND_SOFT, TOP_BAR } from '../components/classNames.js';
 
 // Player profile: level & title, coins, the weekly league, daily challenges,
@@ -189,6 +189,16 @@ export default function Profile({ open, onClose, onXp, onHeaderChange, onMemberS
             title="Daily Streak & Motivational Reminders"
           >
             <Flame size={16} className="text-orange-500 hover:text-orange-700 transition-colors animate-pulse" />
+          </button>
+          <button 
+            onClick={() => {
+              window.dispatchEvent(new CustomEvent('openOverlay', { detail: 'performanceAnalytics' }));
+            }}
+            className={`grid place-items-center ${ICON_BTN_ROUND_SOFT}`}
+            aria-label="Performance Analytics"
+            title="Real-Time Insights & Predictions"
+          >
+            <BarChart size={16} className="text-indigo-500 hover:text-indigo-700 transition-colors" />
           </button>
         </div>
       </div>
