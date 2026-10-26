@@ -78,6 +78,9 @@ const RealTimePerformanceAnalytics = lazy(() => import('./components/RealTimePer
 // Smart Content Recommendations - behavioral pattern-based learning suggestions
 const SmartContentRecommendations = lazy(() => import('./components/SmartContentRecommendations'));
 
+// AI Virtual Study Buddy - conversational practice partner with adaptive responses
+const AIVirtualStudyBuddy = lazy(() => import('./components/AIVirtualStudyBuddy'));
+
 // AI Conversation Partner - always-available conversational practice companion
 const AIConversationPartner = lazy(() => import('./components/AIConversationPartner'));
 
@@ -821,6 +824,7 @@ export default function App() {
       {overlayIs(overlay, 'habitTracker') && <HabitTracker open onClose={closeOverlay} />}
       {overlayIs(overlay, 'performanceAnalytics') && <RealTimePerformanceAnalytics open onClose={closeOverlay} />}
       {overlayIs(overlay, 'smartRecommendations') && <SmartContentRecommendations open onClose={closeOverlay} />}
+      {overlayIs(overlay, 'virtualBuddy') && <AIVirtualStudyBuddy open onClose={closeOverlay} />}
       {overlayIs(overlay, 'aiConversationPartner') && <AIConversationPartner open onClose={closeOverlay} />}
       {overlayIs(overlay, 'immersiveLearning') && <ImmersiveLearningMode open onClose={closeOverlay} />}
       </Suspense>

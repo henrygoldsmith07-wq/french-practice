@@ -18,6 +18,9 @@ import Stats from './Stats';
 import { X, Check, Flame, Bolt, Coins, Trophy, Lock, Brain, Zap, Award, MessageCircle, Sparkles, BarChart } from './icons';
 import { ICON_BTN_ROUND_SOFT, TOP_BAR } from '../components/classNames.js';
 
+// Helper component for bot icon (can be moved to icons.jsx later)
+const Bot = ({ size, className }) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M12 8V4H8"/><rect x="4" y="8" width="16" height="16" rx="2"/><path d="M10 12v4"/><path d="M14 12v4"/></svg>;
+
 // Player profile: level & title, coins, the weekly league, daily challenges,
 // the avatar shop, achievements, the postcard collection and the seasonal
 // event. Single-player — the league ranks the learner against seeded
@@ -209,6 +212,16 @@ export default function Profile({ open, onClose, onXp, onHeaderChange, onMemberS
             title="AI-Powered Learning Suggestions"
           >
             <Sparkles size={16} className="text-pink-500 hover:text-pink-700 transition-colors animate-bounce" />
+          </button>
+          <button 
+            onClick={() => {
+              window.dispatchEvent(new CustomEvent('openOverlay', { detail: 'virtualBuddy' }));
+            }}
+            className={`grid place-items-center ${ICON_BTN_ROUND_SOFT}`}
+            aria-label="AI Virtual Study Buddy"
+            title="Conversational Practice Assistant"
+          >
+            <Bot size={16} className="text-blue-500 hover:text-blue-700 transition-colors" />
           </button>
         </div>
       </div>
