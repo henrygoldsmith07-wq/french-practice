@@ -101,6 +101,7 @@ const KEYS = {
   realworldSeen: 'fp.realworldSeen', // [itemId] — RealWorld items already opened
   progressCards: 'fp.progressCards.v1', // [{ id, createdAt, themeId, quote, rows, level }] — saved progress cards
   path: 'fp.path', // Learning Path state: goal, CEFR, unit/lesson progress, checkpoints
+  writingHistory: 'fp.writingHistory.v1', // [{ exerciseId, text, timestamp, score }] — Writing Coach analysed samples
 };
 
 export { KEYS };
@@ -146,6 +147,7 @@ const SHAPE = {
   [KEYS.active]: 'object',
   [KEYS.weaknessMemory]: 'object',
   [KEYS.learnerErrors]: 'object',
+  [KEYS.writingHistory]: 'array',
 };
 
 /**

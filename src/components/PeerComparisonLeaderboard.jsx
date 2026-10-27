@@ -4,7 +4,7 @@ import { useDueCount } from '../lib/vocabAsync';
 import { Trophy, Medal, TrendingUp, Users, Zap, Star, Target, Sparkles } from './icons';
 
 export default function PeerComparisonLeaderboard({ open, onClose }) {
-  const [activeTab, setActiveTab] = = useState('all');
+  const [activeTab, setActiveTab] = useState('all');
   const [timeRange, setTimeRange] = useState('weekly');
   const [myRank, setMyRank] = useState(null);
   const tick = `${open}|${activeTab}|${timeRange}`;
@@ -17,7 +17,7 @@ export default function PeerComparisonLeaderboard({ open, onClose }) {
       { id: 'user_003', name: 'Emma D.', level: 10, xp: 12800, streak: 28, sessions: 138, improvement: '+15%', avatar: '👩‍💻' },
       { id: 'user_004', name: 'Pierre L.', level: 9, xp: 11500, streak: 45, sessions: 124, improvement: '+12%', avatar: '👨‍🔬' },
       { id: 'user_005', name: 'Camille R.', level: 9, xp: 10900, streak: 21, sessions: 118, improvement: '+10%', avatar: '👩‍⚕️' },
-      { id: 'me', name: 'You', levelFromXp(getXp()), xp: getXp(), streak: getStreak().count, sessions: getSessions().length, improvement: calculateImprovement(), avatar: '🧑' },
+      { id: 'me', name: 'You', level: levelFromXp(getXp()), xp: getXp(), streak: getStreak().count, sessions: getSessions().length, improvement: calculateImprovement(), avatar: '🧑' },
     ];
     
     // Add more realistic mock users

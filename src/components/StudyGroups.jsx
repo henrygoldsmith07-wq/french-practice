@@ -1,3 +1,4 @@
+import { useState, useMemo } from 'react';
 /**
  * StudyGroups - Collaborative learning with peers
  * Real-time group sessions, accountability partners, and challenge competitions

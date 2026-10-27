@@ -1,3 +1,4 @@
+import { useState, useEffect, useMemo } from 'react';
 /**
  * PersonalizedLearningPathway - Dynamic curriculum builder adapting to learner performance
  * Real-time difficulty adjustment, skill gap identification, and intelligent content routing
@@ -192,17 +193,17 @@ export default function PersonalizedLearningPathway({ open, onClose }) {
     },
   ]);
 
-  const weeklyPlan = useMemo(() => {
-    const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
-    return days.map((day, idx) => ({
-      day,
-      date: new Date(Date.now() + idx * 86400000).toLocaleDateString(),
-      targetMinutes: idx === 5 || idx === 6 ? 15 : 30, // Weekends shorter
-      priorityFocus: idx < 3 ? 'speaking' : idx < 5 ? 'listening' : 'balanced',
-      suggestedActivities: getSuggestedActivities(idx, userProfile),
-      completion: idx < 3 && [true, true, false][idx] || false, // Mock completion data
-    }));
-  }, [userProfile]);
+  // Weekly plan is state, not a memo: regeneratePlan() rewrites it in place
+  // (it used to call setWeeklyPlan on a useMemo const, which would have thrown
+  // a ReferenceError the first time the button fired).
+  const [weeklyPlan, setWeeklyPlan] = useState(() => ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'].map((day, idx) => ({
+    day,
+    date: new Date(Date.now() + idx * 86400000).toLocaleDateString(),
+    targetMinutes: idx === 5 || idx === 6 ? 15 : 30, // Weekends shorter
+    priorityFocus: idx < 3 ? 'speaking' : idx < 5 ? 'listening' : 'balanced',
+    suggestedActivities: getSuggestedActivities(idx, null),
+    completion: idx < 3 && [true, true, false][idx] || false, // Mock completion data
+  })));
 
   useEffect(() => {
     if (!open) return;
@@ -248,18 +249,15 @@ export default function PersonalizedLearningPathway({ open, onClose }) {
 
   const regeneratePlan = () => {
     // Recalculate weekly plan based on current performance
-    const newPlan = useMemo(() => {
-      const days = ['Monday', 'Tuesday', ..., 'Sunday'];
-      return days.map((day, idx) => ({
-        day,
-        date: new Date(Date.now() + idx * 86400000).toLocaleDateString(),
-        targetMinutes: userProfile.dailyGoal / 7,
-        priorityFocus: idx % 3 === 0 ? 'speaking' : idx % 3 === 1 ? 'listening' : 'balanced',
-        suggestedActivities: getSuggestedActivities(idx, userProfile),
-        completion: false,
-      }));
-    }, [userProfile]);
-    
+    const newPlan = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'].map((day, idx) => ({
+      day,
+      date: new Date(Date.now() + idx * 86400000).toLocaleDateString(),
+      targetMinutes: userProfile.dailyGoal / 7,
+      priorityFocus: idx % 3 === 0 ? 'speaking' : idx % 3 === 1 ? 'listening' : 'balanced',
+      suggestedActivities: getSuggestedActivities(idx, userProfile),
+      completion: false,
+    }));
+
     setWeeklyPlan(newPlan);
   };
 
@@ -867,4 +865,4 @@ function generateRecommendations(profile, skillGaps, roadmap) {
   return recommendations.slice(0, 5);
 }
 
-import { Flame, Bolt } from './components/icons';
+import { Flame, Bolt } from './icons';

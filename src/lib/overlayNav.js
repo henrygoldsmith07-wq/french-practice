@@ -29,6 +29,13 @@ export const OVERLAY_TYPES = [
   // content importer, the share cards, the teacher dashboard and the
   // gamification hub could never be opened. Nothing said so.
   'aiAssistant', 'gamification', 'contentImport', 'teacherDashboard', 'socialSharing',
+  // Same failure class, second wave: the peer/habit/analytics/buddy panels
+  // (#11–#15) are rendered in App.jsx and dispatched from Profile.jsx but were
+  // absent here, so makeOverlay() returned null and every button did nothing.
+  'pronunciationCoach', 'studyGroups', 'groupPracticeSessions', 'aiWritingCoach',
+  'personalizedPathway', 'aiFlashcardMastery', 'peerLeaderboard', 'habitTracker',
+  'performanceAnalytics', 'smartRecommendations', 'virtualBuddy', 'aiConversationPartner',
+  'immersiveLearning',
 ];
 
 export const initialOverlay = null;

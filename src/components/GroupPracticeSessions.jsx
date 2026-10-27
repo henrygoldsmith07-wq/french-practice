@@ -1,3 +1,4 @@
+import { useState, useEffect } from 'react';
 /**
  * GroupPracticeSessions - Real-time collaborative learning sessions
  * Multi-user audio rooms with synchronized exercises and live AI feedback
@@ -174,7 +175,7 @@ export default function GroupPracticeSessions({ open, onClose }) {
   const analyzeSpokenResponse = (text, exercise) => {
     // Simplified analysis for demo - would use real AI backend
     const words = text.toLowerCase().split(/\s+/).length;
-    const hasFrenchMarkers = /je\s+voudrais|bonjour|merci|s\'il\s+vous\s+plaît/i.test(text);
+    const hasFrenchMarkers = /je\s+voudrais|bonjour|merci|s'il\s+vous\s+plaît/i.test(text);
     const complexityBonus = words > 20 ? 1.2 : words > 10 ? 1.0 : 0.8;
     
     return {
@@ -507,6 +508,14 @@ function RecordingCard({ recording, onPlay }) {
   );
 }
 
+// mm:ss clock for the live-session timer (module scope: it has no state, so
+// keeping it out of the component avoids a new function identity per render).
+function formatMss(seconds) {
+  const mins = Math.floor(seconds / 60);
+  const secs = seconds % 60;
+  return `${mins}:${secs.toString().padStart(2, '0')}`;
+}
+
 function ActiveSessionView({ session, participants, exercise, stats, onSubmitResponse, onLeave, onStartExercise }) {
   const [userInput, setUserInput] = useState('');
   const [isSpeaking, setIsSpeaking] = useState(false);
@@ -534,7 +543,7 @@ function ActiveSessionView({ session, participants, exercise, stats, onSubmitRes
             <p className="text-xs text-ink3">With {session.hostName}</p>
           </div>
           <div className="flex items-center gap-4 text-xs text-ink2">
-            <span>⏱️ {formatTime(stats.duration)}</span>
+            <span>⏱️ {formatMss(stats.duration)}</span>
             <span>📊 XP: {stats.totalXP}</span>
             <span>👥 {participants.length}/{session.maxParticipants}</span>
           </div>
@@ -683,4 +692,4 @@ function ActiveSessionView({ session, participants, exercise, stats, onSubmitRes
   );
 }
 
-import { Bolt, Flame } from './components/icons';
+import { Bolt, Flame } from './icons';
