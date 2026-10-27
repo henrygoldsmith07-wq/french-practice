@@ -11,21 +11,40 @@
 // against the gate, so the next panel added cannot be left behind.
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { OVERLAY_TYPES, makeOverlay } from '../src/lib/overlayNav.js';
 
 const appSource = readFileSync(new URL('../src/App.jsx', import.meta.url), 'utf8');
 
 // `overlayIs(overlay, 'name')` gates the render; `openOverlay('name')` asks
-// for one. Both have to be names the reducer accepts.
+// for one. Both have to be names the reducer accepts. Components reach the
+// same reducer through a third door — `new CustomEvent('openOverlay',
+// { detail: 'name' })`, relayed to openOverlay() in App.jsx — and that door
+// is where the twelve profile panels were lost: each dispatched a name the
+// gate rejected, silently. So the dispatchers are collected too.
 function collect(pattern) {
   const names = new Set();
   for (const match of appSource.matchAll(pattern)) names.add(match[1]);
   return [...names];
 }
 
+// Every openOverlay CustomEvent dispatched anywhere under src/components.
+function collectComponentDispatchers() {
+  const names = new Set();
+  const dir = new URL('../src/components/', import.meta.url);
+  for (const entry of readdirSync(dir)) {
+    if (!entry.endsWith('.jsx') && !entry.endsWith('.js')) continue;
+    const source = readFileSync(new URL(`../src/components/${entry}`, import.meta.url), 'utf8');
+    for (const match of source.matchAll(/CustomEvent\('openOverlay',\s*\{\s*detail:\s*'([^']+)'/g)) {
+      names.add(match[1]);
+    }
+  }
+  return [...names];
+}
+
 const rendered = collect(/overlayIs\(overlay,\s*'([^']+)'\)/g);
 const opened = collect(/openOverlay\('([^']+)'/g);
+const dispatched = collectComponentDispatchers();
 
 test('App.jsx renders overlays that the overlay gate accepts', () => {
   assert.ok(rendered.length >= 15, `expected App.jsx to render many overlays, found ${rendered.length}`);
@@ -41,6 +60,23 @@ test('every overlay App.jsx opens is accepted by the gate', () => {
   assert.deepEqual(
     unknown, [],
     `these openOverlay() calls are rejected: ${unknown.join(', ')}. Add them to OVERLAY_TYPES in src/lib/overlayNav.js.`,
+  );
+});
+
+test('every openOverlay CustomEvent dispatched from a component is accepted by the gate', () => {
+  assert.ok(dispatched.length >= 10, `expected many event-dispatched overlays, found ${dispatched.length}`);
+  const unknown = dispatched.filter((name) => !OVERLAY_TYPES.includes(name));
+  assert.deepEqual(
+    unknown, [],
+    `these CustomEvent openOverlay dispatches are rejected: ${unknown.join(', ')}. Add them to OVERLAY_TYPES in src/lib/overlayNav.js.`,
+  );
+});
+
+test('every event-dispatched overlay is actually rendered by App.jsx', () => {
+  const orphans = dispatched.filter((name) => !rendered.includes(name));
+  assert.deepEqual(
+    orphans, [],
+    `dispatched but never rendered: ${orphans.join(', ')}`,
   );
 });
 
