@@ -1,7 +1,8 @@
 import { useState, useEffect, useMemo } from 'react';
+import { levelFromXp } from '../lib/game';
 import { getSettings, getXp, getStreak, getSessions } from '../lib/storage';
 import { useDueCount } from '../lib/vocabAsync';
-import { Trophy, Medal, TrendingUp, Users, Zap, Star, Target, Sparkles } from './icons';
+import { Trophy, Medal, TrendingUp, Users, Zap, Star, Target, Sparkles, Flame } from './icons';
 
 export default function PeerComparisonLeaderboard({ open, onClose }) {
   const [activeTab, setActiveTab] = useState('all');
@@ -11,6 +12,7 @@ export default function PeerComparisonLeaderboard({ open, onClose }) {
   
   // Generate mock learner data for comparison
   const learners = useMemo(() => {
+    void tick; // refresh signal: reopening the panel or switching tabs/time re-reads stored XP
     const baseLearners = [
       { id: 'user_001', name: 'Sophie M.', level: 12, xp: 15420, streak: 47, sessions: 156, improvement: '+23%', avatar: '👩‍🎓' },
       { id: 'user_002', name: 'Lucas B.', level: 11, xp: 14200, streak: 32, sessions: 142, improvement: '+18%', avatar: '👨‍🎓' },
@@ -51,19 +53,20 @@ export default function PeerComparisonLeaderboard({ open, onClose }) {
     });
   }, [learners, activeTab, timeRange]);
 
-  const findMyPosition = () => {
-    const myData = learners.find(l => l.id === 'me');
-    const sorted = [...learners].sort((a, b) => {
-      if (timeRange === 'streak') return b.streak - a.streak;
-      if (timeRange === 'improvement') return parseFloat(b.improvement) - parseFloat(a.improvement);
-      return b.xp - a.xp;
-    });
-    return sorted.findIndex(l => l.id === 'me') + 1;
-  };
-
   useEffect(() => {
-    if (open) setMyRank(findMyPosition());
-  }, [open, tick]);
+    // Rank = my 1-based position in the same ordering the table above renders.
+    // Inlined in the effect (the only caller) so exhaustive-deps stays honest
+    // about what the rank is derived from.
+    if (open) {
+      const sorted = [...learners].sort((a, b) => {
+        if (timeRange === 'streak') return b.streak - a.streak;
+        if (timeRange === 'improvement') return parseFloat(b.improvement) - parseFloat(a.improvement);
+        return b.xp - a.xp;
+      });
+      setMyRank(sorted.findIndex((l) => l.id === 'me') + 1);
+    }
+    void tick; // refresh signal: the rank follows the tab/time-range rebuild above
+  }, [open, learners, timeRange, tick]);
 
   const getMedalColor = (rank) => {
     if (rank === 1) return 'text-yellow-400';
