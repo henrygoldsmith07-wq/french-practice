@@ -197,12 +197,6 @@ export default function GroupPracticeSessions({ open, onClose }) {
 
   if (!open) return null;
 
-  const formatTime = (seconds) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins}:${secs.toString().padStart(2, '0')}`;
-  };
-
   return (
     <div className="fixed inset-0 z-[60] bg-bg flex flex-col">
       {/* Header */}
