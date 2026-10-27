@@ -254,6 +254,12 @@ export const LEARNER_KEY_VALUES = [
   // profile (per-phoneme weaknesses, minimal-pair queue) are learner-owned:
   // household members must not share path progress or accent weaknesses.
   KEYS.path, KEYS.phonemeProfile,
+  // The writing history the Writing Coach analysed. It is learner-owned like
+  // the notebook and the seen-lists: household members must not see each
+  // other's analysed samples. It entered KEYS/SHAPE without joining this
+  // list, so read()/write() stored it at the flat device-wide path and the
+  // namespacing the writingStore comment promises did not actually happen.
+  KEYS.writingHistory,
   // The BYOK provider key is a SECRET, so it is the sharpest case of all: two
   // members sharing a device must never silently spend one learner's key on
   // the other's AI requests. Learner-owned also means "Clear key" removes the
