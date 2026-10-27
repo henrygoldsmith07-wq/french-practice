@@ -205,10 +205,11 @@ export default function PersonalizedLearningPathway({ open, onClose }) {
     completion: idx < 3 && [true, true, false][idx] || false, // Mock completion data
   })));
 
-  useEffect(() => {
-    if (!open) return;
-    
-    // Calculate skill gaps based on performance data
+  // Derives the skill gaps / recommendations the Overview shows. Deliberately
+  // a refresh-signal effect (`[open]` + void refs): the inputs are useState
+  // arrays recreated every render, so adding them as deps would re-run this
+  // on every render of the open panel for the same output.
+  const refreshDerivedViews = () => {
     const gaps = skillMastery
       .filter(s => s.currentLevel < s.targetLevel - 5)
       .map(s => ({
@@ -217,12 +218,16 @@ export default function PersonalizedLearningPathway({ open, onClose }) {
         urgency: s.gap > 15 ? 'high' : s.gap > 10 ? 'medium' : 'low',
         recommendedActions: s.recommendedPractice,
       }));
-    
+
     setSkillGaps(gaps.sort((a, b) => b.gap - a.gap));
 
-    // Generate personalized recommendations
-    const recommendations = generateRecommendations(userProfile, skillGaps, roadmap);
-    setRecommendedContent(recommendations);
+    setRecommendedContent(generateRecommendations(userProfile, skillGaps, roadmap));
+  };
+
+  useEffect(() => {
+    if (!open) return;
+    refreshDerivedViews();
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- refresh-signal: re-derive when the panel opens
   }, [open]);
 
   const completeUnit = (unitId) => {
@@ -327,6 +332,8 @@ export default function PersonalizedLearningPathway({ open, onClose }) {
             skillGaps={skillGaps}
             weeklyPlan={weeklyPlan}
             onRegenerate={regeneratePlan}
+            roadmap={roadmap}
+            getProgressColor={getProgressColor}
           />
         )}
 
@@ -358,7 +365,7 @@ export default function PersonalizedLearningPathway({ open, onClose }) {
 
 // Helper Components
 
-function OverviewView({ profile, goal, skillGaps, weeklyPlan, onRegenerate }) {
+function OverviewView({ profile, goal, skillGaps, weeklyPlan, onRegenerate, roadmap, getProgressColor }) {
   const completedCount = roadmap.filter(u => u.status === 'completed').length;
   const totalCount = roadmap.length;
 
