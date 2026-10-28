@@ -212,16 +212,19 @@ export default function PersonalizedLearningPathway({ open, onClose }) {
   const refreshDerivedViews = () => {
     const gaps = skillMastery
       .filter(s => s.currentLevel < s.targetLevel - 5)
-      .map(s => ({
-        skill: s.skill,
-        gap: s.targetLevel - s.currentLevel,
-        urgency: s.gap > 15 ? 'high' : s.gap > 10 ? 'medium' : 'low',
-        recommendedActions: s.recommendedPractice,
-      }));
+      .map(s => {
+        const gap = s.targetLevel - s.currentLevel;
+        return {
+          skill: s.skill,
+          gap,
+          urgency: gap > 15 ? 'high' : gap > 10 ? 'medium' : 'low',
+          recommendedActions: s.recommendedPractice,
+        };
+      });
 
     setSkillGaps(gaps.sort((a, b) => b.gap - a.gap));
 
-    setRecommendedContent(generateRecommendations(userProfile, skillGaps, roadmap));
+    setRecommendedContent(generateRecommendations(userProfile, gaps, roadmap));
   };
 
   useEffect(() => {
@@ -604,7 +607,7 @@ function UnitCard({ unit, onComplete }) {
           )}
         </div>
         
-        {!unit.locked && (
+        {unit.status !== 'locked' && (
           <button className="ml-4 px-4 py-2 bg-accent text-onaccent rounded-lg font-semibold text-sm hover:bg-accent/90 transition-colors">
             {unit.status === 'completed' ? 'Review' : 'Continue'}
           </button>
