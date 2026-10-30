@@ -152,6 +152,15 @@ describe('assistance fading validation', () => {
     assert.ok(m.gap != null);
   });
 
+  it('keeps retention scores within the documented 0-100 range', () => {
+    const event = (retentionScore) => makeAssistanceEvent({ support: 'with', score: 80, retentionScore });
+    assert.equal(event(0).retentionScore, 0);
+    assert.equal(event(100).retentionScore, 100);
+    assert.equal(event(-1).retentionScore, null);
+    assert.equal(event(101).retentionScore, null);
+    assert.equal(event('invalid').retentionScore, null);
+  });
+
   it('detects dependence', () => {
     const events = Array.from({ length: 10 }, () => makeAssistanceEvent({ skill: 'listening', support: 'with', score: 90 }))
       .concat(Array.from({ length: 10 }, () => makeAssistanceEvent({ skill: 'listening', support: 'without', score: 45 })));

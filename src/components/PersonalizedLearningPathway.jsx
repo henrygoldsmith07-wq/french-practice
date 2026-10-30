@@ -1,3 +1,4 @@
+import { useState, useEffect, useMemo } from 'react';
 /**
  * PersonalizedLearningPathway - Dynamic curriculum builder adapting to learner performance
  * Real-time difficulty adjustment, skill gap identification, and intelligent content routing
@@ -192,36 +193,44 @@ export default function PersonalizedLearningPathway({ open, onClose }) {
     },
   ]);
 
-  const weeklyPlan = useMemo(() => {
-    const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
-    return days.map((day, idx) => ({
-      day,
-      date: new Date(Date.now() + idx * 86400000).toLocaleDateString(),
-      targetMinutes: idx === 5 || idx === 6 ? 15 : 30, // Weekends shorter
-      priorityFocus: idx < 3 ? 'speaking' : idx < 5 ? 'listening' : 'balanced',
-      suggestedActivities: getSuggestedActivities(idx, userProfile),
-      completion: idx < 3 && [true, true, false][idx] || false, // Mock completion data
-    }));
-  }, [userProfile]);
+  // Weekly plan is state, not a memo: regeneratePlan() rewrites it in place
+  // (it used to call setWeeklyPlan on a useMemo const, which would have thrown
+  // a ReferenceError the first time the button fired).
+  const [weeklyPlan, setWeeklyPlan] = useState(() => ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'].map((day, idx) => ({
+    day,
+    date: new Date(Date.now() + idx * 86400000).toLocaleDateString(),
+    targetMinutes: idx === 5 || idx === 6 ? 15 : 30, // Weekends shorter
+    priorityFocus: idx < 3 ? 'speaking' : idx < 5 ? 'listening' : 'balanced',
+    suggestedActivities: getSuggestedActivities(idx, null),
+    completion: idx < 3 && [true, true, false][idx] || false, // Mock completion data
+  })));
+
+  // Derives the skill gaps / recommendations the Overview shows. Deliberately
+  // a refresh-signal effect (`[open]` + void refs): the inputs are useState
+  // arrays recreated every render, so adding them as deps would re-run this
+  // on every render of the open panel for the same output.
+  const refreshDerivedViews = () => {
+    const gaps = skillMastery
+      .filter(s => s.currentLevel < s.targetLevel - 5)
+      .map(s => {
+        const gap = s.targetLevel - s.currentLevel;
+        return {
+          skill: s.skill,
+          gap,
+          urgency: gap > 15 ? 'high' : gap > 10 ? 'medium' : 'low',
+          recommendedActions: s.recommendedPractice,
+        };
+      });
+
+    setSkillGaps(gaps.sort((a, b) => b.gap - a.gap));
+
+    setRecommendedContent(generateRecommendations(userProfile, gaps, roadmap));
+  };
 
   useEffect(() => {
     if (!open) return;
-    
-    // Calculate skill gaps based on performance data
-    const gaps = skillMastery
-      .filter(s => s.currentLevel < s.targetLevel - 5)
-      .map(s => ({
-        skill: s.skill,
-        gap: s.targetLevel - s.currentLevel,
-        urgency: s.gap > 15 ? 'high' : s.gap > 10 ? 'medium' : 'low',
-        recommendedActions: s.recommendedPractice,
-      }));
-    
-    setSkillGaps(gaps.sort((a, b) => b.gap - a.gap));
-
-    // Generate personalized recommendations
-    const recommendations = generateRecommendations(userProfile, skillGaps, roadmap);
-    setRecommendedContent(recommendations);
+    refreshDerivedViews();
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- refresh-signal: re-derive when the panel opens
   }, [open]);
 
   const completeUnit = (unitId) => {
@@ -248,18 +257,15 @@ export default function PersonalizedLearningPathway({ open, onClose }) {
 
   const regeneratePlan = () => {
     // Recalculate weekly plan based on current performance
-    const newPlan = useMemo(() => {
-      const days = ['Monday', 'Tuesday', ..., 'Sunday'];
-      return days.map((day, idx) => ({
-        day,
-        date: new Date(Date.now() + idx * 86400000).toLocaleDateString(),
-        targetMinutes: userProfile.dailyGoal / 7,
-        priorityFocus: idx % 3 === 0 ? 'speaking' : idx % 3 === 1 ? 'listening' : 'balanced',
-        suggestedActivities: getSuggestedActivities(idx, userProfile),
-        completion: false,
-      }));
-    }, [userProfile]);
-    
+    const newPlan = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'].map((day, idx) => ({
+      day,
+      date: new Date(Date.now() + idx * 86400000).toLocaleDateString(),
+      targetMinutes: userProfile.dailyGoal / 7,
+      priorityFocus: idx % 3 === 0 ? 'speaking' : idx % 3 === 1 ? 'listening' : 'balanced',
+      suggestedActivities: getSuggestedActivities(idx, userProfile),
+      completion: false,
+    }));
+
     setWeeklyPlan(newPlan);
   };
 
@@ -329,6 +335,8 @@ export default function PersonalizedLearningPathway({ open, onClose }) {
             skillGaps={skillGaps}
             weeklyPlan={weeklyPlan}
             onRegenerate={regeneratePlan}
+            roadmap={roadmap}
+            getProgressColor={getProgressColor}
           />
         )}
 
@@ -360,7 +368,7 @@ export default function PersonalizedLearningPathway({ open, onClose }) {
 
 // Helper Components
 
-function OverviewView({ profile, goal, skillGaps, weeklyPlan, onRegenerate }) {
+function OverviewView({ profile, goal, skillGaps, weeklyPlan, onRegenerate, roadmap, getProgressColor }) {
   const completedCount = roadmap.filter(u => u.status === 'completed').length;
   const totalCount = roadmap.length;
 
@@ -599,7 +607,7 @@ function UnitCard({ unit, onComplete }) {
           )}
         </div>
         
-        {!unit.locked && (
+        {unit.status !== 'locked' && (
           <button className="ml-4 px-4 py-2 bg-accent text-onaccent rounded-lg font-semibold text-sm hover:bg-accent/90 transition-colors">
             {unit.status === 'completed' ? 'Review' : 'Continue'}
           </button>
@@ -867,4 +875,4 @@ function generateRecommendations(profile, skillGaps, roadmap) {
   return recommendations.slice(0, 5);
 }
 
-import { Flame, Bolt } from './components/icons';
+import { Flame, Bolt } from './icons';

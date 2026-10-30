@@ -1,3 +1,4 @@
+import { useState, useEffect, useMemo } from 'react';
 /**
  * ImmersiveLearningMode - Context-aware vocabulary acquisition with visual anchors
  * Scenarios tagged to real-world images for deeper memory encoding
@@ -28,7 +29,7 @@ export default function ImmersiveLearningMode({ open, onClose }) {
       learnings: [
         { word: 'un café', phonetic: '/kafe/', phrase: 'Je voudrais un café, s\'il vous plaît.', context: 'Ordering' },
         { word: 'un croissant', phonetic: '/kʁwasɑ̃/', phrase: 'Un croissant aussi, merci.', context: 'Food item' },
-        { word: 'l\'addition', phonetic: '/ladisjɔ̃/', phrase: L'L\'addition, s\'il vous plaît.', context: 'Payment' },
+        { word: 'l\'addition', phonetic: '/ladisjɔ̃/', phrase: 'L\'addition, s\'il vous plaît.', context: 'Payment' },
         { word: 'payer', phonetic: '/paje/', phrase: 'Je peux payer par carte?', context: 'Payment method' }
       ]
     },
@@ -84,7 +85,7 @@ export default function ImmersiveLearningMode({ open, onClose }) {
     
     // Simulate progress tracking
     const timer = setTimeout(() => {
-      setProgress(Math.min(100, progress + 15));
+      setProgress(p => Math.min(100, p + 15)); // functional update: no `progress` dep needed
     }, 2000);
     
     return () => clearTimeout(timer);
@@ -594,4 +595,4 @@ function CompletionView({ card, finalXP, onDone }) {
 }
 
 // Need these icons imported elsewhere
-import { Flame, Bolt } from './components/icons';
+import { Flame, Bolt } from './icons';
