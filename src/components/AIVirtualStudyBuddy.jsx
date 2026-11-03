@@ -412,7 +412,7 @@ const activeConversationPatterns = [
     suggestedQuestion: 'How motivated do you feel right now?',
   },
   {
-    pattern: /help|aide|m\'aider|je ne comprends pas/,
+    pattern: /help|aide|m'aider|je ne comprends pas/,
     response: "Bien sûr! I'd love to help you! Could you tell me what you're struggling with? We can work through it together. 💪",
     followUp: "Let's break it down step by step.",
     type: 'assistance',

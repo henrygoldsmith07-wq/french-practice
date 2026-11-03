@@ -1,3 +1,4 @@
+import { useState, useEffect } from 'react';
 /**
  * AIFlashcardMastery - Intelligent spaced repetition with confidence-based scheduling
  * Advanced algorithms adapting review intervals based on performance, confidence ratings, and recall speed
@@ -909,4 +910,4 @@ function StatCard({ label, value, icon }) {
   );
 }
 
-import { Bolt, Flame } from './components/icons';
+import { Bolt, Flame } from './icons';

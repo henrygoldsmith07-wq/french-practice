@@ -75,7 +75,11 @@ export default function RealTimePerformanceAnalytics({ open, onClose }) {
         ? Math.round(filteredSessions.reduce((sum, s) => sum + (s.score || 0), 0) / filteredSessions.length)
         : 0,
     };
-  }, [open, selectedMetric, timeRange]);
+    // `open` is the refresh signal: re-derive when the panel opens so the
+    // figures are fresh, not stale from the previous mount. `selectedMetric`
+    // is deliberately excluded — it only changes which existing figure is
+    // highlighted, never the figures themselves.
+  }, [open, timeRange]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const analyzeSkillPerformance = (sessions) => {
     // Mock skill performance based on session types
@@ -325,7 +329,7 @@ export default function RealTimePerformanceAnalytics({ open, onClose }) {
             />
             
             <div className="mt-3 text-xs text-ink3 text-center">
-              {timeRange === 'today' ? 'Today's XP' : 
+              {timeRange === 'today' ? 'Today’s XP' :
                timeRange === '7d' ? 'Last 7 days' :
                timeRange === '30d' ? 'Last 30 days' :
                'Historical progression'}
