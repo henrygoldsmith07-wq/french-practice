@@ -38,7 +38,10 @@ export default function SmartContentRecommendations({ open, onClose }) {
     // Just for you section
     const justForYou = generateJustForYouContent(profile);
     setJustForYou(justForYou);
-  }, [open]);
+    // The builders are component-scope arrow functions; re-running the whole
+    // derivation whenever their identity changed would recompute the same
+    // output, so the effect deliberately re-runs only when the panel opens.
+  }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const buildUserProfile = (sessions, settings, prefs) => {
     if (!sessions || sessions.length === 0) {
@@ -85,7 +88,7 @@ export default function SmartContentRecommendations({ open, onClose }) {
       xp: currentXp,
       streak: getStreak().count,
       learningStyle: dominantStyle,
-      weakAreas: ['grammar', 'pronunciation'].filter(a => !prefs.hasOwnProperty(a) || !prefs[a]),
+      weakAreas: ['grammar', 'pronunciation'].filter(a => !Object.prototype.hasOwnProperty.call(prefs, a) || !prefs[a]),
       strongAreas: ['vocabulary'].filter(a => prefs[a]),
       peakHours: ['morning', 'evening'],
       averageSessionDuration: 15,
@@ -106,7 +109,7 @@ export default function SmartContentRecommendations({ open, onClose }) {
         type: 'skill',
         priority: 'high',
         duration: 20,
-        reason: `You\'ve been focusing heavily on grammar - maintain this momentum!`,
+        reason: `You've been focusing heavily on grammar - maintain this momentum!`,
         icon: 'target',
         tags: ['grammar', 'intermediate', 'structured'],
       });

@@ -28,6 +28,8 @@ export function makeAssistanceEvent({
 } = {}) {
   const s = Number(score);
   if (!Number.isFinite(s) || s < 0 || s > 100) return null;
+  const retention = Number(retentionScore);
+  const validRetention = retentionScore != null && Number.isFinite(retention) && retention >= 0 && retention <= 100;
   const sup = support === 'without' ? 'without' : support === 'with' ? 'with' : null;
   if (!sup) return null;
   const sk = String(skill || 'general').toLowerCase();
@@ -40,7 +42,7 @@ export function makeAssistanceEvent({
     hintsUsed: Number.isFinite(Number(hintsUsed)) ? Math.max(0, Math.round(Number(hintsUsed))) : 0,
     retries: Number.isFinite(Number(retries)) ? Math.max(0, Math.round(Number(retries))) : 0,
     taskId: taskId ? String(taskId).slice(0, 120) : null,
-    retentionScore: retentionScore != null && Number.isFinite(Number(retentionScore)) ? Math.round(Number(retentionScore)) : null,
+    retentionScore: validRetention ? Math.round(retention) : null,
   };
 }
 

@@ -104,7 +104,7 @@ export default function LearningAnalytics({ open, onClose }) {
               </h3>
               <div className="space-y-3">
                 {mockData.weeklyActivity.map((day, i) => (
-                  <ActivityRow key={i} day={day.day} minutes={day.minutes} xp={day.xp} index={i} total={mockData.weeklyActivity.length} />
+                  <ActivityRow key={i} day={day.day} minutes={day.minutes} xp={day.xp} maxMinutes={Math.max(...mockData.weeklyActivity.map(d => d.minutes))} />
                 ))}
               </div>
             </div>
@@ -175,8 +175,7 @@ function MetricCard({ title, value, change, trend, icon: Icon }) {
   );
 }
 
-function ActivityRow({ day, minutes, xp, index, total }) {
-  const maxMinutes = Math.max(...mockData.weeklyActivity.map(d => d.minutes));
+function ActivityRow({ day, minutes, xp, maxMinutes }) {
   const percentage = (minutes / maxMinutes) * 100;
   
   return (
