@@ -166,7 +166,7 @@ export function exportProgress() {
 
 export function importProgress(payload) {
   if (!payload || payload.app !== 'le-studio' || typeof payload.data !== 'object') {
-    throw new Error('That doesnâ€™t look like a Le Studio backup file.');
+    throw new Error('That doesn’t look like a Le Studio backup file.');
   }
   const allowed = new Set(Object.values(KEYS));
   const secretKeys = new Set([KEYS.apiKey, KEYS.quota]); // secret, or transient device state
@@ -1079,7 +1079,7 @@ export function getLearnerBrief() {
       modes: entry.modes,
     })),
     recyclingInstruction: errorGaps.length
-      ? `Recycle these persistent gaps naturally across the next practice: ${errorGaps.map((entry) => `${entry.category} â€” ${entry.label}`).join('; ')}.`
+      ? `Recycle these persistent gaps naturally across the next practice: ${errorGaps.map((entry) => `${entry.category} — ${entry.label}`).join('; ')}.`
       : null,
   };
 }
@@ -1228,7 +1228,7 @@ export function recordLearningActivity(event = {}) {
     else recordLearnerSuccess(gap, { at });
   };
   if (event.type === 'dictation') {
-    applyGap('listening', 'dictation', 'DictÃ©e listening accuracy');
+    applyGap('listening', 'dictation', 'Dictée listening accuracy');
   } else if (event.type === 'listening') {
     applyGap('listening', `track:${event.trackId || 'listening'}`, event.label || event.trackId || 'Listening comprehension');
   } else if (event.type === 'pronunciation') {
