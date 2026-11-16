@@ -127,3 +127,24 @@ test('claiming the last daily challenge awards the postcard', async () => {
   const coins = todays.reduce((sum, c) => sum + c.coins, 0);
   assert.equal(storage.getCoins(), coins, 'the challenge coins were not paid');
 });
+
+test('a repeated challenge claim cannot pay the coins twice', async () => {
+  installMemoryStorage();
+  const storage = await import(`../src/lib/storage.js${freshModuleTag()}`);
+  const { dailyChallenges } = await import(`../src/lib/game.js${freshModuleTag()}`);
+  const { claimDailyChallenge } = await import(`../src/lib/gameGrants.js${freshModuleTag()}`);
+
+  const todays = dailyChallenges(storage.getChallengeState().day);
+  const [first] = todays;
+  storage.bumpChallengeMetric(first.metric, first.target);
+
+  // Only the last challenge of the day returns a postcard, but every claim
+  // pays its own coins — that is what must not happen twice.
+  claimDailyChallenge(first, todays);
+  const paidOnce = storage.getCoins();
+  assert.equal(paidOnce, first.coins);
+
+  assert.equal(claimDailyChallenge(first, todays), null, 'a second claim is refused');
+  assert.equal(storage.getCoins(), paidOnce, 'no coins were paid twice');
+  assert.deepEqual(storage.getCollectibles(), {}, 'no extra postcard was awarded');
+});

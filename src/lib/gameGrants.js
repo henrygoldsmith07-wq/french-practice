@@ -66,6 +66,10 @@ export function grantEarnedRewards() {
  * @returns {string|null} the postcard awarded, if one was
  */
 export function claimDailyChallenge(challenge, todays) {
+  // claimChallenge() is idempotent, but paying coins was not: a second click
+  // (or a stale screen re-issuing the claim) still added the coins and could
+  // award another postcard. Refuse the whole reward when it is not a new claim.
+  if (getChallengeState().claimed.includes(challenge.id)) return null;
   claimChallenge(challenge.id);
   addCoins(challenge.coins);
 
