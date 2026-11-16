@@ -310,6 +310,9 @@ export default function App() {
     setGrammarFocus(topicId);
     setLearnView('grammar');
     setTab('learn');
+    // Today is an overlay above the tabs; without this the grammar screen
+    // would open behind it and the learner would not see the lesson.
+    closeOverlay();
   };
 
   const updateSettings = (s) => {
