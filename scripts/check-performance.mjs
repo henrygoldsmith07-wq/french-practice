@@ -28,11 +28,15 @@ const FIRSTLOAD_BUDGET_KB = 450;
 // Re-baselined 1800 -> 1950 on 2026-10-21, the same way 1200 -> 1800 was done
 // in 422ffda when a large feature landed. The build was 1844 KB after the
 // teacher/import/progress-features work; 1950 keeps the same ~5% headroom
-// that 1800 gave the 1200-era build. The FIRST-LOAD budget below is
-// deliberately NOT moved: it is the one that protects a learner waiting for
-// the app to boot, and the new screens are all lazy-loaded, so the boot
-// closure stayed at 385 KB against an unchanged 450 KB budget.
-const TOTAL_BUDGET_KB = 1950;
+// that 1800 gave the 1200-era build.
+//
+// Re-baselined 1950 -> 2150 on 2026-11-16 after the AI-panel feature batch.
+// Measured build: 2085 KB across 104 chunks; 2150 keeps ~3% headroom. Every
+// new panel is lazily loaded, and the boot-time guard below is deliberately
+// NOT moved: first-load JS is 394 KB against an unchanged 450 KB budget.
+// Moving this ceiling does not excuse eager imports into the entry graph —
+// the entry and first-load gates still fail those.
+const TOTAL_BUDGET_KB = 2150;
 // Additional JS needed when a learner opens each main surface, excluding the
 // boot closure already downloaded. These are raw-byte budgets for the static
 // dependency closure of the surface entry chunk(s), not just the top file.

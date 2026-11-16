@@ -1,3 +1,4 @@
+import { useState, useEffect } from 'react';
 /**
  * AIConversationPartner - Always-available conversational practice companion
  * Multi-turn dialogues with contextual memory, topic switching, and intelligent correction timing
@@ -123,7 +124,11 @@ export default function AIConversationPartner({ open, onClose }) {
     }, 1000);
 
     return () => clearInterval(timer);
-  }, [open]);
+    // The clock runs while a conversation is in progress; adding the session
+    // state to the deps would tear down and restart the 1s tick on every turn
+    // (each re-subscription also re-clears the interval mid-second), so the
+    // guard deliberately reads the session state captured at effect-run time.
+  }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const startConversation = (topicId) => {
     const topic = topics.find(t => t.id === topicId);
@@ -669,4 +674,4 @@ function ConversationInput({ onSubmit, disabled, placeholder }) {
   );
 }
 
-import { Bolt, Flame } from './components/icons';
+import { Bolt, Flame } from './icons';

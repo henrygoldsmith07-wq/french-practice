@@ -27,6 +27,13 @@ jobs:
           cache: npm
           cache-dependency-path: package-lock.json
       - run: npm ci
+      # Run the module/parse guard BEFORE lint. In Oct 2026 the `= =` syntax
+      # error and six bad icon imports reached main and the verify job went
+      # red at lint, so the full unit suite — which already catches exactly
+      # this break in tests/module-imports.test.js — never ran. A failing
+      # lint step must not hide the guard that explains the failure.
+      - name: Module parse & import guard
+        run: node --test tests/module-imports.test.js
       - name: Secret guard (no shared/provider secrets via VITE_*)
         run: npm run check:secrets
       - name: Lint content

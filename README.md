@@ -227,8 +227,9 @@ for why that is the contract rather than `checkJs`.
   WebKit over the engine-specific paths (MediaRecorder, mic permissions,
   service worker/PWA, offline, Today, language switching).
 
-Playwright's Chromium suite passes with **0 failures** (recent runs: 51–52
-passing; the exact count moves with the suite, so read the runner's summary).
+Playwright's Chromium suite passes with **0 failures** when it runs against Le
+Studio. The passing count moves with the suite, so read the runner's summary
+rather than a number remembered from an older build.
 Locally, first confirm port 5173 is not already serving a *different* app — see
 [docs/architecture.md](docs/architecture.md#e2e-the-port-5173-trap-read-this-before-trusting-an-e2e-run).
 

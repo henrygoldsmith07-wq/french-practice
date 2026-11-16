@@ -1,3 +1,4 @@
+import { useState, useEffect, useRef } from 'react';
 /**
  * PronunciationCoach - AI-powered pronunciation analysis and feedback
  * Real-time phoneme-level feedback with visual waveforms and targeted corrections
@@ -161,7 +162,7 @@ export default function PronunciationCoach({ open, onClose }) {
     const avgScore = syllableScores.reduce((sum, s) => sum + s.score, 0) / syllableScores.length;
     
     // Identify specific issues
-    const issues = identifyPronunciationIssues(targetPhonemes, spokenPhonemes);
+    const issues = identifyPronunciationIssues(targetPhonemes, spokenPhonemes, target, spoken);
     
     // Generate tips based on common French pronunciation challenges
     const tips = generatePronunciationTips(target, issues);
@@ -194,12 +195,12 @@ export default function PronunciationCoach({ open, onClose }) {
   };
 
   const calculateEmphasisNeeded = (word) => {
-    constFrenchStressedVowels = ['é', 'è', 'à', 'ô', 'î'];
+    const frenchStressedVowels = ['é', 'è', 'à', 'ô', 'î'];
     const hasStress = frenchStressedVowels.some(v => word.includes(v));
     return !hasStress ? 'medium' : 'low';
   };
 
-  const identifyPronunciationIssues = (targetPhonemes, spokenPhonemes) => {
+  const identifyPronunciationIssues = (targetPhonemes, spokenPhonemes, targetText, spokenText) => {
     const issues = [];
     
     // Common French pronunciation issues
@@ -224,7 +225,7 @@ export default function PronunciationCoach({ open, onClose }) {
     });
 
     // Check word stress patterns
-    if (/^J[^e]/i.test(spoken) && /J[e]/i.test(target)) {
+    if (/^J[^e]/i.test(spokenText) && /J[e]/i.test(targetText)) {
       issues.push({
         type: 'stress',
         word: 'Je',

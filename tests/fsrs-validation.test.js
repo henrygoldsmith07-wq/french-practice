@@ -6,7 +6,7 @@ import {
   fitParameters, highConfidenceGap, logLoss, replaySequence, reviewSequences,
   samplesFrom, splitSequences,
 } from '../src/lib/fsrsValidation.js';
-import { retentionPredictionVsActual } from '../src/lib/learnerValidation.js';
+import { retentionPredictionVsActual, speakingImprovement } from '../src/lib/learnerValidation.js';
 
 const DAY = 86400000;
 const T0 = Date.parse('2026-01-01T00:00:00Z');
@@ -237,6 +237,26 @@ describe('prediction against outcome', () => {
     const good = retentionPredictionVsActual(simulate({ cards: 80, reviews: 8, trueStability: 30, seed: 4 }), []);
     const bad = retentionPredictionVsActual(simulate({ cards: 80, reviews: 8, trueStability: 2, seed: 4 }), []);
     assert.ok(bad.logLoss > good.logLoss, `expected worse log loss for the fast forgetter (${bad.logLoss} vs ${good.logLoss})`);
+  });
+});
+
+describe('speaking improvement', () => {
+  it('uses only recent speaking and pronunciation measurements', () => {
+    const now = new Date('2026-02-01T00:00:00Z');
+    const metrics = [
+      ...[1, 2, 3, 4].map((day) => ({ at: new Date(now - day * DAY).toISOString(), skill: 'speaking', score: 20 + day * 10 })),
+      { at: new Date(now - DAY).toISOString(), skill: 'reading', score: 100 },
+      { at: new Date(now - 40 * DAY).toISOString(), skill: 'speaking', score: 0 },
+    ];
+    assert.deepEqual(speakingImprovement(metrics, 30, now), { slope: -10, n: 4 });
+  });
+
+  it('withholds the trend when fewer than four eligible measurements remain', () => {
+    const now = new Date('2026-02-01T00:00:00Z');
+    const metrics = [1, 2, 3].map((day) => ({
+      at: new Date(now - day * DAY).toISOString(), skill: 'pronunciation', score: day * 10,
+    }));
+    assert.deepEqual(speakingImprovement(metrics, 30, now), { slope: null, n: 3 });
   });
 });
 

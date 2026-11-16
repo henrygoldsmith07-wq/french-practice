@@ -1,7 +1,10 @@
+import { useState, useEffect } from 'react';
 /**
  * AIWritingCoach - Intelligent writing feedback and cultural nuance training
  * Sentence-by-sentence analysis with grammar corrections, style suggestions, and cultural context
  */
+import { getWritingHistory, saveWritingHistory } from '../lib/stores/writingStore';
+
 export default function AIWritingCoach({ open, onClose }) {
   const [activeTab, setActiveTab] = useState('practice'); // practice | review | lessons
   const [currentExercise, setCurrentExercise] = useState(null);
@@ -93,15 +96,10 @@ export default function AIWritingCoach({ open, onClose }) {
   useEffect(() => {
     if (!open) return;
     
-    // Load saved writing samples on open
-    const saved = localStorage.getItem('writing_history');
-    if (saved) {
-      try {
-        setWritingHistory(JSON.parse(saved));
-      } catch (e) {
-        console.error('Failed to parse writing history:', e);
-      }
-    }
+    // Load saved writing samples on open (learner-routed store; see
+    // stores/writingStore.js — the old raw `writing_history` key skipped
+    // household namespacing and exportProgress entirely).
+    setWritingHistory(getWritingHistory());
   }, [open]);
 
   const startExercise = (exerciseId) => {
@@ -129,7 +127,7 @@ export default function AIWritingCoach({ open, onClose }) {
       };
       const updatedHistory = [newEntry, ...writingHistory].slice(0, 20); // Keep last 20
       setWritingHistory(updatedHistory);
-      localStorage.setItem('writing_history', JSON.stringify(updatedHistory));
+      saveWritingHistory(updatedHistory);
       
       setIsAnalyzing(false);
     }, 1500);
@@ -139,20 +137,20 @@ export default function AIWritingCoach({ open, onClose }) {
     // Comprehensive writing analysis algorithm
     const sentences = text.split(/[.!?]+/).filter(s => s.trim());
     const wordCount = text.toLowerCase().split(/\s+/).length;
-    const hasFrenchMarkers = /je\s+voudrais|bonjour|merci|s\'il\s+vous\s+plaît|pourtant|cependant/i.test(text);
+    const hasFrenchMarkers = /je\s+voudrais|bonjour|merci|s'il\s+vous\s+plaît|pourtant|cependant/i.test(text);
     
     // Grammar checks
     const subjectVerbAgreementIssues = detectSubjectVerbAgreement(text);
-    genderNumberIssues = detectGenderNumberIssues(text);
-    tenseConsistencyIssues = assessTenseConsistency(text);
+    const genderNumberIssues = detectGenderNumberIssues(text);
+    const tenseConsistencyIssues = assessTenseConsistency(text);
     
     // Style & vocabulary
-    vocabularyRichness = calculateVocabularyDiversity(text);
-    repetitionScore = detectRepetition(text);
-    connectorUsage = countConnectors(text);
+    const vocabularyRichness = calculateVocabularyDiversity(text);
+    const repetitionScore = detectRepetition(text);
+    const connectorUsage = countConnectors(text);
     
     // Cultural appropriateness
-    registerAppropriateness = assessRegister(text, exercise.category);
+    const registerAppropriateness = assessRegister(text, exercise.category);
     
     // Overall scoring
     const grammarPenalty = subjectVerbAgreementIssues.length * 3 + genderNumberIssues.length * 2;
@@ -227,11 +225,11 @@ export default function AIWritingCoach({ open, onClose }) {
     const passatoProssimo = /[j]'[a-z]+|[il][a-z]+ (mangé|fini|parti)/gi;
     const imparfait = /[j]([a-z]+'|[a-z]+) (étais|était|étions)/gi;
     
-    const hasPassato = passataProssimo.test(text);
+    const hasPassato = passatoProssimo.test(text);
     const hasImperfect = imparfait.test(text);
     
     if (hasPassato && hasImperfect) {
-      return 'Note: You're using both passé composé and imparfait correctly. Ensure past actions (specific events) use passé composé, while descriptions/habits use imparfait.';
+      return 'Note: You’re using both passé composé and imparfait correctly. Ensure past actions (specific events) use passé composé, while descriptions/habits use imparfait.';
     }
     
     return null;
@@ -361,13 +359,6 @@ export default function AIWritingCoach({ open, onClose }) {
   };
 
   if (!open) return null;
-
-  const getQualityColor = (score) => {
-    if (score >= 85) return 'text-emerald-600 bg-emerald-500/10 border-emerald-500/30';
-    if (score >= 70) return 'text-blue-600 bg-blue-500/10 border-blue-500/30';
-    if (score >= 55) return 'text-amber-600 bg-amber-500/10 border-amber-500/30';
-    return 'text-red-600 bg-red-500/10 border-red-500/30';
-  };
 
   return (
     <div className="fixed inset-0 z-[60] bg-bg flex flex-col">
@@ -501,6 +492,15 @@ function ExerciseCard({ exercise, onStart }) {
       </div>
     </div>
   );
+}
+
+// Score → tailwind colour classes for the analysis card. Module scope: the
+// child view (WritingExerciseView) needs it and it holds no component state.
+function getQualityColor(score) {
+  if (score >= 85) return 'text-emerald-600 bg-emerald-500/10 border-emerald-500/30';
+  if (score >= 70) return 'text-blue-600 bg-blue-500/10 border-blue-500/30';
+  if (score >= 55) return 'text-amber-600 bg-amber-500/10 border-amber-500/30';
+  return 'text-red-600 bg-red-500/10 border-red-500/30';
 }
 
 function WritingExerciseView({ exercise, input, setInput, onAnalyze, analysis, onCancel, analyzing }) {
@@ -697,4 +697,4 @@ function WritingLessonsView({ lessons, onLoadLesson }) {
   );
 }
 
-import { Flame, Bolt } from './components/icons';
+import { Flame, Bolt } from './icons';

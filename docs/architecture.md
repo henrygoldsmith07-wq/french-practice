@@ -167,7 +167,7 @@ Enforced post-build by `scripts/check-performance.mjs`:
 |---|---|
 | First-load JS (entry + static chunks) | 450 kB |
 | Per-chunk ceiling | 600 kB |
-| Total JS | 1800 kB |
+| Total JS | 2150 kB |
 | Today additional JS | 100 kB |
 | Speak additional JS | 650 kB |
 | Review additional JS | 300 kB |
@@ -224,9 +224,9 @@ curl -s http://127.0.0.1:5173/ | grep -o '<title>[^<]*</title>'
 ```
 
 Anything other than Le Studio's title means you are testing someone else's app.
-Free the port, then re-run. The suite passes cleanly: **0 failed** on Chromium
-(recent runs: 51–52 passing; the exact count moves with the suite, so read the
-runner's summary rather than this number).
+Free the port, then re-run. When the suite runs against Le Studio it passes
+cleanly: **0 failed** on Chromium. The passing count moves with the suite, so
+read the runner's summary rather than a number remembered from an older build.
 
 The stashed-baseline comparison is still worth doing for genuine regressions —
 but only once you have confirmed the run was actually against Le Studio.
