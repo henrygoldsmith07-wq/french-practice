@@ -56,7 +56,7 @@ function request({ body = {}, path = '/api/groq/trial', auth = null, origin = 'h
       authorization: auth ? `Bearer ${auth}` : undefined,
       'content-type': 'application/json',
       'content-length': String(Buffer.byteLength(serialized)),
-      ...(ip ? { 'x-forwarded-for': ip } : {}),
+      ...(ip ? { 'x-vercel-forwarded-for': ip } : {}),
     },
     body,
   };
@@ -284,6 +284,21 @@ test('repeated trial token requests from one address are refused', async () => {
   // out because somebody else exhausted theirs.
   const other = await run({ environment, store, req: request({ ip: '198.51.100.11' }) });
   assert.equal(other.statusCode, 200);
+});
+
+test('a client-set forwarding header cannot open a new trial bucket', async () => {
+  const store = createInMemoryQuotaStore();
+  const environment = env({ RELAY_TRIAL_DAILY_LIMIT: '1', RELAY_TRIAL_RATE_LIMIT_PER_MINUTE: '10' });
+  const first = await run({ environment, store, req: request({ ip: '198.51.100.20' }) });
+  assert.equal(first.statusCode, 200);
+
+  // Vercel APPENDS to x-forwarded-for; its first hop is whatever the client
+  // sent. x-real-ip is likewise not trustworthy. Neither may change identity.
+  const spoofed = request({ ip: '198.51.100.20' });
+  spoofed.headers['x-forwarded-for'] = '203.0.113.99';
+  spoofed.headers['x-real-ip'] = '203.0.113.99';
+  const refused = await run({ environment, store, req: spoofed });
+  assert.equal(refused.statusCode, 429, 'spoofing a header must not reset the trial allowance');
 });
 
 test('minting a second token from one address cannot lift its provider quota', async () => {

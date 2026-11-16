@@ -43,20 +43,22 @@ function hasHeader(req, name) {
 /**
  * A stable, coarse client address for abuse control on the free trial path.
  *
- * On a hosted deployment the platform sets x-forwarded-for; the first entry is
- * the client. A socket address covers local/dev. Both are only ever used as
- * INPUT to a keyed hash (quotaIdentityKey), so the raw IP is never stored in a
- * bucket key, a token or a log line. Missing address falls back to a constant:
- * trials still work, they just share one coarse bucket behind the proxy.
+ * Only the PLATFORM's client-IP header is trusted. On Vercel that is
+ * x-vercel-forwarded-for; the common x-forwarded-for appends to whatever the
+ * client sent, so its first hop is trivially spoofable and would hand every
+ * abuser a fresh trial bucket. x-real-ip is likewise client-settable on some
+ * hosts. A socket address covers local/dev.
+ *
+ * The address is only ever INPUT to a keyed hash (quotaIdentityKey): the raw
+ * IP is never stored in a bucket key, a token, or a log line. Missing address
+ * falls back to a constant — trials still work, they just share one bucket.
  */
 function clientAddress(req) {
-  const forwarded = header(req, 'x-forwarded-for');
-  if (typeof forwarded === 'string') {
-    const first = forwarded.split(',')[0].trim();
+  const platform = header(req, 'x-vercel-forwarded-for');
+  if (typeof platform === 'string') {
+    const first = platform.split(',')[0].trim();
     if (first && first.length <= 64) return first;
   }
-  const realIp = header(req, 'x-real-ip');
-  if (typeof realIp === 'string' && realIp.trim() && realIp.trim().length <= 64) return realIp.trim();
   const socket = req?.socket?.remoteAddress;
   if (typeof socket === 'string' && socket.length <= 64) return socket;
   return 'unknown';

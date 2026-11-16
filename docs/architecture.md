@@ -94,7 +94,10 @@ place a provider key ever exists.
 - **Minting is metered too.** `/trial` consumes its own rate/daily bucket keyed
   by a hashed client address, and the token subject is derived from that same
   address. Asking for a fresh token therefore cannot reset a spent allowance;
-  the raw address is never stored or logged, only a keyed hash.
+  the raw address is never stored or logged, only a keyed hash. Only the
+  platform's client-IP header (`x-vercel-forwarded-for`) is trusted — a
+  client-set `x-forwarded-for` or `x-real-ip` would hand every abuser a new
+  bucket. Hosts behind a different proxy must set that platform header.
 - **Fail closed.** Trials are off unless `RELAY_TRIAL_SECRET` is set to at least
   32 characters, and can be disabled with `RELAY_TRIAL_ENABLED=false`. A trial
   token can never escalate to a signed-in identity (tier and scope are checked).
