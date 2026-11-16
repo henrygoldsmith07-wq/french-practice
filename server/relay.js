@@ -40,6 +40,28 @@ function hasHeader(req, name) {
     || Object.prototype.hasOwnProperty.call(headers, name);
 }
 
+/**
+ * A stable, coarse client address for abuse control on the free trial path.
+ *
+ * On a hosted deployment the platform sets x-forwarded-for; the first entry is
+ * the client. A socket address covers local/dev. Both are only ever used as
+ * INPUT to a keyed hash (quotaIdentityKey), so the raw IP is never stored in a
+ * bucket key, a token or a log line. Missing address falls back to a constant:
+ * trials still work, they just share one coarse bucket behind the proxy.
+ */
+function clientAddress(req) {
+  const forwarded = header(req, 'x-forwarded-for');
+  if (typeof forwarded === 'string') {
+    const first = forwarded.split(',')[0].trim();
+    if (first && first.length <= 64) return first;
+  }
+  const realIp = header(req, 'x-real-ip');
+  if (typeof realIp === 'string' && realIp.trim() && realIp.trim().length <= 64) return realIp.trim();
+  const socket = req?.socket?.remoteAddress;
+  if (typeof socket === 'string' && socket.length <= 64) return socket;
+  return 'unknown';
+}
+
 function defaultLogger(entry) {
   console.info(JSON.stringify(entry));
 }
@@ -356,16 +378,46 @@ function createRuntime(options = {}) {
     }
     // The free, no-key entry point: a first-time visitor asks for a trial
     // token and then uses the relay exactly as a signed-in learner would.
-    // Issuing a token is cheap and stores nothing, so it is rate-limited by
-    // the same per-IP-origin guards as every other route rather than by a
-    // quota bucket.
+    //
+    // Minting must be metered. An earlier version issued a brand-new random
+    // subject on every call and claimed a per-IP guard that did not exist, so
+    // a client could reset its trial allowance simply by asking again. Two
+    // controls close that: a rate/daily bucket on issuance keyed by the
+    // client address, and a token subject derived from that same address so
+    // freshly minted tokens still share one provider quota bucket.
     if (route === RELAY_ROUTES.trial) {
       if (req.method !== 'POST') return errorResponse(res, 405, 'method_not_allowed');
       if (!trialEnabled) {
         logger({ event: 'trial_unavailable', requestId: id });
         return errorResponse(res, 503, 'trial_unavailable');
       }
-      const minted = issueTrialToken({ ...config, trialSecret }, { now: Number(now()) });
+      const address = clientAddress(req);
+      const issueKey = quotaIdentityKey(config.quotaNamespaceSecret, `trial-issue:${address}`);
+      let issuance;
+      try {
+        issuance = await store.consume({
+          key: issueKey,
+          rateLimit: trialLimits.rateLimitPerMinute,
+          dailyLimit: trialLimits.dailyLimit,
+          nowMs: Number(now()),
+        });
+      } catch {
+        logger({ event: 'quota_store_unavailable', requestId: id });
+        return errorResponse(res, 503, 'relay_unavailable');
+      }
+      if (!issuance.allowed) {
+        logger({ event: 'trial_issuance_rejected', requestId: id, reason: issuance.reason });
+        return errorResponse(
+          res,
+          429,
+          issuance.reason === 'rate' ? 'rate_limited' : 'daily_quota_exhausted',
+          issuance.retryAfterSeconds,
+        );
+      }
+      const minted = issueTrialToken(
+        { ...config, trialSecret },
+        { now: Number(now()), deviceId: quotaIdentityKey(config.quotaNamespaceSecret, `trial:${address}`) },
+      );
       logger({ event: 'trial_issued', requestId: id, subject: minted.subject.slice(0, 8) });
       return sendJson(res, 200, {
         token: minted.token,

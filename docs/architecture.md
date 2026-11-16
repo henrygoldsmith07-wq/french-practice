@@ -91,6 +91,10 @@ place a provider key ever exists.
 - **Tier separation.** Trial requests are charged against a separate, smaller
   daily quota (`RELAY_TRIAL_DAILY_LIMIT`, default 30) keyed on an opaque device
   subject. Rotating device ids cannot spend the signed-in allowance.
+- **Minting is metered too.** `/trial` consumes its own rate/daily bucket keyed
+  by a hashed client address, and the token subject is derived from that same
+  address. Asking for a fresh token therefore cannot reset a spent allowance;
+  the raw address is never stored or logged, only a keyed hash.
 - **Fail closed.** Trials are off unless `RELAY_TRIAL_SECRET` is set to at least
   32 characters, and can be disabled with `RELAY_TRIAL_ENABLED=false`. A trial
   token can never escalate to a signed-in identity (tier and scope are checked).

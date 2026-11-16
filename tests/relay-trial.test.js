@@ -46,7 +46,7 @@ function env(overrides = {}) {
   };
 }
 
-function request({ body = {}, path = '/api/groq/trial', auth = null, origin = 'https://studio.example.com' } = {}) {
+function request({ body = {}, path = '/api/groq/trial', auth = null, origin = 'https://studio.example.com', ip } = {}) {
   const serialized = typeof body === 'string' ? body : JSON.stringify(body);
   return {
     method: 'POST',
@@ -56,6 +56,7 @@ function request({ body = {}, path = '/api/groq/trial', auth = null, origin = 'h
       authorization: auth ? `Bearer ${auth}` : undefined,
       'content-type': 'application/json',
       'content-length': String(Buffer.byteLength(serialized)),
+      ...(ip ? { 'x-forwarded-for': ip } : {}),
     },
     body,
   };
@@ -258,4 +259,59 @@ test('a trial token issued for one issuer cannot be replayed against another', (
     trialSecret: TRIAL_SECRET,
   };
   assert.equal(verifyTrialToken(token, otherIssuer, { now: NOW }), null);
+});
+
+// ---- minting is itself metered (the "reset by asking again" bug) -----------
+
+test('repeated trial token requests from one address are refused', async () => {
+  const store = createInMemoryQuotaStore();
+  const environment = env({
+    RELAY_TRIAL_DAILY_LIMIT: '2',
+    RELAY_TRIAL_RATE_LIMIT_PER_MINUTE: '10',
+  });
+  const firstIp = '198.51.100.10';
+
+  const first = await run({ environment, store, req: request({ ip: firstIp }) });
+  const second = await run({ environment, store, req: request({ ip: firstIp }) });
+  assert.equal(first.statusCode, 200);
+  assert.equal(second.statusCode, 200);
+
+  const third = await run({ environment, store, req: request({ ip: firstIp }) });
+  assert.equal(third.statusCode, 429);
+  assert.equal(third.body.error, 'daily_quota_exhausted');
+
+  // A different address keeps its own bucket — honest visitors are not locked
+  // out because somebody else exhausted theirs.
+  const other = await run({ environment, store, req: request({ ip: '198.51.100.11' }) });
+  assert.equal(other.statusCode, 200);
+});
+
+test('minting a second token from one address cannot lift its provider quota', async () => {
+  const store = createInMemoryQuotaStore();
+  const environment = env({
+    RELAY_TRIAL_DAILY_LIMIT: '2',
+    RELAY_TRIAL_RATE_LIMIT_PER_MINUTE: '10',
+  });
+  const ip = '203.0.113.7';
+  const upstream = provider();
+
+  const minted = await run({ environment, store, req: request({ ip }) });
+  assert.equal(minted.statusCode, 200);
+  const rotated = await run({ environment, store, req: request({ ip }) });
+  assert.equal(rotated.statusCode, 200, 'a second token may be minted within the issuance limit');
+  assert.notEqual(minted.body.expiresAt, undefined);
+
+  const chat = (token) => request({
+    path: '/api/groq/chat/completions', body: validBody, auth: token, ip,
+  });
+  for (const token of [minted.body.token, rotated.body.token]) {
+    const res = await run({ environment, store, req: chat(token), fetchImpl: upstream.fetchImpl });
+    assert.equal(res.statusCode, 200, 'each new token still shares the address quota bucket');
+  }
+  const refused = await run({
+    environment, store, req: chat(rotated.body.token), fetchImpl: upstream.fetchImpl,
+  });
+  assert.equal(refused.statusCode, 429);
+  assert.equal(refused.body.error, 'daily_quota_exhausted');
+  assert.equal(upstream.calls, 2, 'rotating a token must not buy extra provider calls');
 });
