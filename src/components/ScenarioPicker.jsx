@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import useDialogFocus from '../hooks/useDialogFocus.js';
 import { getScenarios, getSituations } from '../lib/data';
 import { scenarioIcon, Check, Search, Shuffle, X } from './icons';
 
@@ -42,6 +43,9 @@ export default function ScenarioPicker({ open, activeId, onPick, onClose }) {
     return scenarios.filter((s) => norm(`${s.title} ${s.setup}`).includes(needle));
   }, [query, scenarios]);
 
+  const panelRef = useRef(null);
+  useDialogFocus(panelRef, { active: open });
+
   if (!open) return null;
 
   const pick = (s) => {
@@ -50,7 +54,7 @@ export default function ScenarioPicker({ open, activeId, onPick, onClose }) {
   };
 
   return (
-    <div className="fixed inset-0 z-[70] bg-bg flex flex-col" role="dialog" aria-modal="true" aria-label="Choose a scenario">
+    <div ref={panelRef} className="fixed inset-0 z-[70] bg-bg flex flex-col" role="dialog" aria-modal="true" aria-label="Choose a scenario">
       <div className="shrink-0 border-b border-line bg-surface px-4 py-3">
         <div className="max-w-2xl mx-auto space-y-2">
           <div className="flex items-center gap-2">

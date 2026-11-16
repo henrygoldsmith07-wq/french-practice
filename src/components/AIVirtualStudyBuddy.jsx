@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import useDialogFocus from '../hooks/useDialogFocus.js';
 import { getSettings, getXp, getStreak, getSessions } from '../lib/storage';
 import { Send, Sparkles, Brain, CheckCircle, AlertCircle, Clock, Star, Heart, ThumbsUp, Lightbulb, User, Bot, Zap } from './icons';
 
@@ -15,6 +16,8 @@ export default function AIVirtualStudyBuddy({ open, onClose }) {
   });
   const messagesEndRef = useRef(null);
   const typingTimeoutRef = useRef(null);
+  const panelRef = useRef(null);
+  useDialogFocus(panelRef, { active: open });
 
   // Initialize conversation context on open
   useEffect(() => {
@@ -262,7 +265,7 @@ export default function AIVirtualStudyBuddy({ open, onClose }) {
   ];
 
   return (
-    <div className="fixed inset-0 z-[70] bg-bg flex flex-col" role="dialog" aria-modal="true" aria-label="AI Study Buddy">
+    <div ref={panelRef} className="fixed inset-0 z-[70] bg-bg flex flex-col" role="dialog" aria-modal="true" aria-label="AI Study Buddy">
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-line bg-surface">
         <div className="flex items-center gap-3">

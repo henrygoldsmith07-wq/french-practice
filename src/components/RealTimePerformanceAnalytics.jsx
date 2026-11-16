@@ -1,4 +1,5 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
+import useDialogFocus from '../hooks/useDialogFocus.js';
 import { getSettings, getXp, getStreak, getSessions, getReviewLog, getMetrics } from '../lib/storage';
 import { BarChart, TrendingUp, Target, Zap, Brain, Clock, CheckCircle, AlertCircle, ChevronRight, Download } from './icons';
 
@@ -6,6 +7,8 @@ export default function RealTimePerformanceAnalytics({ open, onClose }) {
   const [selectedMetric, setSelectedMetric] = useState('xp');
   const [timeRange, setTimeRange] = useState('7d');
   const [insightsGenerated, setInsightsGenerated] = useState(false);
+  const panelRef = useRef(null);
+  useDialogFocus(panelRef, { active: open });
 
   // Comprehensive metrics calculation
   const analytics = useMemo(() => {
@@ -231,7 +234,7 @@ export default function RealTimePerformanceAnalytics({ open, onClose }) {
   );
 
   return (
-    <div className="fixed inset-0 z-[65] bg-bg flex flex-col" role="dialog" aria-modal="true" aria-label="Real-Time Performance Analytics">
+    <div ref={panelRef} className="fixed inset-0 z-[65] bg-bg flex flex-col" role="dialog" aria-modal="true" aria-label="Real-Time Performance Analytics">
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-line bg-surface">
         <h2 className="text-sm font-semibold text-ink flex items-center gap-2">

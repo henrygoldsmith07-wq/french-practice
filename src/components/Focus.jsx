@@ -6,6 +6,7 @@ import { POMODORO, habitStreak, goalCalendar, goalStreak, fmtClock } from '../li
 import { localDayKey } from '../lib/localDay';
 import { X, Play, Square, RefreshCw, Check, Plus, Trash, Flame, Target } from './icons';
 import { ICON_BTN_ROUND_SOFT, TOP_BAR, INPUT_FIELD } from '../components/classNames.js';
+import useDialogFocus from '../hooks/useDialogFocus.js';
 
 // Focus & habits (full-screen): a study/Pomodoro timer with a distraction-free
 // focus mode, a daily habit tracker with streaks, and a goal-streak calendar.
@@ -47,12 +48,15 @@ export default function Focus({ open, onClose }) {
   const [view, setView] = useState('timer');
   const [focusMode, setFocusMode] = useState(false);
 
+  const panelRef = useRef(null);
+  useDialogFocus(panelRef, { active: open });
+
   if (!open) return null;
 
   if (focusMode) return <FocusTimer onExit={() => setFocusMode(false)} />;
 
   return (
-    <div className="fixed inset-0 z-50 bg-bg flex flex-col" role="dialog" aria-modal="true" aria-label="Focus and habits">
+    <div ref={panelRef} className="fixed inset-0 z-50 bg-bg flex flex-col" role="dialog" aria-modal="true" aria-label="Focus and habits">
       <div className={TOP_BAR}>
         <h2 className="flex-1 text-sm font-semibold text-ink">Focus & habits</h2>
         <button onClick={onClose} aria-label="Close focus" className={ICON_BTN_ROUND_SOFT}>

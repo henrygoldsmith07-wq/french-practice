@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { pingLatency } from '../lib/groq';
 import {
   getLastPlacement,
@@ -6,6 +6,7 @@ import {
 import { benchmarkStatus, mergeBenchmarkItems } from '../lib/intelligibility';
 import { ChevronRight, X } from './icons';
 import { ICON_BTN_ROUND_SOFT, TOP_BAR } from '../components/classNames.js';
+import useDialogFocus from '../hooks/useDialogFocus.js';
 
 // Measurement-stack reads/writes live in researchStoreHeavy.js, which is
 // dynamically imported here: the panel is opt-in developer tooling, so its
@@ -61,8 +62,11 @@ export default function DevPanel({ telemetry, apiKey, mockMode, onMockMode, onCl
     setPinging(false);
   };
 
+  const panelRef = useRef(null);
+  useDialogFocus(panelRef, { active: true });
+
   return (
-    <div className="fixed inset-0 z-50 bg-bg flex flex-col" role="dialog" aria-modal="true" aria-label="Developer panel">
+    <div ref={panelRef} className="fixed inset-0 z-50 bg-bg flex flex-col" role="dialog" aria-modal="true" aria-label="Developer panel">
       <div className={TOP_BAR}>
         <h2 className="flex-1 text-lg font-bold text-ink">Developer Panel</h2>
         <label className="flex items-center gap-2 text-xs text-ink2 cursor-pointer">

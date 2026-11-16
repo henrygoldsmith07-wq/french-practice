@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { ScoreBadge, scoreColor } from './ui';
 // compositeScore lives in score.js (weight math only) — importing it from
 // groq.js here would drag the whole AI provider layer into the entry chunk.
 import { compositeScore } from '../lib/score';
 import { scoreExplainers } from '../lib/score';
+import useDialogFocus from '../hooks/useDialogFocus.js';
 
 // Live per-turn scores: bottom sheet on mobile, side pane on desktop.
 // S = 0.30·Grammaire + 0.30·Naturel + 0.20·Pertinence + 0.20·Fluidité
@@ -47,6 +48,8 @@ function ScoreRows({ scores }) {
 
 export default function FeedbackWidget({ scores, turnCount }) {
   const [sheetOpen, setSheetOpen] = useState(false);
+  const panelRef = useRef(null);
+  useDialogFocus(panelRef, { active: sheetOpen });
   if (!scores) return null;
   const composite = compositeScore(scores);
 
@@ -85,6 +88,7 @@ export default function FeedbackWidget({ scores, turnCount }) {
           role="presentation"
         >
           <div
+            ref={panelRef}
             role="dialog"
             aria-modal="true"
             aria-label="Score details"

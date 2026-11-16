@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import useDialogFocus from '../hooks/useDialogFocus.js';
 import {
   CONJUGATIONS, PERSONS, TENSES, MINIMAL_PAIRS, CLOZE_TESTS, getFrequencyWords, parseWordList,
 } from '../lib/reference';
@@ -38,6 +39,9 @@ export default function Reference({ open, onClose, onImported, onXp, onActivity,
     if (open) setTool(initialTool || null);
   }, [open, initialTool]);
 
+  const panelRef = useRef(null);
+  useDialogFocus(panelRef, { active: open });
+
   if (!open) return null;
   const tools = TOOLS_ALL.filter((t) => isFullSupport(contentLang()) || !FRENCH_ONLY_TOOLS.has(t.id));
 
@@ -75,7 +79,7 @@ export default function Reference({ open, onClose, onImported, onXp, onActivity,
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-bg flex flex-col" role="dialog" aria-modal="true" aria-label="Reference and tools">
+    <div ref={panelRef} className="fixed inset-0 z-50 bg-bg flex flex-col" role="dialog" aria-modal="true" aria-label="Reference and tools">
       <div className={TOP_BAR}>
         {tool ? (
           <button onClick={() => { stopSpeaking(); setTool(null); }} aria-label="Back to tools" className={ICON_BTN_ROUND}>

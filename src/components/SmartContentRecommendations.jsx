@@ -1,4 +1,5 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
+import useDialogFocus from '../hooks/useDialogFocus.js';
 import { getSettings, getXp, getStreak, getSessions, getReviewLog, getPrefs } from '../lib/storage';
 import { TrendingUp, Target, Sparkles, Clock, Star, CheckCircle, Zap, Brain, Bookmark, Heart } from './icons';
 
@@ -9,6 +10,8 @@ export default function SmartContentRecommendations({ open, onClose }) {
   const [justForYou, setJustForYou] = useState([]);
   const [userProfile, setUserProfile] = useState(null);
   const [matchStrength, setMatchStrength] = useState(0);
+  const panelRef = useRef(null);
+  useDialogFocus(panelRef, { active: open });
 
   // Generate comprehensive recommendations based on behavioral patterns
   useEffect(() => {
@@ -374,7 +377,7 @@ export default function SmartContentRecommendations({ open, onClose }) {
   );
 
   return (
-    <div className="fixed inset-0 z-[65] bg-bg flex flex-col" role="dialog" aria-modal="true" aria-label="Smart Content Recommendations">
+    <div ref={panelRef} className="fixed inset-0 z-[65] bg-bg flex flex-col" role="dialog" aria-modal="true" aria-label="Smart Content Recommendations">
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-line bg-surface">
         <h2 className="text-sm font-semibold text-ink flex items-center gap-2">

@@ -1,10 +1,14 @@
 // Learning Analytics Dashboard - Deep insights into performance patterns
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { TrendingUp, Target, Clock, Brain, BarChart3, Activity } from './icons';
+import useDialogFocus from '../hooks/useDialogFocus.js';
 
 export default function LearningAnalytics({ open, onClose }) {
   const [activeTab, setActiveTab] = useState('overview'); // overview | skills | time | retention
   
+  const panelRef = useRef(null);
+  useDialogFocus(panelRef, { active: open });
+
   if (!open) return null;
   
   const mockData = {
@@ -32,7 +36,7 @@ export default function LearningAnalytics({ open, onClose }) {
   };
   
   return (
-    <div className="fixed inset-0 z-[60] overflow-y-auto bg-bg" role="dialog" aria-modal="true" aria-label="Learning Analytics">
+    <div ref={panelRef} className="fixed inset-0 z-[60] overflow-y-auto bg-bg" role="dialog" aria-modal="true" aria-label="Learning Analytics">
       <div className="mx-auto min-h-full max-w-5xl px-4 py-4">
         {/* Header */}
         <div className="mb-6 flex items-center justify-between">

@@ -185,6 +185,7 @@ import { useDueCount, loadAllEntries, warmScenarios } from './lib/vocabAsync';
 import { getLanguage, featureAvailableNow, hasCapabilityNow } from './lib/languages';
 import { overlayReducer, overlayIs, overlayPayload, initialOverlay } from './lib/overlayNav';
 import { currentSessionId } from './lib/evidenceIdentity';
+import useDialogFocus from './hooks/useDialogFocus.js';
 import { relayEnabled } from './lib/relay';
 import { Flame, Bolt, Sun, Moon, Gear, Key, ArrowRight, Home, MessageCircle, Layers, BookOpen, BarChart, Search, Coins as CoinsIcon, X, Download } from './components/icons';
 import Mascot from './components/Mascot';
@@ -295,6 +296,11 @@ export default function App() {
   // Escape / Android Back close the one open overlay (useOverlayNav pushes
   // and consumes a history entry around it).
   useOverlayNav([[Boolean(overlay), closeOverlay]]);
+
+  // The learning-path overlay is composed here rather than in components/.
+  // It is still an aria-modal dialog, so it needs the same focus management.
+  const learningPathRef = useRef(null);
+  useDialogFocus(learningPathRef, { active: overlayIs(overlay, 'learningPath') });
 
   const updateSettings = (s) => {
     if (s.language !== settings.language) switchLanguage(s.language);
@@ -799,7 +805,7 @@ export default function App() {
         />
       )}
       {overlayIs(overlay, 'learningPath') && (
-        <div className="fixed inset-0 z-[55] overflow-y-auto bg-bg" role="dialog" aria-modal="true" aria-label="Learning path">
+        <div ref={learningPathRef} className="fixed inset-0 z-[55] overflow-y-auto bg-bg" role="dialog" aria-modal="true" aria-label="Learning path">
           <div className="mx-auto min-h-full max-w-lg px-4 py-4">
             <div className="mb-4 flex items-center gap-3">
               <h2 className="flex-1 text-lg font-bold text-ink">Learning path</h2>
@@ -857,6 +863,10 @@ function Celebration({ data, onDone }) {
   // for a click. Read the handler through a ref so the timer is armed once.
   const onDoneRef = useRef(onDone);
   useEffect(() => { onDoneRef.current = onDone; }, [onDone]);
+  // Mounted only while celebrating, but still an aria-modal dialog: keep Tab
+  // inside the card and hand focus back when it auto-dismisses.
+  const panelRef = useRef(null);
+  useDialogFocus(panelRef);
   useEffect(() => {
     const id = setTimeout(() => onDoneRef.current?.(), 2800);
     return () => clearTimeout(id);
@@ -877,7 +887,7 @@ function Celebration({ data, onDone }) {
   }, []);
   const level = data.kind === 'level';
   return (
-    <div className="fixed inset-0 z-[80] flex items-center justify-center" role="dialog" aria-modal="true" aria-label={level ? 'Level up' : 'Goal reached'}>
+    <div ref={panelRef} className="fixed inset-0 z-[80] flex items-center justify-center" role="dialog" aria-modal="true" aria-label={level ? 'Level up' : 'Goal reached'}>
       <button className="absolute inset-0 bg-black/40 fade-in" aria-label="Dismiss" onClick={onDone} />
       <div className="absolute inset-0 overflow-hidden pointer-events-none" aria-hidden="true">
         {pieces.map((p) => (

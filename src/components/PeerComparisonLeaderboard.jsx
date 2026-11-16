@@ -1,4 +1,5 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
+import useDialogFocus from '../hooks/useDialogFocus.js';
 import { levelFromXp } from '../lib/game';
 import { getSettings, getXp, getStreak, getSessions } from '../lib/storage';
 import { useDueCount } from '../lib/vocabAsync';
@@ -8,6 +9,8 @@ export default function PeerComparisonLeaderboard({ open, onClose }) {
   const [activeTab, setActiveTab] = useState('all');
   const [timeRange, setTimeRange] = useState('weekly');
   const [myRank, setMyRank] = useState(null);
+  const panelRef = useRef(null);
+  useDialogFocus(panelRef, { active: open });
   const tick = `${open}|${activeTab}|${timeRange}`;
   
   // Generate mock learner data for comparison
@@ -79,7 +82,7 @@ export default function PeerComparisonLeaderboard({ open, onClose }) {
   const highlightRow = (learner) => isCurrentUser(learner) ? 'bg-accent/10 border-accent/30' : '';
 
   return (
-    <div className="fixed inset-0 z-[60] bg-bg flex flex-col" role="dialog" aria-modal="true" aria-label="Peer Comparison Leaderboard">
+    <div ref={panelRef} className="fixed inset-0 z-[60] bg-bg flex flex-col" role="dialog" aria-modal="true" aria-label="Peer Comparison Leaderboard">
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-line bg-surface">
         <h2 className="text-sm font-semibold text-ink flex items-center gap-2">

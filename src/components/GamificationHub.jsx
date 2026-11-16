@@ -12,6 +12,7 @@
 // seeded pace-setters, coins, and a streak freeze you can buy with them.
 // The hub shows those, and the numbers are the learner's.
 import { useEffect, useMemo, useRef, useState } from 'react';
+import useDialogFocus from '../hooks/useDialogFocus.js';
 import { Trophy, Star, Award, Zap, Shield, CheckCircle, Lock, Coins } from './icons';
 import {
   getAchievements, getChallengeState, getTodayXp,
@@ -58,12 +59,15 @@ export default function GamificationHub({ open, onClose, onXp, onChange }) {
     };
   }, [tick]);
 
+  const panelRef = useRef(null);
+  useDialogFocus(panelRef, { active: open });
+
   if (!open) return null;
 
   const unlockedCount = Object.keys(data.achievements).length;
 
   return (
-    <div className="fixed inset-0 z-[60] overflow-y-auto bg-bg" role="dialog" aria-modal="true" aria-label="Gamification Hub">
+    <div ref={panelRef} className="fixed inset-0 z-[60] overflow-y-auto bg-bg" role="dialog" aria-modal="true" aria-label="Gamification Hub">
       <div className="mx-auto min-h-full max-w-4xl px-4 py-4">
         {/* Header */}
         <div className="mb-6 flex items-center justify-between gap-3">

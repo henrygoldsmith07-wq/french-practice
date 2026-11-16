@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import useDialogFocus from '../hooks/useDialogFocus.js';
 import { READING_TEXTS } from '../lib/reading';
 import { LISTENING_TRACKS } from '../lib/listening';
 import { exportProgress, importProgress, getSyncId, getLastBackup, getSettings, getSrs } from '../lib/storage';
@@ -128,6 +129,9 @@ export default function Offline({ open, onClose, pwa }) {
     window.history.replaceState({}, '', window.location.pathname + (query ? `?${query}` : ''));
   }, []);
 
+  const panelRef = useRef(null);
+  useDialogFocus(panelRef, { active: open });
+
   if (!open) return null;
 
   // "Ready offline" has to mean the app's own code is cached, not merely that
@@ -229,7 +233,7 @@ export default function Offline({ open, onClose, pwa }) {
   }catch{ return null; } })();
 
   return (
-    <div className="fixed inset-0 z-50 bg-bg flex flex-col" role="dialog" aria-modal="true" aria-label="Offline">
+    <div ref={panelRef} className="fixed inset-0 z-50 bg-bg flex flex-col" role="dialog" aria-modal="true" aria-label="Offline">
       <div className={TOP_BAR}>
         <h2 className="flex-1 text-sm font-semibold text-ink">Offline & devices</h2>
         <button onClick={onClose} aria-label="Close offline" className={ICON_BTN_ROUND_SOFT}>

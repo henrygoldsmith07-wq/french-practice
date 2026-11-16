@@ -6,7 +6,8 @@
 // buttons only wrote a line to the console. The state now comes from
 // src/lib/studyAssistantState.js, which reads what the learner has actually
 // done, and the actions open the part of the app they talk about.
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import useDialogFocus from '../hooks/useDialogFocus.js';
 import { Brain, TrendingUp, Target, Zap, Clock, CheckCircle } from './icons';
 import { generateAIRecommendations, generateWeeklyPlan } from '../lib/aiStudyAssistant.js';
 import { buildStudyState } from '../lib/studyAssistantState.js';
@@ -31,6 +32,9 @@ export default function AIStudyAssistant({ open, onClose, onGo }) {
     [state],
   );
 
+  const panelRef = useRef(null);
+  useDialogFocus(panelRef, { active: open });
+
   if (!open) return null;
 
   const handleAction = (recommendation) => {
@@ -40,7 +44,7 @@ export default function AIStudyAssistant({ open, onClose, onGo }) {
   };
 
   return (
-    <div className="fixed inset-0 z-[60] overflow-y-auto bg-bg" role="dialog" aria-modal="true" aria-label="AI Study Assistant">
+    <div ref={panelRef} className="fixed inset-0 z-[60] overflow-y-auto bg-bg" role="dialog" aria-modal="true" aria-label="AI Study Assistant">
       <div className="mx-auto min-h-full max-w-3xl px-4 py-4">
         {/* Header */}
         <div className="mb-6 flex items-center gap-3">

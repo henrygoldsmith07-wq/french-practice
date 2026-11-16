@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import useDialogFocus from '../hooks/useDialogFocus.js';
 import {
   SITUATIONS,
   getSituation,
@@ -45,6 +46,9 @@ export default function RealWorld({ open, onClose, onRoleplay, onXp }) {
     saveSeen(seen);
   }, [seen]);
 
+  const panelRef = useRef(null);
+  useDialogFocus(panelRef, { active: open });
+
   if (!open) return null;
 
   const openSituation = (id) => {
@@ -78,7 +82,7 @@ export default function RealWorld({ open, onClose, onRoleplay, onXp }) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-bg flex flex-col" role="dialog" aria-modal="true" aria-label="Real-world practice">
+    <div ref={panelRef} className="fixed inset-0 z-50 bg-bg flex flex-col" role="dialog" aria-modal="true" aria-label="Real-world practice">
       <div className={TOP_BAR}>
         <h2 className="flex-1 text-sm font-semibold text-ink">Real-world practice</h2>
         <button onClick={onClose} aria-label="Close real-world practice" className={ICON_BTN_ROUND_SOFT}>

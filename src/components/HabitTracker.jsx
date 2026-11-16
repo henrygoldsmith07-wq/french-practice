@@ -1,6 +1,7 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { getSettings, getXp, getSessions, setSettings, addXp as recordXp } from '../lib/storage';
 import { Flame, TrendingUp, Target, Calendar, CheckCircle, AlertCircle, Bell, X, Zap, Heart } from './icons';
+import useDialogFocus from '../hooks/useDialogFocus.js';
 
 export default function HabitTracker({ open, onClose }) {
   const [currentStreak, setCurrentStreak] = useState(0);
@@ -10,6 +11,9 @@ export default function HabitTracker({ open, onClose }) {
   const [nudgeEnabled, setNudgeEnabled] = useState(true);
   const [preferredReminders, setPreferredReminders] = useState(['morning', 'evening']);
   const [motivationalMessage, setMotivationalMessage] = useState('');
+
+  const panelRef = useRef(null);
+  useDialogFocus(panelRef, { active: open });
 
   // Calculate habit metrics
   useEffect(() => {
@@ -173,7 +177,7 @@ export default function HabitTracker({ open, onClose }) {
   };
 
   return (
-    <div className="fixed inset-0 z-[60] bg-bg flex flex-col" role="dialog" aria-modal="true" aria-label="Habit Formation Tracker">
+    <div ref={panelRef} className="fixed inset-0 z-[60] bg-bg flex flex-col" role="dialog" aria-modal="true" aria-label="Habit Formation Tracker">
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-line bg-surface">
         <h2 className="text-sm font-semibold text-ink flex items-center gap-2">

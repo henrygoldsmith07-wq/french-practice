@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useRef } from 'react';
 import { getMetrics,
   getSessions,
   getGrammarProgress,
@@ -35,6 +35,7 @@ import {
 } from './AnalyticsEvidence';
 import { X, Clock, Layers, Book, Mic, Volume, BarChart, TrendingUp } from './icons';
 import { ICON_BTN_ROUND_SOFT, TOP_BAR } from '../components/classNames.js';
+import useDialogFocus from '../hooks/useDialogFocus.js';
 
 // Analytics (full-screen): headline metrics, a skill breakdown, weekly and
 // monthly reports, and activity heatmaps — all from locally-recorded data.
@@ -91,10 +92,13 @@ export default function Analytics({ open, onClose }) {
     };
   }, [open]);
 
+  const panelRef = useRef(null);
+  useDialogFocus(panelRef, { active: open });
+
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 bg-bg flex flex-col" role="dialog" aria-modal="true" aria-label="Analytics">
+    <div ref={panelRef} className="fixed inset-0 z-50 bg-bg flex flex-col" role="dialog" aria-modal="true" aria-label="Analytics">
       <div className={TOP_BAR}>
         <h2 className="flex-1 text-sm font-semibold text-ink">Analytics</h2>
         <button onClick={onClose} aria-label="Close analytics" className={ICON_BTN_ROUND_SOFT}>

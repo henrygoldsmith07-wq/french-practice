@@ -1,4 +1,5 @@
-import { useMemo } from 'react';
+import { useMemo, useRef } from 'react';
+import useDialogFocus from '../hooks/useDialogFocus.js';
 import {
   getHabits, getGrammarProgress, getSessions, getSrs, getNotebook,
 } from '../lib/storage';
@@ -52,6 +53,9 @@ export default function Personalise({ open, onClose, prefs, onPrefsChange, baseL
     return { weaknesses, adaptive, recs };
   }, [open, prefs, baseLevel]);
 
+  const panelRef = useRef(null);
+  useDialogFocus(panelRef, { active: open });
+
   if (!open) return null;
 
   const toggleTopic = (id) => {
@@ -61,7 +65,7 @@ export default function Personalise({ open, onClose, prefs, onPrefsChange, baseL
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-bg flex flex-col" role="dialog" aria-modal="true" aria-label="Personalise">
+    <div ref={panelRef} className="fixed inset-0 z-50 bg-bg flex flex-col" role="dialog" aria-modal="true" aria-label="Personalise">
       <div className={TOP_BAR}>
         <h2 className="flex-1 text-sm font-semibold text-ink">Personalise</h2>
         <button onClick={onClose} aria-label="Close personalise" className={ICON_BTN_ROUND_SOFT}>

@@ -1,4 +1,5 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
+import useDialogFocus from '../hooks/useDialogFocus.js';
 import { Share2, Download, CheckCircle, Target, Clock, TrendingUp } from './icons';
 import {
   getSessions, getStreak, getSettings, getSrs, getGrammarProgress, getMetrics,
@@ -93,6 +94,9 @@ export default function SocialSharingCards({ open, onClose }) {
   const [selectedMetrics, setSelectedMetrics] = useState(['sessions', 'accuracy', 'weaknesses']);
   const [cards, setCards] = useState(() => readCards());
 
+  const panelRef = useRef(null);
+  useDialogFocus(panelRef, { active: open });
+
   if (!open) return null;
 
   const onBack = () => {
@@ -101,7 +105,7 @@ export default function SocialSharingCards({ open, onClose }) {
   };
 
   return (
-    <div className="fixed inset-0 z-[55] overflow-y-auto bg-bg" role="dialog" aria-modal="true" aria-label="Share progress">
+    <div ref={panelRef} className="fixed inset-0 z-[55] overflow-y-auto bg-bg" role="dialog" aria-modal="true" aria-label="Share progress">
       <div className="mx-auto min-h-full max-w-4xl px-4 py-4">
         {/* Header */}
         <div className="mb-6 flex items-center gap-3">
