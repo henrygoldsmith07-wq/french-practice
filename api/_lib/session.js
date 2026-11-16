@@ -112,7 +112,13 @@ export function readCookies(req) {
   for (const part of header.split(';')) {
     const eq = part.indexOf('=');
     if (eq < 1) continue;
-    out[part.slice(0, eq).trim()] = decodeURIComponent(part.slice(eq + 1).trim());
+    const raw = part.slice(eq + 1).trim();
+    // A client can send any bytes here. A lone '%' makes decodeURIComponent
+    // throw; without this guard one malformed cookie turns every auth and sync
+    // request into a 500 instead of an honest "not signed in".
+    let value;
+    try { value = decodeURIComponent(raw); } catch { value = raw; }
+    out[part.slice(0, eq).trim()] = value;
   }
   return out;
 }

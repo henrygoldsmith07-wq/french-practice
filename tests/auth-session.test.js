@@ -12,7 +12,7 @@ process.env.AUTH_GOOGLE_ID = 'test-client-id.apps.googleusercontent.com';
 process.env.AUTH_GOOGLE_SECRET = 'test-client-secret';
 
 const { createHmac } = await import('node:crypto');
-const { issueSession, readSession } = await import('../api/_lib/session.js');
+const { issueSession, readSession, readCookies, SESSION_COOKIE } = await import('../api/_lib/session.js');
 const { profileFromIdToken } = await import('../api/_lib/google.js');
 
 const b64url = (obj) => Buffer.from(JSON.stringify(obj)).toString('base64url');
@@ -66,6 +66,17 @@ describe('session tokens', () => {
     for (const bad of [undefined, null, '', 'nodot', 'a.b', '....', 42, {}]) {
       assert.equal(readSession(bad), null);
     }
+  });
+
+  test('a malformed percent escape in a cookie does not break the request', () => {
+    const cookie = `${SESSION_COOKIE}=ab%zz; fp_oauth_flow=%`;
+    const parsed = readCookies({ headers: { cookie } });
+    assert.equal(parsed[SESSION_COOKIE], 'ab%zz', 'the raw value survives undecoded');
+    assert.equal(parsed.fp_oauth_flow, '%');
+    // The session token is still readable when another cookie is malformed.
+    const token = issueSession('user-abc');
+    const mixed = readCookies({ headers: { cookie: `broken=%zz; ${SESSION_COOKIE}=${token}` } });
+    assert.equal(readSession(mixed[SESSION_COOKIE]), 'user-abc');
   });
 });
 
