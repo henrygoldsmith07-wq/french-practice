@@ -9,7 +9,9 @@
 // The client automatically chooses the right path; callers still import from
 // '../lib/groq' — they never touch this file.
 
-const RELAY_URL = String(import.meta.env.VITE_GROQ_RELAY_URL || '').trim();
+// Optional chaining keeps this module importable outside Vite (unit tests,
+// SSR) where `import.meta.env` does not exist. The build still injects it.
+const RELAY_URL = String(import.meta.env?.VITE_GROQ_RELAY_URL || '').trim();
 export const relayEnabled = Boolean(RELAY_URL);
 
 // The free, no-key path. When the relay offers a trial (the operator has set
@@ -122,16 +124,24 @@ function relayEndpoint(path) {
   return RELAY_URL.replace(/\/+$/, '') + suffix;
 }
 
-export async function withRelay({ label, path = label, body, direct }) {
-  if (!relayEnabled) return direct();
+export async function withRelay({
+  label, path = label, body, direct,
+  // Injectable for tests; the defaults are the real browser values.
+  fetchImpl = globalThis.fetch,
+  relayUrl = RELAY_URL,
+  getToken = getTrialToken,
+} = {}) {
+  if (!relayEnabled && !relayUrl) return direct();
 
   let headers = relayHeaders();
+  let usedTrial = false;
   if (!headers.Authorization) {
     // No host-injected or stored identity: use the free trial token so a
     // first-time visitor still reaches the model. A failure here is the honest
     // "AI isn't available" path, surfaced by the caller's friendly error.
     try {
-      headers = { ...headers, Authorization: `Bearer ${await getTrialToken()}` };
+      headers = { ...headers, Authorization: `Bearer ${await getToken()}` };
+      usedTrial = true;
     } catch (error) {
       throw error instanceof TrialUnavailable
         ? error
@@ -139,17 +149,33 @@ export async function withRelay({ label, path = label, body, direct }) {
     }
   }
 
-  const res = await fetch(relayEndpoint(path), {
+  const endpoint = `${String(relayUrl).replace(/\/+$/, '')}/${String(path || '').replace(/^\/+/, '')}`;
+  const post = () => fetchImpl(endpoint, {
     method: 'POST',
     headers,
     body: JSON.stringify(body),
     signal: AbortSignal.timeout(30_000),
   });
 
-  const text = await res.text();
+  let res = await post();
+  let text = await res.text();
+  // An operator can rotate the trial signing secret, invalidating every
+  // cached token at once. A 401/403 on a trial is the one case where asking
+  // for a fresh token can fix the turn. Do it exactly once — never loop on a
+  // rejected credential, and never refresh an identity the host supplied.
+  if ((res.status === 401 || res.status === 403) && usedTrial) {
+    try {
+      headers = { ...headers, Authorization: `Bearer ${await getToken({ force: true })}` };
+    } catch (error) {
+      throw error instanceof TrialUnavailable
+        ? error
+        : new Error('Could not refresh your AI session — check your connection and try again.');
+    }
+    res = await post();
+    text = await res.text();
+  }
+
   if (!res.ok) {
-    // A 401 on a trial token usually means it expired mid-session: mint a
-    // fresh one once and let the caller retry rather than failing the turn.
     let msg = text.slice(0, 300);
     try {
       const j = JSON.parse(text);
