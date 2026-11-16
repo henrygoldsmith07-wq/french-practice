@@ -57,8 +57,13 @@ function credentials() {
 export function callbackUrl(req) {
   const configured = process.env.AUTH_URL && process.env.AUTH_URL.trim();
   if (configured) return `${configured.replace(/\/$/, '')}/api/auth/callback`;
-  const proto = req.headers['x-forwarded-proto'] || 'https';
-  const host = req.headers['x-forwarded-host'] || req.headers.host;
+  // Do not build a security decision (the OAuth redirect_uri) from forwarded
+  // headers: on some hosts the client can set them, which would bind the
+  // authorization code to an attacker-chosen host. Host comes from the browser
+  // request; deployments behind a host-rewriting proxy must set AUTH_URL.
+  const host = String(req?.headers?.host || '').trim();
+  if (!host || /[^\w.:[\]-]/.test(host)) throw new Error('Cannot determine the callback host');
+  const proto = process.env.NODE_ENV === 'production' ? 'https' : 'http';
   return `${proto}://${host}/api/auth/callback`;
 }
 

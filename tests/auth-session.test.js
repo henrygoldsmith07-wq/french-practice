@@ -13,7 +13,7 @@ process.env.AUTH_GOOGLE_SECRET = 'test-client-secret';
 
 const { createHmac } = await import('node:crypto');
 const { issueSession, readSession, readCookies, SESSION_COOKIE } = await import('../api/_lib/session.js');
-const { profileFromIdToken } = await import('../api/_lib/google.js');
+const { profileFromIdToken, callbackUrl } = await import('../api/_lib/google.js');
 
 const b64url = (obj) => Buffer.from(JSON.stringify(obj)).toString('base64url');
 /** A JWT with the given claims. The signature is never checked — see google.js. */
@@ -77,6 +77,41 @@ describe('session tokens', () => {
     const token = issueSession('user-abc');
     const mixed = readCookies({ headers: { cookie: `broken=%zz; ${SESSION_COOKIE}=${token}` } });
     assert.equal(readSession(mixed[SESSION_COOKIE]), 'user-abc');
+  });
+});
+
+describe('OAuth callback URL', () => {
+  test('forwarded headers cannot redirect the OAuth callback', () => {
+    const originalEnv = process.env.NODE_ENV;
+    delete process.env.AUTH_URL;
+    process.env.NODE_ENV = 'production';
+    try {
+      const url = callbackUrl({ headers: {
+        host: 'le-studio.example',
+        'x-forwarded-host': 'attacker.example',
+        'x-forwarded-proto': 'http',
+      } });
+      assert.equal(url, 'https://le-studio.example/api/auth/callback');
+    } finally {
+      process.env.NODE_ENV = originalEnv;
+    }
+  });
+
+  test('a configured AUTH_URL still wins for host-rewriting proxies', () => {
+    const previous = process.env.AUTH_URL;
+    process.env.AUTH_URL = 'https://studio.example.com/';
+    try {
+      assert.equal(callbackUrl({ headers: { host: 'internal.local' } }),
+        'https://studio.example.com/api/auth/callback');
+    } finally {
+      if (previous === undefined) delete process.env.AUTH_URL;
+      else process.env.AUTH_URL = previous;
+    }
+  });
+
+  test('a missing host fails closed instead of guessing', () => {
+    delete process.env.AUTH_URL;
+    assert.throws(() => callbackUrl({ headers: {} }), /callback host/);
   });
 });
 
