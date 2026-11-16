@@ -9,12 +9,12 @@
 //   - 'self' for everything, since all JS/CSS is first-party and hashed.
 //   - The worker and the audio pipeline both need blob:/data: (MediaRecorder
 //     chunks, WAV re-encoding), and inline <style> blocks exist in index.html.
-//   - connect-src allowlists ONLY the app's own origin, the AI relay (which is
-//     how the free, no-key path reaches the model) and the direct provider
-//     endpoints used by bring-your-own-key mode. The relay path is relative
-//     (/api/relay) so it inherits the deployment origin; the absolute forms
-//     cover a relay hosted on another domain. archive.org streams the
-//     provenance-verified public-domain audio.
+//   - connect-src allowlists ONLY the app's own origin, the provider endpoint
+//     used by bring-your-own-key mode, and archive.org (provenance-verified
+//     public-domain audio). The relay must therefore be configured on a
+//     SAME-ORIGIN path (e.g. /api/groq): a cross-origin VITE_GROQ_RELAY_URL is
+//     NOT covered by this policy and the browser would block its AI calls.
+//     Adding a relay host here is an explicit deployment decision.
 //   - frame-ancestors 'none': nothing embeds Le Studio, so nothing needs to.
 //   - microphone=() — the app asks for the mic itself, but Le Studio must never
 //     be embedded by a third party that could capture audio.
