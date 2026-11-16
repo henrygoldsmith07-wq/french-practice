@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
+import useDialogFocus from '../hooks/useDialogFocus.js';
 import { LANGUAGE_LIST, getLanguage, maturityLabel, isFullSupport } from '../lib/languages';
 import { syncLanguage } from '../lib/i18n';
 import { SpeakButton } from './ui';
@@ -54,6 +55,10 @@ export default function Onboarding({ open, initialLanguage, aiAvailable = false,
   // language back to French if they click through.
   const [d, setD] = useState(() => ({ ...DEFAULTS, language: initialLanguage || DEFAULTS.language }));
   const set = (patch) => setD((previous) => ({ ...previous, ...patch }));
+  // This is a full-screen aria-modal dialog. Without the trap, Tab can walk
+  // into the page behind it and focus is never returned to the opener on skip.
+  const panelRef = useRef(null);
+  useDialogFocus(panelRef, { active: open });
 
   if (!open) return null;
 
@@ -210,7 +215,7 @@ export default function Onboarding({ open, initialLanguage, aiAvailable = false,
   };
 
   return (
-    <div className="fixed inset-0 z-[60] flex flex-col overflow-hidden bg-bg" role="dialog" aria-modal="true" aria-label="Getting started">
+    <div ref={panelRef} className="fixed inset-0 z-[60] flex flex-col overflow-hidden bg-bg" role="dialog" aria-modal="true" aria-label="Getting started">
       <div className="shrink-0 px-4 pt-4">
         <div className="flex items-center gap-2">
           {step > 0
