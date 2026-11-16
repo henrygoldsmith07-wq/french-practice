@@ -62,14 +62,24 @@ export function consume(n = 1) {
 // For server relay responses that include quota headers
 export function syncFromHeaders(headers) {
   try {
-    const remaining = Number(headers.get?.('x-ratelimit-remaining'));
-    const limit = Number(headers.get?.('x-ratelimit-limit'));
-    if (Number.isFinite(limit)) {
-      const q = read();
-      q.limit = limit;
-      if (Number.isFinite(remaining)) q.count = limit - remaining;
-      write(q);
+    const rawLimit = headers.get?.('x-ratelimit-limit');
+    const rawRemaining = headers.get?.('x-ratelimit-remaining');
+    // Number(null) and Number('') are both 0. Trusting those would silently
+    // set the learner's allowance to zero whenever a relay or proxy omits the
+    // headers. Only a real, positive number is evidence of a server quota.
+    if (typeof rawLimit !== 'string' || !rawLimit.trim()) return;
+    const limit = Number(rawLimit);
+    if (!Number.isFinite(limit) || limit <= 0) return;
+
+    const q = read();
+    q.limit = limit;
+    if (typeof rawRemaining === 'string' && rawRemaining.trim()) {
+      const remaining = Number(rawRemaining);
+      if (Number.isFinite(remaining) && remaining >= 0) {
+        q.count = Math.max(0, Math.min(limit, limit - remaining));
+      }
     }
+    write(q);
   } catch { /* ignore */ }
 }
 
