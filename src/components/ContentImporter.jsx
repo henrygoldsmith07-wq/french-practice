@@ -9,6 +9,7 @@ import { useState, useRef } from 'react';
 import { Upload, FileText, BookOpen, CheckCircle, AlertCircle, X, Download, RefreshCw } from './icons';
 import { addVocabEntry, getVocabularyBySource } from '../lib/vocabAsync';
 import { contentLang } from '../lib/content/active';
+import useDialogFocus from '../hooks/useDialogFocus.js';
 
 const ACCEPTED_PDF = '.pdf';
 const ACCEPTED_CSV = '.csv';
@@ -23,6 +24,8 @@ export default function ContentImporter({ open, onClose, onXp }) {
   const [mergeMode, setMergeMode] = useState('append'); // append | replace
   const [pastedText, setPastedText] = useState('');
   const fileInputRef = useRef(null);
+  const panelRef = useRef(null);
+  useDialogFocus(panelRef, { active: open });
 
   const detectFileType = (file) => {
     const ext = file.name.split('.').pop().toLowerCase();
@@ -253,7 +256,7 @@ export default function ContentImporter({ open, onClose, onXp }) {
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-[55] overflow-y-auto bg-bg" role="dialog" aria-modal="true" aria-label="Import content">
+    <div ref={panelRef} className="fixed inset-0 z-[55] overflow-y-auto bg-bg" role="dialog" aria-modal="true" aria-label="Import content">
       <div className="mx-auto min-h-full max-w-2xl px-4 py-4">
         {/* Header */}
         <div className="mb-6 flex items-center gap-3">

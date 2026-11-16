@@ -1,6 +1,7 @@
-import { useState, useMemo } from 'react';
+import { useRef, useState, useMemo } from 'react';
 import { BarChart2, Users, TrendingUp, Target, Clock, FileText } from './icons';
 import { CHIP } from '../components/classNames.js';
+import useDialogFocus from '../hooks/useDialogFocus.js';
 
 /**
  * TeacherDashboard - a preview of a teacher view.
@@ -50,11 +51,13 @@ export default function TeacherDashboard({ open, onClose }) {
   // React turns into a crash, not a blank screen.
   const [selectedClass, setSelectedClass] = useState(null);
   const [viewMode, setViewMode] = useState('overview'); // overview | details | reports
+  const panelRef = useRef(null);
+  useDialogFocus(panelRef, { active: open });
 
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-[55] overflow-y-auto bg-bg" role="dialog" aria-modal="true" aria-label="Teacher dashboard">
+    <div ref={panelRef} className="fixed inset-0 z-[55] overflow-y-auto bg-bg" role="dialog" aria-modal="true" aria-label="Teacher dashboard">
       <div className="mx-auto min-h-full max-w-7xl px-4 py-4">
         {/* Header */}
         <div className="mb-6 flex items-center gap-3">
