@@ -48,11 +48,21 @@ self.addEventListener('fetch', (event) => {
   // Only handle same-origin GET; let the API (Groq) and cross-origin pass through.
   if (request.method !== 'GET' || new URL(request.url).origin !== self.location.origin) return;
 
+  const url = new URL(request.url);
+  // Account/session routes are same-origin, but their responses are private
+  // (/api/sync carries the user's sync code). The Cache API ignores Cache-Control:
+  // no-store, so without this check a stray GET would leave that code sitting in
+  // CacheStorage long after sign-out. They are network-only, always.
+  const isApi = url.pathname === '/api' || url.pathname.startsWith('/api/');
+
   event.respondWith(
     fetch(request)
       .then((response) => {
-        // Cache a copy of successful responses for offline use.
-        if (response && response.status === 200 && response.type === 'basic') {
+        // Cache a copy of successful, cacheable responses for offline use.
+        const noStore = /(?:^|,)\s*no-store\s*(?:,|$)/i.test(
+          response?.headers?.get('cache-control') || ''
+        );
+        if (response && response.status === 200 && response.type === 'basic' && !isApi && !noStore) {
           const copy = response.clone();
           caches.open(CACHE).then((c) => c.put(request, copy)).catch(() => {});
         }
@@ -62,6 +72,9 @@ self.addEventListener('fetch', (event) => {
         // Offline: serve the cached asset, or — only for navigations — the
         // app shell. Falling back to HTML for a missed JS/CSS request would
         // serve a 200 that fails to parse, masking the real problem.
+        // Private API responses are never served from cache, including any
+        // left over from an older worker build.
+        if (isApi) return undefined;
         return caches.match(request).then(
           (hit) =>
             hit ||
