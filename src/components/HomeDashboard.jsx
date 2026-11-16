@@ -17,7 +17,7 @@ function suggestScenario(sessions, scenarios = getScenarios()) {
   return unseen || [...scenarios].sort((a, b) => (lastSeen[a.id] ?? -1) - (lastSeen[b.id] ?? -1))[0];
 }
 
-export default function HomeDashboard({ onStartLesson, onNavigate, onOpenFieldNotes, onPickScenario, lastActivity, onResume, onStartToday }) {
+export default function HomeDashboard({ onStartLesson, onNavigate, onOpenFieldNotes, onOpenPath, onPickScenario, lastActivity, onResume, onStartToday }) {
   const settings = getSettings();
   const language = getLanguage(settings.language);
   const todayXp = getTodayXp();
@@ -241,7 +241,7 @@ export default function HomeDashboard({ onStartLesson, onNavigate, onOpenFieldNo
                 icon={StudioMark}
                 title="Your path"
                 desc="12 units · checkpoints · CEFR"
-                onClick={() => onNavigate('grammar')}
+                onClick={onOpenPath}
               />
             )}
             {!hasCapabilityNow('reading-library') && (

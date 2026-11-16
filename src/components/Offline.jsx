@@ -361,7 +361,7 @@ export default function Offline({ open, onClose, pwa }) {
                     <p className="text-xs text-ink2">
                       Signed in as <span className="font-semibold text-ink">{cloud.user.email}</span>
                       {knownRemote ? ` — last saved ${new Date(knownRemote).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}` : ' — nothing saved yet'}.
-                      The passphrase below encrypts what is stored; leave it empty and the saved code is a plain backup.
+                      Account sync requires a passphrase: the server stores an encrypted code it cannot read. The manual sync code below can still be plain if you leave the passphrase empty.
                     </p>
                     <div className="flex flex-wrap gap-2">
                       <button onClick={() => saveToAccount()} disabled={cloudBusy} className="btn btn-primary text-xs px-3 py-1.5 rounded-lg disabled:opacity-40">Save to account</button>

@@ -77,7 +77,7 @@ function readSessionBudget() {
   return null;
 }
 
-export default function ChatArena({ apiKey, mockMode, ttsRate, level, onTtsRate, onTurn, onGrammarTip, onXp, history, setHistory, scenario, setScenario, onEndSession, conversationMode: conversationModeProp, onConversationMode, showEndButton = false }) {
+export default function ChatArena({ apiKey, mockMode, ttsRate, level, onTtsRate, onTurn, onGrammarTip, onXp, history, setHistory, scenario, setScenario, onEndSession, conversationMode: conversationModeProp, onConversationMode, showEndButton = false, embedded = false }) {
   const [phase, setPhase] = useState('idle'); // idle | transcribing | editing | thinking
   const [draft, setDraft] = useState(''); // transcription editor / manual text
   const [spoken, setSpoken] = useState(null); // delivery coaching for a voice turn
@@ -472,8 +472,10 @@ export default function ChatArena({ apiKey, mockMode, ttsRate, level, onTtsRate,
 
   return (
     <div className="flex flex-col h-full">
-      {/* scenario card rail */}
-      <div className="border-b border-line bg-surface px-3 pt-2.5 pb-2 space-y-1.5">
+      {/* Scenario selection belongs to the standalone Speak tab. In an
+          embedded Today session the plan already chose the scenario, so
+          showing inert buttons here used to delete the transcript on tap. */}
+      {!embedded && <div className="border-b border-line bg-surface px-3 pt-2.5 pb-2 space-y-1.5">
         <div className="snap-rail flex gap-2 overflow-x-auto" role="group" aria-label="Choose a scenario">
           {getScenarios().map((s) => {
             const active = s.id === scenario.id;
@@ -496,9 +498,10 @@ export default function ChatArena({ apiKey, mockMode, ttsRate, level, onTtsRate,
               </button>
             );
           })}
-          <button onClick={() => setPickerOpen(true)} className="shrink-0 px-3.5 py-2.5 rounded-xl border border-dashed border-line bg-surface text-xs font-semibold text-ink2 hover:border-ink3 hover:text-ink whitespace-nowrap">Browse all {getScenarios().length} â†’</button>
+          <button onClick={() => setPickerOpen(true)} className="shrink-0 px-3.5 py-2.5 rounded-xl border border-dashed border-line bg-surface text-xs font-semibold text-ink2 hover:border-ink3 hover:text-ink whitespace-nowrap">Browse all {getScenarios().length} →</button>
         </div>
         <ScenarioPicker open={pickerOpen} activeId={scenario.id} onPick={changeScenario} onClose={() => setPickerOpen(false)} />
+      </div>}
         {/* Conversation mode: Coach corrects per turn; Fluency stays silent
             until the end-of-session debrief. */}
         <div className="flex items-center gap-1.5" role="group" aria-label="Conversation mode">
@@ -526,7 +529,7 @@ export default function ChatArena({ apiKey, mockMode, ttsRate, level, onTtsRate,
         {weaknessDue && !isFluency && (
           <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 flex items-center justify-between gap-2" role="status">
             <span className="text-xs text-ink"><span className="font-bold">Retest due:</span> {(() => { const t = getGrammarTopic(weaknessDue.topicId); return t ? t.title : weaknessDue.topicId; })()} — last slip {Math.max(1, Math.round((Date.now() - new Date(weaknessDue.lastErrorAt).getTime())/86400000))}d ago. Practise it again?</span>
-            <button onClick={() => changeScenario(scenario.id)} className="shrink-0 text-xs font-semibold text-amber-800 underline">Keep this scenario</button>
+            {!embedded && <button onClick={() => changeScenario(scenario.id)} className="shrink-0 text-xs font-semibold text-amber-800 underline">Keep this scenario</button>}
           </div>
         )}
         <div className="flex items-center justify-between pr-1 gap-2">
@@ -561,10 +564,9 @@ export default function ChatArena({ apiKey, mockMode, ttsRate, level, onTtsRate,
                 End Session
               </button>
             )}
-            <RateSlider rate={ttsRate} onChange={onTtsRate} />
+            {!embedded && <RateSlider rate={ttsRate} onChange={onTtsRate} />}
           </div>
         </div>
-      </div>
 
       {/* transcript */}
       <div ref={scrollRef} className="flex-1 overflow-y-auto nice-scroll px-4 py-4">

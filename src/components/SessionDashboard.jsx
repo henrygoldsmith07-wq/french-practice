@@ -7,6 +7,7 @@ import { sessionScores } from '../lib/score';
 import { takeawayPhrase } from '../lib/takeaway';
 import { saveSession, getSessions, getStreak } from '../lib/storage';
 import { spokenProduction } from '../lib/speakingTime';
+import { activeLanguage } from '../lib/i18n';
 import { Flame, Share as ShareIcon, Download as DownloadIcon, X as XIcon, Target } from './icons';
 import FluencyDebrief from './FluencyDebrief';
 
@@ -35,6 +36,7 @@ export default function SessionDashboard({ open, onClose, apiKey, mockMode, scen
   const [quiz, setQuiz] = useState(null); // { loading, exercises, error }
   const streak = getStreak();
   const pastSessions = getSessions();
+  const targetLang = activeLanguage().id;
 
   useEffect(() => {
     if (!open || report) return;
@@ -151,7 +153,7 @@ export default function SessionDashboard({ open, onClose, apiKey, mockMode, scen
               const takeaway = takeawayPhrase(history, scenario);
               return takeaway ? (
                 <p className="text-center text-[15px] text-ink leading-relaxed bg-surface2 border border-line rounded-2xl px-5 py-4">
-                  You can now say <span className="font-bold" lang="fr">«{takeaway}»</span>
+                  You can now say <span className="font-bold" lang={targetLang}>«{takeaway}»</span>
                 </p>
               ) : null;
             })()}

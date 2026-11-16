@@ -176,7 +176,7 @@ export default function SettingsModal({ open, onClose, apiKey, onKeyChange, sett
           )}
           {state === 'checking' && <Spinner label="Checking the key…" />}
           {message && (
-            <p className={`text-xs ${state === 'ok' ? 'text-ink' : 'text-ink'}`}>{message}</p>
+            <p role="status" className={`text-xs ${state === 'bad' ? 'text-danger' : 'text-ink'}`}>{message}</p>
           )}
         </section>
 

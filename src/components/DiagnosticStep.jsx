@@ -22,6 +22,7 @@ import useRecorder from '../hooks/useRecorder';
 import { transcribe, evaluateTurn, friendlyError } from '../lib/groq';
 import { speechMetrics } from '../lib/analytics';
 import { diagnoseSpeaking } from '../lib/diagnostic';
+import { getLanguage } from '../lib/languages';
 
 // One short prompt, at any level, that reliably yields gradeable speech.
 const PROMPTS = [
@@ -154,7 +155,7 @@ export default function DiagnosticStep({ apiKey, mockMode, language = 'fr', leve
           value={typed}
           onChange={(e) => setTyped(e.target.value)}
           rows={2}
-          placeholder="Type a sentence or two in French…"
+          placeholder={`Type a sentence or two in ${getLanguage(language).name}…`}
           aria-label="Type your answer instead of speaking"
           className="mt-2 w-full rounded-xl border border-line bg-bg px-3 py-2 text-sm"
         />

@@ -7,6 +7,11 @@ import { saveToNotebook, getLearnerBrief } from '../lib/storage';
 import { getGrammarTopic } from '../lib/grammar';
 import { rankCorrections, COACH_BUDGET } from '../lib/speakingCoach';
 import { SECTION_LABEL_SM } from '../components/classNames.js';
+import { activeLanguage } from '../lib/i18n';
+
+// Target-language text in these bubbles must be pronounced with the active
+// language's phonetics by screen readers, not always French.
+const targetLang = () => activeLanguage().id;
 
 // The Arena's correction-side UI cluster: the learner's turn bubble with its
 // tiered corrections, the redo comparison, the on-demand rule explanation and
@@ -19,7 +24,7 @@ export function Avatar() {
       className="w-9 h-9 shrink-0 rounded-full bg-surface2 border border-line grid place-items-center mb-1 text-[10px] font-semibold tracking-widest text-ink2"
       aria-hidden="true"
     >
-      FR
+      {targetLang().toUpperCase()}
     </span>
   );
 }
@@ -30,7 +35,7 @@ export function AiBubble({ text, translation, ttsRate }) {
     <div className="flex items-end gap-2 max-w-[88%] sm:max-w-[75%] bubble-in">
       <Avatar />
       <div className="bg-surface2 rounded-2xl rounded-bl-md px-4 py-3 space-y-2">
-        <p className="text-[15px] text-ink leading-relaxed" lang="fr">{text}</p>
+        <p className="text-[15px] text-ink leading-relaxed" lang={targetLang()}>{text}</p>
         {showTranslation && <p className="text-xs text-ink2 italic border-t border-line pt-2">{translation}</p>}
         <div className="flex items-center gap-2">
           <SpeakButton text={text} rate={ttsRate} label="Replay" />
@@ -56,7 +61,7 @@ export function UserBubble({ turn, idx, redoActive, onRedo, onCancelRedo, onGram
     <div className="flex flex-col items-end gap-1.5 bubble-in">
       <div className="flex items-end gap-2 max-w-[88%] sm:max-w-[75%]">
         <div className={`rounded-2xl rounded-br-md px-4 py-3 shadow-md shadow-black/15 ${turn.redo ? 'bg-ink text-bg' : 'bg-accent text-onaccent'}`}>
-          <p className={`text-[15px] leading-relaxed ${turn.redo ? 'text-bg' : 'text-onaccent'}`} lang="fr">{turn.userText}</p>
+          <p className={`text-[15px] leading-relaxed ${turn.redo ? 'text-bg' : 'text-onaccent'}`} lang={targetLang()}>{turn.userText}</p>
         </div>
         <ScoreBadge value={evaluation.scores.overall} />
       </div>
@@ -92,7 +97,7 @@ export function UserBubble({ turn, idx, redoActive, onRedo, onCancelRedo, onGram
             <MistakeActions turn={turn} apiKey={apiKey} mockMode={mockMode} level={level} onXp={onXp} />
           </div>          <div>
             <h4 className="text-[11px] font-bold uppercase tracking-wider text-ink mb-1">Like a native</h4>
-            <p className="text-[13px] text-ink italic" lang="fr">{evaluation.native_alternative}</p>
+            <p className="text-[13px] text-ink italic" lang={targetLang()}>{evaluation.native_alternative}</p>
             <SpeakButton text={evaluation.native_alternative} slow label="Listen" />
           </div>
           {(() => {
@@ -105,7 +110,7 @@ export function UserBubble({ turn, idx, redoActive, onRedo, onCancelRedo, onGram
                 <Book size={14} className="text-ink2 shrink-0" />
                 <span className="flex-1 text-xs text-ink">
                   <span className="font-semibold">Grammar tip:</span> this looks like{' '}
-                  <span lang="fr" className="font-semibold">{tipTopic.title}</span> — review the lesson
+                  <span lang={targetLang()} className="font-semibold">{tipTopic.title}</span> — review the lesson
                 </span>
                 <ArrowRight size={13} className="text-ink3 shrink-0" />
               </button>
@@ -151,9 +156,9 @@ export function TieredCorrections({ detailed }) {
   const Row = ({ c, tone }) => (
     <li className="space-y-0.5">
       <p className="text-[13px] leading-relaxed">
-        <span lang="fr" className={tone === 'strong' ? 'text-ink line-through decoration-ink3' : 'text-ink2'}>{c.original}</span>
+        <span lang={targetLang()} className={tone === 'strong' ? 'text-ink line-through decoration-ink3' : 'text-ink2'}>{c.original}</span>
         <span className="text-ink3 mx-1.5" aria-hidden="true">→</span>
-        <span lang="fr" className={`font-semibold ${tone === 'strong' ? 'text-ink' : 'text-ink2'}`}>{c.correction}</span>
+        <span lang={targetLang()} className={`font-semibold ${tone === 'strong' ? 'text-ink' : 'text-ink2'}`}>{c.correction}</span>
         <span className={`ml-2 align-middle text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded border ${
           tone === 'strong' ? 'border-amber-300 bg-amber-50 text-amber-800' : 'border-line bg-surface text-ink3'
         }`}>{LEVEL_LABEL[c.level]}</span>
@@ -272,7 +277,7 @@ export function RedoCompare({ redo, before, idx }) {
         <h4 className="text-[11px] font-bold uppercase tracking-wider">Redo — turn {idx + 1}</h4>
         <span className={`text-xs font-black tabular-nums ${redo.deltaOverall > 0 ? 'text-emerald-700' : redo.deltaOverall < 0 ? 'text-amber-700' : 'text-ink2'}`}>{sign(redo.deltaOverall)} overall</span>
       </div>
-      <p className="text-xs leading-relaxed"><span className="font-semibold">Retry:</span> <span lang="fr">“{redo.retryText}”</span></p>
+      <p className="text-xs leading-relaxed"><span className="font-semibold">Retry:</span> <span lang={targetLang()}>“{redo.retryText}”</span></p>
       <p className="text-xs leading-relaxed italic">{redo.verdict}{redo.note ? ` — ${redo.note}` : ''}</p>
       <div className="flex flex-wrap gap-1.5 pt-1">
         {Object.entries(redo.deltas).map(([k, v]) => (

@@ -54,7 +54,7 @@ const EMPTY_DEP_LIST = Object.freeze([]);
 // Hooks live in the two sub-components below (TodayBody / SessionComplete)
 // so the early-return structure can never reorder them.
 
-export default function TodaySession({ open, onClose, minutes = 20, apiKey, mockMode, level, ttsRate, onTurn, onXp, onActivity, depsImpl }) {
+export default function TodaySession({ open, onClose, minutes = 20, apiKey, mockMode, level, ttsRate, onTurn, onXp, onActivity, onGrammarTip, depsImpl }) {
   // EVERY async dependency — vocabulary, scenarios, grammar index, listening
   // library, study module — settles through ONE hook. Each arrival changes
   // the deps object's identity, so the plan memo below replans regardless of
@@ -226,6 +226,7 @@ export default function TodaySession({ open, onClose, minutes = 20, apiKey, mock
       ttsRate={ttsRate}
       onTurn={onTurn}
       onActivity={onActivity}
+      onGrammarTip={onGrammarTip}
       award={award}
       history={history}
       setHistory={setHistory}
@@ -280,7 +281,7 @@ function UsefulnessPrompt({ onRate }) {
   );
 }
 
-function TodayBody({ plan, trialId, segIndex, setSegIndex, close, apiKey, mockMode, level, ttsRate, onTurn, onActivity, award, history, setHistory }) {
+function TodayBody({ plan, trialId, segIndex, setSegIndex, close, apiKey, mockMode, level, ttsRate, onTurn, onActivity, onGrammarTip, award, history, setHistory }) {
   // Track content lives in the lazy listening chunk; today's payload only
   // carries ids, so resolve the real track when the listen segment renders.
   const liveTracks = useListeningTracks();
@@ -425,12 +426,14 @@ function TodayBody({ plan, trialId, segIndex, setSegIndex, close, apiKey, mockMo
             onTtsRate={() => {}}
             onTurn={onTurn}
             onXp={award}
+            onGrammarTip={onGrammarTip}
             history={history}
             setHistory={setHistory}
             scenario={sc}
             setScenario={() => {}}
             onEndSession={advance}
             showEndButton
+            embedded
           />
         );
       }

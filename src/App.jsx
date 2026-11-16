@@ -302,6 +302,16 @@ export default function App() {
   const learningPathRef = useRef(null);
   useDialogFocus(learningPathRef, { active: overlayIs(overlay, 'learningPath') });
 
+  // One grammar deep-link for the standalone Speak tab and Today's embedded
+  // conversation. Today previously passed no handler, so its grammar-tip card
+  // looked actionable but did nothing.
+  const openGrammarTopic = (topicId) => {
+    if (!featureAvailableNow('grammar')) return;
+    setGrammarFocus(topicId);
+    setLearnView('grammar');
+    setTab('learn');
+  };
+
   const updateSettings = (s) => {
     if (s.language !== settings.language) switchLanguage(s.language);
     setSettings(s);
@@ -657,6 +667,7 @@ export default function App() {
               onStartLesson={startLesson}
               onNavigate={setTab}
               onOpenFieldNotes={() => { setTab('learn'); setLearnView('field-notes'); }}
+              onOpenPath={() => { setTab('progress'); setProgressView('path'); }}
               lastActivity={getLastActivity()}
               onResume={resumeActivity}
               onStartToday={() => openOverlay('today')}
@@ -686,12 +697,7 @@ export default function App() {
                 onTtsRate={(r) => updateSettings({ ...settings, ttsRate: r })}
                 onTurn={handleTurn}
                 onXp={awardXp}
-                onGrammarTip={(topicId) => {
-                  if (!featureAvailableNow('grammar')) return;
-                  setGrammarFocus(topicId);
-                  setLearnView('grammar');
-                  setTab('learn');
-                }}
+                onGrammarTip={openGrammarTopic}
                 history={history}
                 setHistory={setHistory}
                 scenario={scenario}
@@ -847,6 +853,7 @@ export default function App() {
             onTurn={handleTurn}
             onXp={awardXp}
             onActivity={handleActivity}
+            onGrammarTip={openGrammarTopic}
           />
         </Suspense>
       )}
