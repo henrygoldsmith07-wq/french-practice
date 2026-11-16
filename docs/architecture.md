@@ -228,5 +228,11 @@ Free the port, then re-run. When the suite runs against Le Studio it passes
 cleanly: **0 failed** on Chromium. The passing count moves with the suite, so
 read the runner's summary rather than a number remembered from an older build.
 
+Both CI workflows run `tests/module-imports.test.js` before anything else.
+A source parse error used to reach the scheduled job and appear only as
+"webServer was not able to start" after two browser downloads; the guard names
+the offending file instead. A green guard is not an E2E pass — it only says
+every module parses and every import resolves.
+
 The stashed-baseline comparison is still worth doing for genuine regressions —
 but only once you have confirmed the run was actually against Le Studio.

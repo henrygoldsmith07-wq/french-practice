@@ -28,6 +28,12 @@ jobs:
           cache: npm
           cache-dependency-path: package-lock.json
       - run: npm ci
+      # This job does not run lint or the unit suite, so a source parse error
+      # used to surface only as "webServer was not able to start" after two
+      # browser downloads — 10 days of that in Nov 2026 came from one bad
+      # string literal. Run the cheap guard first so the failure names the file.
+      - name: Module parse & import guard
+        run: node --test tests/module-imports.test.js
       - name: Install Firefox + WebKit (skip Chromium — CI already covers it)
         run: npx playwright install --with-deps firefox webkit
       - name: E2E on Firefox + WebKit
