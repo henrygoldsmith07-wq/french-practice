@@ -13,6 +13,7 @@ import {
 } from '../lib/game';
 import { buildGameStats } from '../lib/gameStats.js';
 import { grantEarnedRewards, claimDailyChallenge } from '../lib/gameGrants.js';
+import useDialogFocus from '../hooks/useDialogFocus.js';
 import WeeklyLeague from './WeeklyLeague.jsx';
 import Stats from './Stats';
 import { X, Check, Flame, Bolt, Coins, Trophy, Lock, Brain, Zap, Award, MessageCircle, Sparkles, BarChart } from './icons';
@@ -68,13 +69,19 @@ export default function Profile({ open, onClose, onXp, onHeaderChange, onMemberS
     headerCbRef.current?.({ coins: data.coins, avatarId: data.avatarId });
   }, [data.coins, data.avatarId]);
 
+  // This panel replaces the page behind an aria-modal dialog. Without the
+  // trap, Tab walks into that page and closing never returns focus to the
+  // avatar button that opened the profile.
+  const panelRef = useRef(null);
+  useDialogFocus(panelRef, { active: open });
+
   if (!open) return null;
 
   const level = levelFromXp(data.xp);
   const avatar = AVATARS.find((a) => a.id === data.avatarId) || AVATARS[0];
 
   return (
-    <div className="fixed inset-0 z-[55] bg-bg flex flex-col" role="dialog" aria-modal="true" aria-label="Profile">
+    <div ref={panelRef} className="fixed inset-0 z-[55] bg-bg flex flex-col" role="dialog" aria-modal="true" aria-label="Profile">
       <div className={TOP_BAR}>
         <h2 className="flex-1 text-sm font-semibold text-ink">Your profile</h2>
         <button onClick={onClose} aria-label="Close profile" className={ICON_BTN_ROUND_SOFT}>
