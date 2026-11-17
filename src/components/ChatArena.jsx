@@ -475,7 +475,8 @@ export default function ChatArena({ apiKey, mockMode, ttsRate, level, onTtsRate,
       {/* Scenario selection belongs to the standalone Speak tab. In an
           embedded Today session the plan already chose the scenario, so
           showing inert buttons here used to delete the transcript on tap. */}
-      {!embedded && <div className="border-b border-line bg-surface px-3 pt-2.5 pb-2 space-y-1.5">
+      <div className="border-b border-line bg-surface px-3 pt-2.5 pb-2 space-y-1.5">
+       {!embedded && <>
         <div className="snap-rail flex gap-2 overflow-x-auto" role="group" aria-label="Choose a scenario">
           {getScenarios().map((s) => {
             const active = s.id === scenario.id;
@@ -501,7 +502,7 @@ export default function ChatArena({ apiKey, mockMode, ttsRate, level, onTtsRate,
           <button onClick={() => setPickerOpen(true)} className="shrink-0 px-3.5 py-2.5 rounded-xl border border-dashed border-line bg-surface text-xs font-semibold text-ink2 hover:border-ink3 hover:text-ink whitespace-nowrap">Browse all {getScenarios().length} →</button>
         </div>
         <ScenarioPicker open={pickerOpen} activeId={scenario.id} onPick={changeScenario} onClose={() => setPickerOpen(false)} />
-      </div>}
+       </>}
         {/* Conversation mode: Coach corrects per turn; Fluency stays silent
             until the end-of-session debrief. */}
         <div className="flex items-center gap-1.5" role="group" aria-label="Conversation mode">
@@ -532,7 +533,7 @@ export default function ChatArena({ apiKey, mockMode, ttsRate, level, onTtsRate,
             {!embedded && <button onClick={() => changeScenario(scenario.id)} className="shrink-0 text-xs font-semibold text-amber-800 underline">Keep this scenario</button>}
           </div>
         )}
-        <div className="flex items-center justify-between pr-1 gap-2">
+        <div className="flex flex-wrap items-center justify-between pr-1 gap-2">
           <button
             onClick={() => { setReversed((v) => !v); setHistory([]); setHint(''); setHintLevel(0); setPhase('idle'); }}
             aria-pressed={reversed}
@@ -567,6 +568,7 @@ export default function ChatArena({ apiKey, mockMode, ttsRate, level, onTtsRate,
             {!embedded && <RateSlider rate={ttsRate} onChange={onTtsRate} />}
           </div>
         </div>
+      </div>
 
       {/* transcript */}
       <div ref={scrollRef} className="flex-1 overflow-y-auto nice-scroll px-4 py-4">

@@ -127,6 +127,11 @@
   --color-bg: var(--bg);
   --color-surface: var(--surface);
   --color-surface2: var(--surface-2);
+  /* A third ramp step for progress-bar tracks and disabled fills. Several
+     panels use bg-surface3 but the token was never defined, so those elements
+     rendered transparent. Derived from the existing ramps, so it flips with
+     the theme automatically. */
+  --color-surface3: color-mix(in srgb, var(--surface-2) 65%, var(--ink));
   --color-line: var(--line);
   --color-ink: var(--ink);
   --color-ink2: var(--ink-2);

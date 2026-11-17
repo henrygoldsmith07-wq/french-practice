@@ -196,14 +196,14 @@ export default function AIVirtualStudyBuddy({ open, onClose }) {
       <div className={`flex items-start gap-2 ${isUser ? 'justify-end' : 'justify-start'}`}>
         {!isUser && (
           <div className="w-8 h-8 grid place-items-center bg-accent rounded-full flex-shrink-0">
-            <Bot size={14} className="text-white" />
+            <Bot size={14} className="text-onaccent" />
           </div>
         )}
         
         <div className={`max-w-[75%] ${isUser ? 'order-1' : ''}`}>
           <div className={`px-4 py-3 rounded-2xl ${
             isUser 
-              ? 'bg-accent text-white rounded-br-none' 
+              ? 'bg-accent text-onaccent rounded-br-none' 
               : 'bg-surface border border-line rounded-bl-none'
           }`}>
             <p className="text-sm leading-relaxed">{msg.text}</p>
@@ -224,7 +224,7 @@ export default function AIVirtualStudyBuddy({ open, onClose }) {
         
         {isUser && (
           <div className="w-8 h-8 grid place-items-center bg-purple-500 rounded-full flex-shrink-0">
-            <User size={14} className="text-white" />
+            <User size={14} className="text-onaccent" />
           </div>
         )}
       </div>
@@ -271,7 +271,7 @@ export default function AIVirtualStudyBuddy({ open, onClose }) {
         <div className="flex items-center gap-3">
           <div className="relative">
             <div className="w-10 h-10 grid place-items-center bg-accent rounded-full">
-              <Bot size={20} className="text-white" />
+              <Bot size={20} className="text-onaccent" />
             </div>
             <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-green-500 rounded-full border-2 border-bg"></div>
           </div>
@@ -379,7 +379,7 @@ export default function AIVirtualStudyBuddy({ open, onClose }) {
               disabled={!inputValue.trim() || isTyping}
               className={`w-12 h-12 grid place-items-center rounded-xl transition-all ${
                 inputValue.trim() && !isTyping
-                  ? 'bg-accent text-white hover:bg-accent/80 shadow-lg shadow-accent/30'
+                  ? 'bg-accent text-onaccent hover:bg-accent/80 shadow-lg shadow-accent/30'
                   : 'bg-surface3 text-ink3 cursor-not-allowed'
               }`}
             >

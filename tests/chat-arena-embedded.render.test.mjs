@@ -40,6 +40,8 @@ assert.equal(container.querySelector('[aria-label="Playback speed"]'), null,
   'no inert speed slider inside Today');
 assert.ok(container.querySelector('[aria-label="Conversation mode"]'),
   'the working conversation-mode controls remain available');
+assert.ok(container.querySelector('.px-3'),
+  'the control rows keep their horizontal padding in the embedded view');
 assert.equal(container.textContent.includes('Browse all'), false,
   'the browse-all button is hidden too');
 

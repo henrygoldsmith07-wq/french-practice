@@ -102,19 +102,19 @@ export default function PeerComparisonLeaderboard({ open, onClose }) {
           <div className="flex items-center gap-1">
             <button
               onClick={() => setActiveTab('all')}
-              className={`px-3 py-1.5 text-xs font-medium rounded-full transition-colors ${activeTab === 'all' ? 'bg-accent text-white' : 'text-ink2 hover:bg-surface3'}`}
+              className={`px-3 py-1.5 text-xs font-medium rounded-full transition-colors ${activeTab === 'all' ? 'bg-accent text-onaccent' : 'text-ink2 hover:bg-surface3'}`}
             >
               All Learners
             </button>
             <button
               onClick={() => setActiveTab('top')}
-              className={`px-3 py-1.5 text-xs font-medium rounded-full transition-colors ${activeTab === 'top' ? 'bg-accent text-white' : 'text-ink2 hover:bg-surface3'}`}
+              className={`px-3 py-1.5 text-xs font-medium rounded-full transition-colors ${activeTab === 'top' ? 'bg-accent text-onaccent' : 'text-ink2 hover:bg-surface3'}`}
             >
               Top 10 🔥
             </button>
             <button
               onClick={() => setActiveTab('nearby')}
-              className={`px-3 py-1.5 text-xs font-medium rounded-full transition-colors ${activeTab === 'nearby' ? 'bg-accent text-white' : 'text-ink2 hover:bg-surface3'}`}
+              className={`px-3 py-1.5 text-xs font-medium rounded-full transition-colors ${activeTab === 'nearby' ? 'bg-accent text-onaccent' : 'text-ink2 hover:bg-surface3'}`}
             >
               Same Level 👥
             </button>

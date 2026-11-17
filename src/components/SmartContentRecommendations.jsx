@@ -309,7 +309,7 @@ export default function SmartContentRecommendations({ open, onClose }) {
               <span>{rec.duration} min</span>
             </div>
             
-            <button className="px-3 py-1.5 bg-accent text-white rounded-lg text-xs font-medium hover:bg-accent/80 transition-colors">
+            <button className="px-3 py-1.5 bg-accent text-onaccent rounded-lg text-xs font-medium hover:bg-accent/80 transition-colors">
               Start Now
             </button>
           </div>
@@ -410,7 +410,7 @@ export default function SmartContentRecommendations({ open, onClose }) {
           <button
             onClick={() => setActiveTab('for-you')}
             className={`flex-1 py-2 text-xs font-medium rounded-full transition-colors ${
-              activeTab === 'for-you' ? 'bg-accent text-white' : 'text-ink2 hover:bg-surface3'
+              activeTab === 'for-you' ? 'bg-accent text-onaccent' : 'text-ink2 hover:bg-surface3'
             }`}
           >
             For You ✨
@@ -418,7 +418,7 @@ export default function SmartContentRecommendations({ open, onClose }) {
           <button
             onClick={() => setActiveTab('trending')}
             className={`flex-1 py-2 text-xs font-medium rounded-full transition-colors ${
-              activeTab === 'trending' ? 'bg-accent text-white' : 'text-ink2 hover:bg-surface3'
+              activeTab === 'trending' ? 'bg-accent text-onaccent' : 'text-ink2 hover:bg-surface3'
             }`}
           >
             Trending 🔥
@@ -426,7 +426,7 @@ export default function SmartContentRecommendations({ open, onClose }) {
           <button
             onClick={() => setActiveTab('all')}
             className={`flex-1 py-2 text-xs font-medium rounded-full transition-colors ${
-              activeTab === 'all' ? 'bg-accent text-white' : 'text-ink2 hover:bg-surface3'
+              activeTab === 'all' ? 'bg-accent text-onaccent' : 'text-ink2 hover:bg-surface3'
             }`}
           >
             All Content 📚

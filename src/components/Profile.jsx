@@ -83,13 +83,14 @@ export default function Profile({ open, onClose, onXp, onHeaderChange, onMemberS
   return (
     <div ref={panelRef} className="fixed inset-0 z-[55] bg-bg flex flex-col" role="dialog" aria-modal="true" aria-label="Profile">
       <div className={TOP_BAR}>
-        <h2 className="flex-1 text-sm font-semibold text-ink">Your profile</h2>
-        <button onClick={onClose} aria-label="Close profile" className={ICON_BTN_ROUND_SOFT}>
+        <h2 className="shrink-0 text-sm font-semibold text-ink">Your profile</h2>
+        <button onClick={onClose} aria-label="Close profile" className={`shrink-0 ${ICON_BTN_ROUND_SOFT}`}>
           <X size={18} />
         </button>
-        
-        {/* Quick Access Buttons */}
-        <div className="flex items-center gap-1 ml-2">
+
+        {/* Quick-access buttons: a horizontal scroll rail so all destinations
+            stay reachable on a narrow phone instead of clipping off-screen. */}
+        <div className="flex items-center gap-1 ml-2 min-w-0 flex-1 overflow-x-auto snap-rail nice-scroll [&>button]:shrink-0">
           <button 
             onClick={() => {
               window.dispatchEvent(new CustomEvent('openOverlay', { detail: 'aiAssistant' }));

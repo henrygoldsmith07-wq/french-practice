@@ -264,7 +264,7 @@ export default function RealTimePerformanceAnalytics({ open, onClose }) {
 
           <button
             onClick={downloadReport}
-            className="flex items-center gap-2 px-3 py-2 bg-accent text-white rounded-lg text-sm font-medium hover:bg-accent/80 transition-colors"
+            className="flex items-center gap-2 px-3 py-2 bg-accent text-onaccent rounded-lg text-sm font-medium hover:bg-accent/80 transition-colors"
           >
             <Download size={14} />
             Export
@@ -460,7 +460,7 @@ export default function RealTimePerformanceAnalytics({ open, onClose }) {
           {!insightsGenerated && (
             <button
               onClick={handleGenerateInsights}
-              className="w-full py-3 bg-accent text-white rounded-xl font-semibold text-sm hover:bg-accent/80 transition-colors shadow-lg shadow-accent/20"
+              className="w-full py-3 bg-accent text-onaccent rounded-xl font-semibold text-sm hover:bg-accent/80 transition-colors shadow-lg shadow-accent/20"
             >
               Generate Custom Insights →
             </button>
