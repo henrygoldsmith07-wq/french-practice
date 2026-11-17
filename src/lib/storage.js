@@ -1326,11 +1326,12 @@ export const getStreak = () => {
   const twoDaysAgo = dayStamp(new Date(Date.now() - 2 * 86400000));
   // A single missed day can be covered by a streak freeze (consumed once â€”
   // afterwards lastDay reads as yesterday, so this branch won't re-fire).
+  // This is a PROJECTION for display only. getStreak() runs on boot, Profile,
+  // Home and the reminder check; spending a paid freeze there meant simply
+  // opening the app drained them without ever practising. The freeze is spent
+  // in bumpStreak(), only when a real session is saved.
   if (s.lastDay === twoDaysAgo && getFreezes() > 0) {
-    write(KEYS.freezes, getFreezes() - 1);
-    const repaired = { ...s, lastDay: yesterday, frozeYesterday: true };
-    write(KEYS.streak, repaired);
-    return repaired;
+    return { ...s, lastDay: yesterday, frozeYesterday: true };
   }
   // Vacation mode: while active, missed days never break the streak â€”
   // lastDay is quietly rolled forward to yesterday.
@@ -1421,7 +1422,15 @@ function bumpStreak() {
   const today = dayStamp();
   const s = getStreak();
   if (s.lastDay === today) return;
-  write(KEYS.streak, { count: s.count + 1, lastDay: today });
+  // A freeze protected yesterday's miss. Only NOW, on real practice, is it
+  // actually spent — getStreak() merely projected that protection for display.
+  if (s.frozeYesterday) {
+    const current = getFreezes();
+    if (current > 0) write(KEYS.freezes, current - 1);
+    write(KEYS.streak, { count: s.count + 1, lastDay: today, frozeYesterday: false });
+  } else {
+    write(KEYS.streak, { count: s.count + 1, lastDay: today });
+  }
   bumpHouseholdStreak(today);
 }
 
