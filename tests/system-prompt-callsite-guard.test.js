@@ -69,7 +69,23 @@ const FREE_TEXT_VARS = new Set([
   'topic',
   'prompt',
   'lastAiReply',
+  // characterChat builds its personalisation clause from these three locals.
+  // They are free-text carriers into the SYSTEM prompt: `name` is the learner's
+  // Profile name, `known` holds the assembled "Their name is …" lines, and
+  // `knownLine` is the clause spliced into the system message. Listing them
+  // makes the walker flag any future raw interpolation of these values.
+  'name',
+  'known',
+  'knownLine',
 ]);
+
+// Curated containers whose properties are NOT learner free text. `LANG.name`
+// is the target-language name (French/German/Spanish) chosen in Settings —
+// fixed, curated content, not the Profile name. Now that the generic `name` is
+// in FREE_TEXT_VARS (so `learner.name` is covered), the walker would otherwise
+// flag every `LANG.name` in the system prompts below. The header already lists
+// LANG.name as deliberately-not-flagged; this makes that intent explicit.
+const CURATED_MEMBER_OBJECTS = new Set(['LANG']);
 
 // Lazy: acorn is a devDependency. If a minimal checkout has not installed it the
 // test is SKIPPED loudly rather than silently passing — a security guard that
@@ -141,6 +157,9 @@ function rawFindings(template) {
         } else if (output) {
           // `${t.userText}`: the object is a container, but the property NAMES the
           // free-text field, so its value is exactly the learner text at issue.
+          // Curated containers (LANG.name = target-language name) are excluded.
+          const objectName = node.object && node.object.type === 'Identifier' ? node.object.name : null;
+          if (CURATED_MEMBER_OBJECTS.has(objectName)) return;
           if (node.property && node.property.type === 'Identifier') report(node.property);
         }
         return;
@@ -460,4 +479,29 @@ test('a free-text variable omitted from FREE_TEXT_VARS would be invisible', () =
   assert.match(hintLine, /sanitizeForPrompt\(lastAiReply/,
     'getHint interpolates the model-authored partner reply — it must be wrapped ' +
     'in sanitizeForPrompt like every other free-text value in a system prompt');
+});
+
+test('characterChat free-text variables are covered, LANG.name stays curated', async () => {
+  if (!parse) return;
+
+  for (const v of ['name', 'known', 'knownLine']) {
+    assert.ok(FREE_TEXT_VARS.has(v),
+      `${v} must stay in the free-text set — it carries learner text into ` +
+      'the characterChat system prompt');
+    const snippet = 'const s = { role: "system", content: `hello ${' + v + '}` };';
+    const ast = parse(snippet, { ecmaVersion: 'latest', sourceType: 'module' });
+    let template = null;
+    walk(ast, (n) => { if (n.type === 'TemplateLiteral') template = n; });
+    assert.ok(rawFindings(template).some((f) => f.name === v),
+      `a raw ${v} interpolation in a system prompt must be flagged`);
+  }
+
+  // The curated exclusion added alongside `name` must be narrow: LANG.name is
+  // the target-language name, not the learner's Profile name.
+  const curated = 'const s = { role: "system", content: `You are a ${LANG.name} tutor` };';
+  const ast = parse(curated, { ecmaVersion: 'latest', sourceType: 'module' });
+  let template = null;
+  walk(ast, (n) => { if (n.type === 'TemplateLiteral') template = n; });
+  assert.deepEqual(rawFindings(template), [],
+    'LANG.name is curated content and must not be flagged as free text');
 });

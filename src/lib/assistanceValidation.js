@@ -9,6 +9,11 @@
 
 
 export const MIN_ASSISTANCE_N = 20;
+// A "validated" comparison needs BOTH sides of the contrast. A pile of
+// supported-only events is not evidence of dependence — there is nothing to
+// compare them against. Each group must clear this small floor as well as the
+// overall n before any with-vs-without claim is allowed.
+export const MIN_ASSISTANCE_PER_GROUP = 3;
 
 /**
  * @typedef {Object} AssistanceEvent
@@ -93,10 +98,18 @@ export function assistanceMetrics(events = []) {
     }
   }
 
-  // Dependence signal: large positive gap + low without-mean
+  // Dependence signal: large positive gap + low without-mean. `gap` is null
+  // unless BOTH groups have scores, so this can never claim dependence from a
+  // supported-only log (there is no unaided comparison group).
   const dependent = gap != null && gap > 15 && withoutMean != null && withoutMean < 60;
 
-  const status = list.length < MIN_ASSISTANCE_N ? 'provisional' : 'validated';
+  // Eligibility is paired, not just a total count: enough events overall AND
+  // enough on each side of the contrast. Otherwise the honest state is
+  // provisional, with the group counts exposed so the gap is visible.
+  const paired = withScores.length >= MIN_ASSISTANCE_PER_GROUP
+    && withoutScores.length >= MIN_ASSISTANCE_PER_GROUP;
+  const eligible = list.length >= MIN_ASSISTANCE_N && paired;
+  const status = eligible ? 'validated' : 'provisional';
 
   return {
     n: list.length,
@@ -108,8 +121,10 @@ export function assistanceMetrics(events = []) {
     retries: avgRetries == null ? null : Math.round(avgRetries * 100) / 100,
     retention,
     dependent,
+    withN: withScores.length,
+    withoutN: withoutScores.length,
     message: status === 'provisional'
-      ? `Provisional (n=${list.length}; need ${MIN_ASSISTANCE_N} paired with/without events).`
+      ? `Provisional (n=${list.length}; need ${MIN_ASSISTANCE_N} events with at least ${MIN_ASSISTANCE_PER_GROUP} in each group — currently with=${withScores.length}, without=${withoutScores.length}).`
       : dependent
         ? `Large gap (${Math.round(gap)}pp) between supported and unaided performance — scaffolding dependence suspected.`
         : `Validated (n=${list.length}). Gap ${gap == null ? '—' : Math.round(gap) + 'pp'}; retention ${retention ? retention.holdRate * 100 + '% ≥70' : 'not yet measured'}.`,

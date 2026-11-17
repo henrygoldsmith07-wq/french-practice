@@ -26,6 +26,42 @@ const fmt = (s) => {
 
 // ----------------------------------------------------------------- review ---
 
+/**
+ * Build the per-task criteria that actually carry marks for the shared finding
+ * model. The component owns the entered per-criterion marks in `scores`, keyed
+ * by taskId; scoreTask() deliberately does NOT echo them back on its result, so
+ * reading criteria off `s.scores` always yields an empty list and no exam
+ * weakness/success ever reaches the model. We read the real state instead.
+ *
+ * Auto-scored papers (listening / reading) have no slider marks — their
+ * objectiveScore IS the comprehension mark — so map that into a `comprehension`
+ * criterion too, which findings.js folds into the shared model.
+ *
+ * @param {Array}  sections    run.paper.sections
+ * @param {object} scores      component state { [taskId]: { [criterion]: number } }
+ * @param {Array}  transcripts run.transcripts
+ * @returns {Array<{taskId: string, criteria: Array<{criterion: string, score: number}>}>}
+ */
+export function criteriaFromRunState(sections = [], scores = {}, transcripts = []) {
+  const transcriptList = Array.isArray(transcripts) ? transcripts : [];
+  return (Array.isArray(sections) ? sections : []).map((s) => {
+    const taskId = s?.taskId;
+    const criteria = [];
+    const entered = scores?.[taskId] || {};
+    for (const [criterion, value] of Object.entries(entered)) {
+      if (value == null || value === '') continue;
+      const score = Number(value);
+      if (Number.isFinite(score)) criteria.push({ criterion, score });
+    }
+    const objectiveScore = transcriptList.find((t) => t?.taskId === taskId)?.responseData?.objectiveScore;
+    if (objectiveScore != null && Number.isFinite(Number(objectiveScore))
+      && !criteria.some((c) => c.criterion === 'comprehension')) {
+      criteria.push({ criterion: 'comprehension', score: Number(objectiveScore) });
+    }
+    return { taskId, criteria };
+  });
+}
+
 export function Review({ run, scores, setScores, onRestart, onXp, onActivity }) {
   const [awarded, setAwarded] = useState(false);
   const [examinerPercent, setExaminerPercent] = useState('');
@@ -72,12 +108,7 @@ export function Review({ run, scores, setScores, onRestart, onXp, onActivity }) 
       // marks on tense accuracy in the exam room gets a Today session built from
       // conversation mistakes alone — the exam tells the model nothing.
       const { weaknesses: examWeaknesses, successes: examSuccesses } = applyPaperFindings(
-        taskScores.map((s) => ({
-          taskId: s.taskId,
-          criteria: Object.entries(s.scores || {})
-            .filter(([, value]) => Number.isFinite(Number(value)))
-            .map(([criterion, score]) => ({ criterion, score: Number(score) })),
-        })),
+        criteriaFromRunState(run.paper.sections, scores, run.transcripts),
         {
           context: { boardId: run.paper.boardId, tier: run.paper.tier, official: run.paper.official === true },
           recordError: (finding) => recordLearnerError({

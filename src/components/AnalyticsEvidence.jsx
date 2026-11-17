@@ -394,6 +394,43 @@ function median(values) {
   return s.length % 2 ? s[mid] : (s[mid - 1] + s[mid]) / 2;
 }
 
+// The roadmap chips are keyed by the canonical track keys from EVIDENCE_FLOORS
+// (placement, progression, …), but the on-screen metric rows are labelled by
+// display name. This map is the bridge — listening AND reading both roll up to
+// the single 'comprehension' track, so it is a label→key (not 1:1) mapping.
+export const EVIDENCE_TRACK_BY_LABEL = {
+  'Placement accuracy': 'placement',
+  'Progression transfer': 'progression',
+  'AI vs human marking': 'corpus',
+  'Listening vs humans': 'comprehension',
+  'Reading vs humans': 'comprehension',
+  'Pronunciation vs humans': 'pronunciation',
+  'Assistance fading': 'assistance',
+};
+
+/**
+ * Pure formatter for the roadmap evidence chips: one `key n/floor` per track.
+ * `external` is the [displayName, metric] rows LearnerValidation builds; each
+ * metric's `.n` is a real count from a human-supplied store (0 until one is).
+ * Tracks absent from this panel (examiner, real-exam, fsrs) show 0 here — their
+ * numbers live in the full /validation-status.json table, not this view.
+ * Kept pure and exported so the lookup can be tested without rendering React.
+ */
+export function roadmapChips(external = [], floors = EVIDENCE_FLOORS, trackByLabel = EVIDENCE_TRACK_BY_LABEL) {
+  const totals = new Map(Object.keys(floors).map((key) => [key, 0]));
+  const rows = Array.isArray(external) ? external : [];
+  for (const [label, metric] of rows) {
+    const key = trackByLabel[label];
+    const n = Number(metric?.n);
+    if (key && totals.has(key) && Number.isFinite(n) && n > 0) {
+      totals.set(key, totals.get(key) + n);
+    }
+  }
+  return Object.keys(floors)
+    .map((key) => `${key} ${totals.get(key)}/${floors[key]}`)
+    .join(' · ');
+}
+
 export function LearnerValidation(){
   const srs = (()=>{ try{ return getSrs(); }catch{ return {}; } })();
   const entries = (()=>{ try{ return vocabAllEntries(); }catch{ return []; } })();
@@ -411,19 +448,11 @@ export function LearnerValidation(){
     ['Pronunciation vs humans', benchmarkStatus(mergeBenchmarkItems(getIntelligibilityBenchmark()))],
     ['Assistance fading', getAssistanceMetrics()],
   ];
-  // Roadmap evidence chips: current n vs documented floor, per track. The
-  // full table (incl. examiner/real-exam/fsrs) lives at /validation-status.json.
-  const evidenceTrack = {
-    'Placement accuracy': 'placement',
-    'Progression transfer': 'progression',
-    'AI vs human marking': 'corpus',
-    'Listening vs humans': 'comprehension',
-    'Reading vs humans': 'comprehension',
-    'Pronunciation vs humans': 'pronunciation',
-    'Assistance fading': 'assistance',
-  };
-  const chip = (track) => `${track} ${evidenceTrack[track] ? `${external.find(([n]) => n === track)?.[1]?.n ?? 0}/${EVIDENCE_FLOORS[evidenceTrack[track]]}` : `0/${EVIDENCE_FLOORS[track]}`}`;
-  const roadmapChips = Object.keys(EVIDENCE_FLOORS).map(chip).join(' · ');
+  // Roadmap evidence chips: current n vs documented floor, per canonical
+  // track. The pure helper maps display labels → track keys so a seeded store
+  // produces a real count instead of the old constant 0/N. The full table
+  // (incl. examiner/real-exam/fsrs) lives at /validation-status.json.
+  const chips = roadmapChips(external);
   return (
     <section className="bg-surface border border-line rounded-2xl p-4 space-y-3">
       <h3 className="text-[11px] font-bold uppercase tracking-wider text-ink2">Learner validation</h3>
@@ -443,7 +472,7 @@ export function LearnerValidation(){
           </div>
         ))}
         <p className="pt-1 text-[10px] leading-relaxed text-ink3" data-testid="evidence-roadmap">
-          <span className="font-bold uppercase tracking-wider">Roadmap floors:</span> {roadmapChips}
+          <span className="font-bold uppercase tracking-wider">Roadmap floors:</span> {chips}
           {' · '}full table: <span className="underline">/validation-status.json</span>
         </p>
       </div>

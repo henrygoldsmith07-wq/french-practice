@@ -462,13 +462,13 @@ export async function characterChat(apiKey, { messages, persona, level = 'B1', l
   // Characters stay in role, so only light personalisation — name + interests,
   // never the grammar diagnostics that would break immersion.
   const known = [];
-  if (learner?.name) known.push(`Their name is ${learner.name}`);
-  if (learner?.topics?.length) known.push(`they enjoy talking about ${learner.topics.join(', ')}`);
+  if (learner?.name) known.push(`Their name is ${sanitizeForPrompt(learner.name, 40)}`);
+  if (learner?.topics?.length) known.push(`they enjoy talking about ${sanitizeForPrompt(learner.topics.join(', '), 120)}`);
   const knownLine = known.length ? ` You already know the learner: ${known.join('; ')} — weave that in naturally, in character.` : '';
   return chatPlain(apiKey, [
     {
       role: 'system',
-      content: `${persona} The learner practising with you is CEFR ${level} in ${LANG.name}. Stay fully in character. Reply in ${LANG.name} only, 1-3 short sentences pitched at ${level}, then on a new line give an English translation in *italics*. Keep the conversation moving with a question when natural.${knownLine}`,
+      content: `${persona} The learner practising with you is CEFR ${level} in ${LANG.name}. Stay fully in character. Reply in ${LANG.name} only, 1-3 short sentences pitched at ${level}, then on a new line give an English translation in *italics*. Keep the conversation moving with a question when natural. ${sanitizeForPrompt(knownLine, 400)}`,
     },
     ...messages.slice(-12),
   ], { label: 'character-chat', temperature: 0.8, maxTokens: 400 });

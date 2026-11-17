@@ -7,7 +7,8 @@
 // into a comparison a researcher can actually read:
 //
 //   · every metric carries its sample size
-//   · every rate carries a 95% Wilson score interval
+//   · every rate carries a 95% interval on the PARTICIPANT-WEIGHTED mean,
+//     estimated across participants (never a pooled item-level Wilson interval)
 //   · below its floor a metric is PROVISIONAL, never presented as a finding
 //   · tiny samples produce no numbers at all, not misleading ones
 //   · raw event definitions travel with the report
@@ -15,7 +16,10 @@
 // Descriptive only: these are participant-weighted summaries, never causal
 // claims. Missing measures stay missing — they are never assumed 0.
 
-import { wilsonInterval } from './evidenceUncertainty.js';
+// No import from evidenceUncertainty.js: a Wilson interval is for a SINGLE
+// pooled proportion (k of n items). Rates here are means of per-participant
+// rates, so their interval is estimated across participants instead — pooling
+// items is prohibited for arm comparisons by the frozen protocol.
 
 // Sample floors: participants per arm before any cross-arm number prints,
 // and scored participants per metric before that metric prints.
@@ -46,17 +50,60 @@ function meanOf(values) {
   return Math.round((nums.reduce((a, b) => a + b, 0) / nums.length) * 1000) / 1000;
 }
 
+// Two-sided 95% t critical values, indexed by degrees of freedom (df = n - 1).
+// Beyond df=30 the normal approximation (1.96) is close enough.
+const T975 = [
+  null, 12.706, 4.303, 3.182, 2.776, 2.571, 2.447, 2.365, 2.306, 2.262, 2.228,
+  2.201, 2.179, 2.160, 2.145, 2.131, 2.120, 2.110, 2.101, 2.093, 2.086, 2.080,
+  2.074, 2.069, 2.064, 2.060, 2.056, 2.052, 2.048, 2.045, 2.042,
+];
+const t975 = (df) => (df >= 1 && T975[df] != null ? T975[df] : 1.96);
+
+/** 95% t interval on the mean of per-participant rates.
+ *
+ *  Each participant contributes ONE rate, so the uncertainty is the variance
+ *  ACROSS participants (SE = s / sqrt(n)), not a binomial Wilson interval on a
+ *  pooled item count. Pooling items would weight a participant by their trial
+ *  count and can produce an interval that excludes the displayed mean — which
+ *  the frozen protocol forbids for arm comparisons. Returns null for fewer
+ *  than two participants, where no variance can be estimated at all. */
+export function participantMeanInterval(values) {
+  const rates = (Array.isArray(values) ? values : [])
+    .filter((v) => typeof v === 'number' && Number.isFinite(v));
+  const n = rates.length;
+  if (n < 2) return null;
+  // Match the displayed mean's 3-decimal rounding so the interval is centred
+  // on exactly the number shown beside it.
+  const mean = Math.round((rates.reduce((a, b) => a + b, 0) / n) * 1000) / 1000;
+  const variance = rates.reduce((a, v) => a + (v - mean) ** 2, 0) / (n - 1);
+  const half = t975(n - 1) * Math.sqrt(variance / n);
+  // Round bounds to 6dp so identical rates give a clean [mean, mean] rather
+  // than an artifact like 0.7999999999999998 from floating-point noise.
+  const bound = (v) => Math.round(v * 1e6) / 1e6;
+  return {
+    lower: bound(Math.max(0, mean - half)),
+    upper: bound(Math.min(1, mean + half)),
+    level: 0.95,
+    method: 'participant-mean-t',
+  };
+}
+
 /** One metric cell: value, sample size, interval, and an honest state. */
 function cell({ values = [], rateValues = null, participants = 0 }) {
   const scored = values.filter((v) => typeof v === 'number' && Number.isFinite(v)).length;
   const mean = meanOf(values);
-  // Rates get a Wilson interval over the per-participant success counts;
-  // continuous measures get no interval (means of means, not proportions).
+  // Rate metrics are participant-weighted means of per-participant rates, so
+  // their interval is estimated ACROSS participants from those same rates.
+  // (`rateValues` only marks the metric as a rate; continuous means-of-means
+  // get no interval.) A single scored participant has no variance estimate —
+  // the mean is shown with an explicit note rather than a fabricated interval.
   let interval = null;
+  let intervalNote = null;
   if (rateValues) {
-    const successes = rateValues.reduce((a, r) => a + (r.successes || 0), 0);
-    const trials = rateValues.reduce((a, r) => a + (r.trials || 0), 0);
-    interval = wilsonInterval(successes, trials);
+    interval = participantMeanInterval(values);
+    if (!interval) {
+      intervalNote = 'No interval: at least two scored participants are needed to estimate uncertainty across participants. The participant-weighted mean is shown without a confidence interval.';
+    }
   }
   let state = 'reportable';
   if (participants === 0 || scored === 0) state = 'no-data';
@@ -66,6 +113,7 @@ function cell({ values = [], rateValues = null, participants = 0 }) {
     scoredParticipants: scored,
     participants,
     interval,
+    intervalNote,
     // Below the floor the number is withheld entirely: a rate on two people
     // is not information, it is noise dressed as a finding.
     display: state === 'no-data' ? null : mean,
@@ -243,5 +291,8 @@ export function formatMetricCell(label, cellValue) {
     ? ` (${Math.round(cellValue.interval.lower * 100)}–${Math.round(cellValue.interval.upper * 100)}%)`
     : '';
   const provisional = cellValue.state === 'provisional' ? ' — provisional, sample too small' : '';
-  return `${label}: ${pct}${ci} · n=${cellValue.scoredParticipants}${provisional}`;
+  // When the interval is omitted (too few participants), say so explicitly
+  // rather than letting a bare number imply an unearned precision.
+  const note = !cellValue.interval && cellValue.intervalNote ? ` — ${cellValue.intervalNote}` : '';
+  return `${label}: ${pct}${ci} · n=${cellValue.scoredParticipants}${provisional}${note}`;
 }

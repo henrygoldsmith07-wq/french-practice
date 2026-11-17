@@ -54,6 +54,7 @@ export default function ExamSimulator({ apiKey, mockMode, onXp, onActivity }) {
   const [tier, setTier] = useState(() => savedExam.tier || TIER.HIGHER);
   const [theme, setTheme] = useState('');
   const [mode, setMode] = useState('full');
+  const [taskId, setTaskId] = useState(null);
   const [examMode, setExamMode] = useState(EXAM_MODE.SPEAKING);
   const [boundarySets, setBoundarySets] = useState(() => getExamBoundarySets());
   const [boundarySetId, setBoundarySetId] = useState('');
@@ -77,11 +78,18 @@ export default function ExamSimulator({ apiKey, mockMode, onXp, onActivity }) {
   }, [boardId, tier, boundarySets, selectedBoundary]);
 
   const start = () => {
+    // Belt and braces: the Start button is disabled until a task is chosen in
+    // single-task speaking mode, but never silently build the whole paper.
+    if (mode === 'single' && examMode === EXAM_MODE.SPEAKING && !taskId) return;
     try {
       const paper = buildPaper({
         boardId,
         tier,
         mode,
+        // "One task" only works when we actually tell buildPaper which task.
+        // Without this it built the whole paper while still dividing prep time
+        // by the number of tasks.
+        taskId: mode === 'single' ? taskId : null,
         examMode,
         theme: theme || null,
         boundaries: selectedBoundary?.boundaries || null,
@@ -101,7 +109,8 @@ export default function ExamSimulator({ apiKey, mockMode, onXp, onActivity }) {
       <Setup
         board={board} boardId={boardId} setBoardId={setBoardId}
         tier={tier} setTier={setTier} theme={theme} setTheme={setTheme}
-        themes={themes} mode={mode} setMode={setMode} examMode={examMode} setExamMode={setExamMode}
+        themes={themes} mode={mode} setMode={setMode} taskId={taskId} setTaskId={setTaskId}
+        examMode={examMode} setExamMode={setExamMode}
         boundarySets={boundarySets} boundarySetId={boundarySetId} setBoundarySetId={setBoundarySetId}
         onBoundarySaved={(set) => { setBoundarySets((all) => [...all.filter((item) => item.id !== set.id), set]); setBoundarySetId(set.id); }}
         onStart={start} error={error}
@@ -576,6 +585,32 @@ function Material({ section }) {
           Hear it first (practice only — not available in the exam)
         </button>
         <p className="text-xs text-ink2">{m.notes}</p>
+      </div>
+    );
+  }
+
+  if (section.taskId === 'read-aloud-roleplay') {
+    // Made-for-Wales 3830QS (the default board) opens with this task.
+    // simulator.js maps it to the reading-passage pool, whose material is
+    // { text, notes, focus } — the generic ConversationPrompts fallback below
+    // reads opening/followUps that do not exist here, so the learner sees no
+    // French. Render the passage with the reading-aloud pattern plus its focus.
+    return (
+      <div className="bg-surface border border-line rounded-2xl p-4 space-y-2">
+        <h3 className="text-sm font-bold">Read this aloud</h3>
+        <p className="text-base leading-relaxed" lang="fr">{m.text}</p>
+        <button onClick={() => speak(m.text, { rate: 0.9 })} className="text-xs underline text-ink2 hover:text-ink">
+          Hear it first (practice only — not available in the exam)
+        </button>
+        <p className="text-xs text-ink2">{m.notes}</p>
+        {m.focus?.length > 0 && (
+          <div className="flex flex-wrap items-center gap-1">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-ink2">Focus</span>
+            {m.focus.map((f) => (
+              <span key={f} className="text-[11px] px-1.5 py-0.5 rounded-full bg-surface2 border border-line text-ink2">{f}</span>
+            ))}
+          </div>
+        )}
       </div>
     );
   }

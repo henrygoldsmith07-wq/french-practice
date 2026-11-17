@@ -34,7 +34,14 @@ export const CORRECTION_IMPACTS = Object.freeze([
 export const INTERRUPTING_IMPACTS = Object.freeze(['meaning', 'grammar', 'vocabulary', 'intelligibility']);
 
 const isStr = (v) => typeof v === 'string';
-const finite01to100 = (v) => Number.isFinite(Number(v)) && Number(v) >= 0 && Number(v) <= 100;
+// Require a real number, never a coercible look-alike: Number(null), Number(''),
+// Number(false) and Number([]) are all 0, so a loose `Number(v)` check would let
+// a missing overall score through as 0 — the exact "missing overall ⇒ unusable"
+// case this module promises to reject. Numeric strings are deliberately NOT
+// coerced: the contract asks the model for JSON numbers, and a string here is a
+// sign the payload drifted. Callers fall back explicitly when a sub-score is
+// not a valid number (see validateTurnEvaluation / validateWritingFeedback).
+const finite01to100 = (v) => typeof v === 'number' && Number.isFinite(v) && v >= 0 && v <= 100;
 
 /**
  * Sanitize a learner-supplied free-text value before it enters an AI prompt's

@@ -25,6 +25,7 @@ const fmt = (s) => {
 
 export function Setup({
   board, boardId, setBoardId, tier, setTier, theme, setTheme, themes, mode, setMode,
+  taskId, setTaskId,
   examMode, setExamMode, boundarySets, boundarySetId, setBoundarySetId, onBoundarySaved, onStart, error,
 }) {
   const bench = benchmarkExaminer(getExaminerScripts());
@@ -87,9 +88,15 @@ export function Setup({
                   key={b.id}
                   onClick={() => {
                     setBoardId(b.id);
-                    // A board with no tiers is a single-tier qualification, so it
-                    // carries Higher implicitly.
-                    const nextTier = b.tiers.length ? tier : TIER.HIGHER;
+                    // A task id belongs to one board; a different board's task
+                    // ids would be silently ignored by buildPaper.
+                    setTaskId(null);
+                    // An untiered qualification (e.g. WJEC 3830 Made for Wales)
+                    // has no Higher/Foundation split. Persisting "Higher" here
+                    // made todayBrief claim a tier the paper does not have, so
+                    // persist null instead. Tiered boards keep their tier and
+                    // the internal default is left untouched — unchanged.
+                    const nextTier = b.tiers.length ? tier : null;
                     if (!b.tiers.length) setTier(TIER.HIGHER);
                     persistExamIdentity(b.id, nextTier);
                   }}
@@ -167,6 +174,28 @@ export function Setup({
             />
           </Field>
 
+          {mode === 'single' && examMode === EXAM_MODE.SPEAKING && (
+            <Field label="Which task">
+              <div className="grid gap-2 sm:grid-cols-3">
+                {(board?.tasks || []).map((t) => (
+                  <button
+                    key={t.id}
+                    type="button"
+                    onClick={() => setTaskId(t.id)}
+                    aria-pressed={taskId === t.id}
+                    className={`text-left rounded-xl border px-3 py-2 text-sm transition ${
+                      taskId === t.id ? 'border-ink bg-ink text-bg' : 'border-line hover:border-ink2'
+                    }`}
+                  >
+                    <span className="font-semibold block">{t.label}</span>
+                    <span className={`text-[11px] ${taskId === t.id ? 'opacity-80' : 'text-ink2'}`}>{t.blurb}</span>
+                  </button>
+                ))}
+              </div>
+              {!taskId && <p className="mt-1 text-[11px] text-ink2">Pick one task to practise on its own.</p>}
+            </Field>
+          )}
+
           <Field label="Theme (optional)">
             <select
               value={theme}
@@ -220,7 +249,14 @@ export function Setup({
 
         {error && <p className="text-sm text-red-500">{error}</p>}
 
-        <button onClick={onStart} className="w-full bg-ink text-bg font-bold rounded-[14px] px-5 py-3 text-sm hover:opacity-90 transition">
+        {mode === 'single' && examMode === EXAM_MODE.SPEAKING && !taskId && (
+          <p className="text-sm text-ink2">Choose a task above to start single-task practice.</p>
+        )}
+        <button
+          onClick={onStart}
+          disabled={mode === 'single' && examMode === EXAM_MODE.SPEAKING && !taskId}
+          className="w-full bg-ink text-bg font-bold rounded-[14px] px-5 py-3 text-sm hover:opacity-90 transition disabled:opacity-40"
+        >
           Start under exam conditions
         </button>
 

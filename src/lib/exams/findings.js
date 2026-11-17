@@ -154,6 +154,50 @@ export function applyPaperFindings(tasks = [], { recordError, recordSuccess, con
 }
 
 /**
+ * The exam date is a CALENDAR day, not an instant. A date-only string from
+ * <input type="date"> (`YYYY-MM-DD`) parsed with Date.parse is UTC midnight:
+ * in a positive offset that is still "tomorrow" until local midnight passes,
+ * and in a negative offset it is "yesterday". Either way an elapsed-ms
+ * countdown drifts by a day depending on the hour and the learner's timezone.
+ *
+ * This reduces any accepted input (date-only string, Date, or timestamp) to a
+ * local-midnight Date using local getFullYear/getMonth/getDate, so the day the
+ * learner actually means is preserved. Returns null for anything unparseable.
+ */
+function localCalendarDay(value) {
+  if (value instanceof Date) {
+    return Number.isFinite(value.getTime())
+      ? new Date(value.getFullYear(), value.getMonth(), value.getDate())
+      : null;
+  }
+  if (typeof value === 'number') return localCalendarDay(new Date(value));
+  if (typeof value !== 'string') return null;
+
+  // 'YYYY-MM-DD' is a local calendar day — read its parts, do NOT let
+  // Date.parse turn it into UTC midnight (the source of the off-by-one).
+  const parts = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  let parsed;
+  if (parts) {
+    const year = Number(parts[1]);
+    const month = Number(parts[2]);
+    const day = Number(parts[3]);
+    parsed = new Date(year, month - 1, day);
+    // Reject overflow like 2026-02-31, which the Date constructor rolls over.
+    if (parsed.getFullYear() !== year || parsed.getMonth() !== month - 1 || parsed.getDate() !== day) return null;
+  } else {
+    parsed = new Date(value); // full datetime/ISO string: an instant
+  }
+  return Number.isFinite(parsed.getTime())
+    ? new Date(parsed.getFullYear(), parsed.getMonth(), parsed.getDate())
+    : null;
+}
+
+/** Whole calendar days since the epoch for a local-midnight Date (DST-safe). */
+function calendarDayNumber(day) {
+  return Date.UTC(day.getFullYear(), day.getMonth(), day.getDate()) / 86_400_000;
+}
+
+/**
  * Does an exam-date countdown reshape Today?
  *
  * Bands are deliberately coarse: within three weeks the mix leans hard on the
@@ -184,9 +228,14 @@ export function examCountdown(examDate, {
   now = Date.now(), boardId = null, speakingWeight = null, speakingWeightOf,
 } = {}) {
   if (!examDate) return null;
-  const at = examDate instanceof Date ? examDate.getTime() : Date.parse(examDate);
-  if (!Number.isFinite(at)) return null;
-  const days = Math.floor((at - Number(now)) / 86_400_000);
+  const examDay = localCalendarDay(examDate);
+  if (!examDay) return null;
+  const nowDay = localCalendarDay(now instanceof Date ? now : Number(now));
+  if (!nowDay) return null;
+  // Calendar-day difference: "today" is 0 and "tomorrow" is 1 at EVERY hour,
+  // independent of timezone and of how far elapsed time rounds. Comparing UTC
+  // day numbers built from local components also sidesteps DST 23/25h days.
+  const days = calendarDayNumber(examDay) - calendarDayNumber(nowDay);
   // A paper in the past is not a countdown; it is history.
   if (days < 0) return null;
 
