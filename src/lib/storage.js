@@ -378,7 +378,10 @@ export function recordReviewEvent(event = {}) {
   };
   const events = getReviewEvents();
   events.push(record);
-  write(KEYS.reviewEvents, events);
+  // Every other writer of this stream caps it at REVIEW_EVENT_CAP. Without
+  // the cap here, sustained practice grows it until localStorage quota forces
+  // a crude "drop the oldest half" prune, losing far more history than needed.
+  write(KEYS.reviewEvents, events.length > REVIEW_EVENT_CAP ? events.slice(-REVIEW_EVENT_CAP) : events);
   publishPulseHistory();
   return record;
 }

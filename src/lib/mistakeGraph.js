@@ -301,8 +301,11 @@ export function recordRetest(graph, { id, at, correct, context = null, immediate
   const recurredAfter = Boolean(
     priorDelayedMs && m.lastSeenAt && Date.parse(m.lastSeenAt) > priorDelayedMs
   );
-  const wrongAfter = m.retests.some(
-    (r) => !r.correct && Date.parse(r.at) > Date.parse(m.lastDelayedAt || 0)
+  // Same bug as recurredAfter above: m.lastDelayedAt was just set to `now`,
+  // so comparing against it could never find a wrong retest. Use the baseline
+  // captured before this call overwrote it.
+  const wrongAfter = Boolean(
+    priorDelayedMs && m.retests.some((r) => !r.correct && Date.parse(r.at) > priorDelayedMs)
   );
   if (
     m.mastery >= MASTER_THRESHOLD &&

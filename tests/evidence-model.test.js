@@ -89,6 +89,27 @@ test('mastery threshold gates retirement even with two spaced successes', () => 
   assert.equal(g[0].status, 'retired');
 });
 
+// ── a wrong retest between delayed successes blocks retirement ─────────────
+test('a wrong retest after the previous delayed success keeps the mistake active', () => {
+  let g = mistake();
+  const id = g[0].id;
+  for (const [day, correct, context] of [
+    [1, true, 'drill'],
+    [2, false, 'drill'],
+    [4, true, 'conversation:market'],
+    [5, false, 'drill'],
+    [7, true, 'drill'],
+    [8, false, 'drill'],
+    [10, true, 'conversation:market'],
+  ]) {
+    g = recordRetest(g, { id, at: at(day), correct, context });
+  }
+  assert.ok(g[0].mastery >= 80, `mastery ${g[0].mastery} should clear the retirement gate`);
+  assert.ok(g[0].delayedFamilies.length >= 2);
+  assert.equal(g[0].status, 'active',
+    'a regression between delayed successes must not silently retire a live weakness');
+});
+
 // ── P0 adversarial scenario 6 ───────────────────────────────────────────────
 test('recurrence after retirement reactivates and re-drops mastery', () => {
   let g = mistake();

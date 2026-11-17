@@ -11,6 +11,39 @@ async function freshStorage() {
   return import(`../src/lib/storage.js?household=${Date.now()}.${Math.random()}`);
 }
 
+test('clearing a learner key also clears the pre-household copy', async () => {
+  const storage = await freshStorage();
+  // Single-user state that predates household mode.
+  storage.setActiveSession('cafe', [{ role: 'user', text: 'Bonjour' }]);
+
+  const a = storage.addHouseholdMember('First');
+  storage.switchHouseholdMember(a.id);
+  // The first read claims the flat value into the member's namespace.
+  assert.ok(storage.getActiveSession(), 'the claimed session is visible');
+
+  storage.clearActiveSession();
+  assert.equal(storage.getActiveSession(), null, 'the cleared session must not resurrect from the legacy key');
+  assert.equal(globalThis.localStorage.getItem(storage.KEYS.active), null,
+    'the legacy copy is removed for the member who owns it');
+});
+
+test('a second member cannot delete the first member’s legacy copy', async () => {
+  const storage = await freshStorage();
+  storage.setActiveSession('cafe', [{ role: 'user', text: 'Bonjour' }]);
+  const a = storage.addHouseholdMember('First');
+  storage.switchHouseholdMember(a.id);
+  storage.getActiveSession(); // claim
+
+  const b = storage.addHouseholdMember('Second');
+  storage.switchHouseholdMember(b.id);
+  storage.clearActiveSession();
+
+  assert.ok(globalThis.localStorage.getItem(storage.KEYS.active),
+    'the legacy copy stays for its owning member');
+  storage.switchHouseholdMember(a.id);
+  assert.ok(storage.getActiveSession(), 'the first member can still read their session');
+});
+
 test('household starts empty; members validate', async () => {
   const storage = await freshStorage();
   assert.deepEqual(storage.getHousehold(), { members: [], activeId: null });

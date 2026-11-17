@@ -467,7 +467,17 @@ export function remove(key) {
   const memberId = LEARNER_KEY_SET.has(key) ? activeLearnerId() : null;
   if (!memberId) { try { localStorage.removeItem(key); } catch { /* unavailable */ } return; }
   claimLegacyFor(key, memberId);
-  try { localStorage.removeItem(learnerKey(key, memberId)); } catch { /* unavailable */ }
+  try {
+    localStorage.removeItem(learnerKey(key, memberId));
+    // The claim migration deliberately leaves the pre-household copy on disk.
+    // Without this, the very next read would fall back to that copy and copy it
+    // straight back into the namespace — "Clear conversation" and "Forget key"
+    // appeared to work, then silently resurrected the data. Only remove the
+    // legacy copy when it belongs to this member; another member's claim must
+    // keep theirs.
+    const owner = learnerRegistry().claims?.[key];
+    if (!owner || owner === memberId) localStorage.removeItem(key);
+  } catch { /* unavailable */ }
 }
 
 function blankHousehold() {
