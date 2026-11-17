@@ -78,7 +78,13 @@ export function friendlyError(err) {
   const msg = String(err?.message ?? err ?? '');
   const status = (msg.match(/\((\d{3})\)/) || [])[1];
   if (/timed out/i.test(msg)) return 'That took too long to come back. Check your connection and try again.';
-  if (/failed to fetch|networkerror|network error|load failed/i.test(msg)) return 'Couldn’t reach the tutor — you may be offline. Check your connection and try again.';
+  if (/failed to fetch|fetch failed|networkerror|network error|load failed/i.test(msg)) return 'Couldn’t reach the tutor — you may be offline. Check your connection and try again.';
+  // A rejected RELAY session is not necessarily a bad BYO key: on the free,
+  // no-key path it is an expired/refreshed trial token. Telling a trial learner
+  // to open Settings for a key they never had is actively misleading.
+  if (/Relay rejected your session|Could not (?:start|refresh) your AI session/i.test(msg)) {
+    return 'Your AI session was rejected. Reload to start a new one, or check your key in Settings.';
+  }
   if (status === '401' || status === '403' || /api key|unauthor/i.test(msg)) return 'Your AI key was rejected. Open Settings to check or re-enter it.';
   if (status === '429' || /rate limit/i.test(msg)) return 'The free AI models are busy right now. Wait a few seconds, then try again.';
   if (status && status[0] === '5') return 'The AI service had a hiccup on their end. Give it a moment and try again.';
