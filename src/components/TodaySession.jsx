@@ -556,7 +556,7 @@ function TodayBody({ plan, trialId, segIndex, setSegIndex, close, apiKey, mockMo
               <span key={s.id} className={`h-1.5 flex-1 rounded-full ${i < segIndex ? 'bg-success' : i === segIndex ? 'bg-ink animate-pulse' : 'bg-surface2'}`} />
             ))}
           </div>
-          <button onClick={close} aria-label="End today's session" className="w-8 h-8 grid place-items-center rounded-full text-ink3 hover:text-ink"><X size={15} /></button>
+          <button onClick={close} aria-label="End today's session" className="min-h-11 min-w-11 w-8 h-8 grid place-items-center rounded-full text-ink3 hover:text-ink"><X size={15} /></button>
         </div>
         <p className="max-w-lg mx-auto mt-1 text-[11px] text-ink3">
           {seg ? seg.why : 'A short, unscaffolded check on material you haven\'t practised — measurement only.'}

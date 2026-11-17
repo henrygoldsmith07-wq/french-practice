@@ -176,7 +176,7 @@ export function SpeakButton({ text, rate = 1, slow = false, label }) {
       type="button"
       onClick={onClick}
       aria-label={label || (slow ? 'Listen slowly' : 'Listen')}
-      className={`inline-flex items-center gap-1 px-2 py-1 min-h-8 rounded-lg text-[11px] font-medium transition-colors ${
+      className={`inline-flex items-center gap-1 px-2 py-1 min-h-11 rounded-lg text-[11px] font-medium transition-colors ${
         speaking
           ? 'bg-accent text-onaccent'
           : 'bg-surface2 text-ink2 hover:bg-line active:bg-line'

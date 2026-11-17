@@ -104,7 +104,7 @@ export default function GlobalSearch({ open, onClose, onGo }) {
             aria-label="Search the whole studio"
             className="flex-1 min-w-0 bg-transparent text-sm text-ink placeholder:text-ink3 focus:outline-none py-2"
           />
-          <button onClick={onClose} aria-label="Close search" className="w-9 h-9 grid place-items-center rounded-full text-ink2 hover:bg-surface2 hover:text-ink shrink-0">
+          <button onClick={onClose} aria-label="Close search" className="min-h-11 min-w-11 w-9 h-9 grid place-items-center rounded-full text-ink2 hover:bg-surface2 hover:text-ink shrink-0">
             <X size={16} />
           </button>
         </div>

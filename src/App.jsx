@@ -658,7 +658,7 @@ export default function App() {
             <span className="block text-xs text-ink2 mt-0.5">Add it to your device for full-screen, offline practice.</span>
           </span>
           <button onClick={() => pwa.promptInstall()} className="btn btn-primary min-h-9 px-3.5 rounded-lg text-xs shrink-0">Install</button>
-          <button onClick={() => setInstallDismissed(true)} aria-label="Dismiss install banner" className="w-8 h-8 grid place-items-center rounded-full text-ink3 hover:text-ink shrink-0"><X size={15} /></button>
+          <button onClick={() => setInstallDismissed(true)} aria-label="Dismiss install banner" className="min-h-11 min-w-11 w-8 h-8 grid place-items-center rounded-full text-ink3 hover:text-ink shrink-0"><X size={15} /></button>
         </div>
       )}
 
@@ -818,7 +818,7 @@ export default function App() {
           <div className="mx-auto min-h-full max-w-lg px-4 py-4">
             <div className="mb-4 flex items-center gap-3">
               <h2 className="flex-1 text-lg font-bold text-ink">Learning path</h2>
-              <button type="button" onClick={closeOverlay} aria-label="Close learning path" className="grid h-9 w-9 place-items-center rounded-full text-ink2 hover:bg-surface2 hover:text-ink"><X size={18} /></button>
+              <button type="button" onClick={closeOverlay} aria-label="Close learning path" className="grid min-h-11 min-w-11 h-9 w-9 place-items-center rounded-full text-ink2 hover:bg-surface2 hover:text-ink"><X size={18} /></button>
             </div>
             <LearningPath path={path} dueCount={dueCount} onStartLesson={startLesson} onOpenSetup={() => openOverlay('pathSetup')} />
           </div>
