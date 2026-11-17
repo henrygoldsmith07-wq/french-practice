@@ -1,17 +1,30 @@
 import { useState, useEffect, useRef } from 'react';
+import { compareTranscript } from '../lib/pronunciationCoach';
 /**
- * PronunciationCoach - AI-powered pronunciation analysis and feedback
- * Real-time phoneme-level feedback with visual waveforms and targeted corrections
+ * PronunciationCoach - guided pronunciation practice demo.
+ *
+ * Honest by design: the browser's speech recognizer transcribes what was said
+ * and we compare those words with the target phrase. There is no fabricated
+ * "AI" analysis, no phoneme grading and no made-up scores.
  */
 export default function PronunciationCoach({ open, onClose }) {
   const [isRecording, setIsRecording] = useState(false);
-  const [isProcessing, setIsProcessing] = useState(false);
   const [analysisResult, setAnalysisResult] = useState(null);
   const [selectedPhrase, setSelectedPhrase] = useState('Bonjour, comment allez-vous aujourd\'hui?');
   const [audioLevel, setAudioLevel] = useState(0);
+  const [error, setError] = useState('');
 
   const synth = useRef(typeof window !== 'undefined' ? window.speechSynthesis : null);
   const recognitionRef = useRef(null);
+  // The transcript is captured here on every onresult event. The Web Speech
+  // API has no setTranscript() method and no readable .transcript property —
+  // the old code called both, so `spoken` was always ''.
+  const transcriptRef = useRef('');
+  const pendingRef = useRef(false);
+  const recordingRef = useRef(false);
+  // Held in a ref so the recognition handlers (installed once in the effect)
+  // always call the latest phrase-specific finish logic.
+  const finishRef = useRef(() => {});
 
   // Available practice phrases categorized by difficulty
   const PHRASES = {
@@ -35,10 +48,15 @@ export default function PronunciationCoach({ open, onClose }) {
     ],
   };
 
-  useEffect(() => {
-    if (!open) return;
+  finishRef.current = (transcript) => {
+    // Deterministic, honest comparison — no simulated delay, no random score.
+    setAnalysisResult(compareTranscript(selectedPhrase, transcript));
+  };
 
-    // Initialize Web Speech API recognition
+  useEffect(() => {
+    if (!open) return undefined;
+
+    // Initialize Web Speech API recognition (real browser transcription).
     if (typeof window !== 'undefined' && 'webkitSpeechRecognition' in window) {
       const recognition = new window.webkitSpeechRecognition();
       recognition.continuous = false;
@@ -47,43 +65,55 @@ export default function PronunciationCoach({ open, onClose }) {
 
       recognition.onresult = (event) => {
         let transcript = '';
-        for (let i = event.resultIndex; i < event.results.length; i++) {
+        for (let i = event.resultIndex; i < event.results.length; i += 1) {
           transcript += event.results[i][0].transcript;
         }
-        // Store transcribed text for comparison
-        recognitionRef.current?.setTranscript(transcript);
+        transcriptRef.current = transcript;
       };
 
       recognition.onerror = (event) => {
         console.error('Speech recognition error:', event.error);
+        recordingRef.current = false;
         setIsRecording(false);
+        setError('Your browser could not transcribe that attempt. You can try again.');
       };
 
       recognition.onend = () => {
+        recordingRef.current = false;
         setIsRecording(false);
+        // The final result arrives before onend, so the ref now holds the
+        // complete transcript. Only finish attempts the user actually started.
+        if (pendingRef.current) {
+          pendingRef.current = false;
+          finishRef.current(transcriptRef.current);
+        }
       };
 
       recognitionRef.current = recognition;
     }
 
     return () => {
+      pendingRef.current = false;
+      recordingRef.current = false;
       if (recognitionRef.current) {
+        recognitionRef.current.onend = null;
         recognitionRef.current.stop();
+        recognitionRef.current = null;
       }
     };
   }, [open]);
 
   const startRecording = async () => {
     if (!recognitionRef.current) {
-      alert('Speech recognition not supported in this browser. Please use Chrome or Edge.');
+      setError('Speech recognition is not supported in this browser. Please use Chrome or Edge.');
       return;
     }
 
     try {
       // Request microphone access
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      
-      // Visualize audio level
+
+      // Visualize audio level (real microphone input)
       const audioContext = new (window.AudioContext || window.webkitAudioContext)();
       const analyser = audioContext.createAnalyser();
       const source = audioContext.createMediaStreamSource(stream);
@@ -95,177 +125,50 @@ export default function PronunciationCoach({ open, onClose }) {
       const updateAudioLevel = () => {
         analyser.getByteFrequencyData(dataArray);
         let sum = 0;
-        for (let i = 0; i < bufferLength; i++) {
+        for (let i = 0; i < bufferLength; i += 1) {
           sum += dataArray[i];
         }
-        const average = sum / bufferLength;
-        setAudioLevel(Math.min(100, average));
+        setAudioLevel(Math.min(100, sum / bufferLength));
 
-        if (isRecording) {
+        if (recordingRef.current) {
           requestAnimationFrame(updateAudioLevel);
         }
       };
       updateAudioLevel();
 
+      transcriptRef.current = '';
+      pendingRef.current = true;
+      recordingRef.current = true;
+      setError('');
+      setAnalysisResult(null);
       setIsRecording(true);
       recognitionRef.current.start();
     } catch (err) {
       console.error('Microphone access denied:', err);
-      alert('Microphone access is required for pronunciation coaching. Please enable it in your browser settings.');
+      pendingRef.current = false;
+      recordingRef.current = false;
+      setError('Microphone access is required for this practice. Please enable it in your browser settings.');
     }
   };
 
   const stopRecording = () => {
+    // onend() finishes the attempt once the final transcript has arrived.
+    recordingRef.current = false;
+    setIsRecording(false);
     if (recognitionRef.current) {
       recognitionRef.current.stop();
     }
-    setIsRecording(false);
-    
-    // Process pronunciation
-    processPronunciation(recognitionRef.current?.transcript || '');
-  };
-
-  const processPronunciation = (transcribedText) => {
-    setIsProcessing(true);
-    
-    // Simulate AI analysis (deterministic pattern matching for now)
-    setTimeout(() => {
-      const result = analyzePronunciation(selectedPhrase, transcribedText);
-      setAnalysisResult(result);
-      setIsProcessing(false);
-    }, 1000);
-  };
-
-  const analyzePronunciation = (target, spoken) => {
-    // Phoneme-level comparison and scoring algorithm
-    const targetPhonemes = extractPhonemes(target);
-    const spokenPhonemes = extractPhonemes(spoken);
-    
-    // Calculate similarity scores
-    const syllableScores = [];
-    const targetSyllables = target.split(/\s+/);
-    const spokenWords = spoken.toLowerCase().split(/\s+/);
-    
-    targetSyllables.forEach((syllable, idx) => {
-      const matchScore = syllable.toLowerCase() === spokenWords[idx]?.toLowerCase() 
-        ? 100 
-        : Math.random() * 70 + 40; // Simulated partial match
-      
-      syllableScores.push({
-        word: syllable,
-        score: matchScore,
-        emphasis: calculateEmphasisNeeded(syllable),
-      });
-    });
-
-    // Overall pronunciation accuracy
-    const avgScore = syllableScores.reduce((sum, s) => sum + s.score, 0) / syllableScores.length;
-    
-    // Identify specific issues
-    const issues = identifyPronunciationIssues(targetPhonemes, spokenPhonemes, target, spoken);
-    
-    // Generate tips based on common French pronunciation challenges
-    const tips = generatePronunciationTips(target, issues);
-
-    return {
-      overall: Math.round(avgScore),
-      clarity: Math.round(avgScore * 0.7 + 20), // Clarity slightly lower
-      fluency: Math.round(avgScore * 0.8 + 15), // Fluency considers flow
-      accuracy: Math.round(avgScore),
-      syllableScores,
-      issues,
-      tips,
-      timestamp: new Date().toISOString(),
-    };
-  };
-
-  const extractPhonemes = (text) => {
-    // Simplified phoneme extraction for demonstration
-    const phonemeMap = {
-      'bonjour': ['b', 'ɔ̃', 'ʒ', 'u', 'r'],
-      'comment': ['k', 'ɔ', 'm', 'ɑ̃'],
-      'allez': ['a', 'l', 'e', ''],
-      'vous': ['v', 'u'],
-      'aujourd\'hui': ['o', 'ʒ', 'uʁ', 'd‿œj'],
-      // Add more as needed
-    };
-    
-    const words = text.toLowerCase().replace(/[^\w\s]/gi, '').split(/\s+/);
-    return words.map(word => phonemeMap[word] || Array.from(word).map(c => c));
-  };
-
-  const calculateEmphasisNeeded = (word) => {
-    const frenchStressedVowels = ['é', 'è', 'à', 'ô', 'î'];
-    const hasStress = frenchStressedVowels.some(v => word.includes(v));
-    return !hasStress ? 'medium' : 'low';
-  };
-
-  const identifyPronunciationIssues = (targetPhonemes, spokenPhonemes, targetText, spokenText) => {
-    const issues = [];
-    
-    // Common French pronunciation issues
-    const commonIssues = [
-      { phoneme: 'ɔ̃', name: 'Nasal "on"', tip: 'Ensure air flows through both mouth and nose' },
-      { phoneme: 'ʁ', name: 'French R', tip: 'Gargle-like sound from back of throat' },
-      { phoneme: 'y', name: 'U sound', tip: 'Round lips tightly like saying "oo"' },
-      { phoneme: 'œ', name: 'Open Oe', tip: 'Mixed sound between "e" and "o"' },
-    ];
-
-    // Check which issues are relevant
-    commonIssues.forEach(issue => {
-      if (targetPhonemes.flat().includes(issue.phoneme)) {
-        issues.push({
-          type: 'phoneme',
-          phoneme: issue.phoneme,
-          name: issue.name,
-          tip: issue.tip,
-          severity: 'moderate',
-        });
-      }
-    });
-
-    // Check word stress patterns
-    if (/^J[^e]/i.test(spokenText) && /J[e]/i.test(targetText)) {
-      issues.push({
-        type: 'stress',
-        word: 'Je',
-        tip: 'Stress the vowel sound, not the consonant',
-        severity: 'minor',
-      });
-    }
-
-    return issues.slice(0, 5); // Limit to 5 most critical issues
-  };
-
-  const generatePronunciationTips = (phrase, issues) => {
-    const baseTips = [
-      'Speak slower and enunciate each syllable clearly',
-      'Focus on nasal sounds - let air escape through your nose',
-      'Practice the French "R" by gargling water lightly',
-      'Keep your lips rounded for "u" and "o" sounds',
-    ];
-
-    const specificTips = issues.map(issue => `${issue.name}: ${issue.tip}`);
-    
-    return [...baseTips.slice(0, 2), ...specificTips].slice(0, 5);
   };
 
   const playNativeAudio = () => {
     if (!synth.current) return;
-    
+
     synth.current.cancel();
     const utterance = new SpeechSynthesisUtterance(selectedPhrase);
     utterance.lang = 'fr-FR';
     utterance.rate = 0.9; // Slightly slower for learning
-    
-    synth.current.speak(utterance);
-  };
 
-  const retryPractice = () => {
-    setAnalysisResult(null);
-    setSelectedPhrase(PHRASES[Math.random() > 0.66 ? 'advanced' : Math.random() > 0.5 ? 'intermediate' : 'beginner'][
-      Math.floor(Math.random() * PHRASES.beginner.length)
-    ]);
+    synth.current.speak(utterance);
   };
 
   const selectRandomPhrase = () => {
@@ -273,33 +176,21 @@ export default function PronunciationCoach({ open, onClose }) {
     const category = PHRASES[categories[Math.floor(Math.random() * categories.length)]];
     setSelectedPhrase(category[Math.floor(Math.random() * category.length)]);
     setAnalysisResult(null);
+    setError('');
+    transcriptRef.current = '';
   };
 
   if (!open) return null;
-
-  const ratingColor = (score) => {
-    if (score >= 90) return 'text-emerald-500';
-    if (score >= 75) return 'text-blue-500';
-    if (score >= 60) return 'text-amber-500';
-    return 'text-red-500';
-  };
-
-  const getFeedbackIcon = (score) => {
-    if (score >= 90) return '🎯';
-    if (score >= 75) return '✨';
-    if (score >= 60) return '💪';
-    return '📚';
-  };
 
   return (
     <div className="fixed inset-0 z-[60] bg-bg flex flex-col">
       {/* Header */}
       <div className="flex items-center justify-between p-4 border-b border-line bg-surface">
-        <h2 className="text-lg font-bold text-ink">🎤 Pronunciation Coach</h2>
+        <h2 className="text-lg font-bold text-ink">🎤 Guided Pronunciation Practice</h2>
         <div className="flex items-center gap-2">
           <button
-            onClick={() => setIsRecording(!isRecording)}
-            disabled={isProcessing || !!analysisResult}
+            onClick={() => (isRecording ? stopRecording() : startRecording())}
+            disabled={!!analysisResult}
             className={`rounded-full px-6 py-2 text-sm font-semibold transition-all ${
               isRecording
                 ? 'bg-red-500 text-white animate-pulse'
@@ -309,7 +200,7 @@ export default function PronunciationCoach({ open, onClose }) {
             {isRecording ? (
               <span className="flex items-center gap-2">
                 <div className="h-2 w-2 rounded-full bg-white animate-ping" />
-                Recording...
+                Stop
               </span>
             ) : analysisResult ? (
               'Record Again'
@@ -319,7 +210,7 @@ export default function PronunciationCoach({ open, onClose }) {
           </button>
           <button
             onClick={playNativeAudio}
-            disabled={isProcessing || isRecording}
+            disabled={isRecording}
             className="rounded-lg bg-surface2 px-3 py-2 text-sm font-medium text-ink hover:bg-surface3"
           >
             🔊 Listen
@@ -335,7 +226,13 @@ export default function PronunciationCoach({ open, onClose }) {
 
       {/* Content Area */}
       <div className="flex-1 overflow-y-auto p-6">
-        {!analysisResult && !isProcessing && (
+        {error && (
+          <div role="alert" className="max-w-2xl mx-auto mb-4 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-ink">
+            {error}
+          </div>
+        )}
+
+        {!analysisResult && (
           <div className="max-w-2xl mx-auto space-y-6">
             {/* Phrase Display */}
             <div className="text-center">
@@ -345,7 +242,7 @@ export default function PronunciationCoach({ open, onClose }) {
                 {Object.entries(PHRASES).map(([level, phrases]) => (
                   <button
                     key={level}
-                    onClick={() => setSelectedPhrase(phrases[Math.floor(Math.random() * phrases.length)])}
+                    onClick={() => { setSelectedPhrase(phrases[Math.floor(Math.random() * phrases.length)]); setAnalysisResult(null); }}
                     className={`px-3 py-1 rounded-full ${
                       level === 'beginner' ? 'bg-emerald-500/10 text-emerald-600' :
                       level === 'intermediate' ? 'bg-blue-500/10 text-blue-600' :
@@ -358,9 +255,18 @@ export default function PronunciationCoach({ open, onClose }) {
               </div>
             </div>
 
+            {/* Honest description of what this tool actually does */}
+            <div className="bg-surface2 p-4 rounded-xl border border-line">
+              <p className="text-sm text-ink2">
+                This is a <span className="font-semibold text-ink">guided practice demo</span>, not an AI accent grader.
+                Your browser transcribes what you say; we then show which words of the target were recognised.
+                No pronunciation score is produced.
+              </p>
+            </div>
+
             {/* Instructions */}
             <div className="bg-surface p-6 rounded-xl border border-line">
-              <h4 className="font-semibold text-ink mb-3">How to get the best feedback:</h4>
+              <h4 className="font-semibold text-ink mb-3">How to practise:</h4>
               <ul className="space-y-2 text-sm text-ink2">
                 <li className="flex items-start gap-2">
                   <span className="text-emerald-500 mt-1">✓</span>
@@ -397,128 +303,91 @@ export default function PronunciationCoach({ open, onClose }) {
           </div>
         )}
 
-        {isProcessing && (
-          <div className="max-w-2xl mx-auto text-center py-12">
-            <div className="relative inline-block">
-              <div className="h-20 w-20 rounded-full border-4 border-line animate-spin" style={{ borderTopColor: '#8B5CF6' }} />
-              <div className="absolute inset-0 flex items-center justify-center">
-                <span className="text-3xl">🎤</span>
-              </div>
-            </div>
-            <h3 className="mt-6 text-lg font-semibold text-ink">Analyzing your pronunciation...</h3>
-            <p className="mt-2 text-ink2">Our AI is examining your phonemes, stress patterns, and fluency</p>
+        {analysisResult && !analysisResult.available && (
+          <div className="max-w-2xl mx-auto text-center py-12 space-y-4">
+            <h3 className="text-lg font-semibold text-ink">No analysis available</h3>
+            <p className="text-sm text-ink2">
+              Nothing was recognised in that recording, so there is no word comparison to show.
+              Try again, speaking a little closer to the microphone.
+            </p>
+            <button
+              onClick={() => { setAnalysisResult(null); transcriptRef.current = ''; }}
+              className="rounded-xl bg-accent text-onaccent px-6 py-3 font-semibold hover:bg-accent/90"
+            >
+              Try Again
+            </button>
           </div>
         )}
 
-        {analysisResult && (
+        {analysisResult && analysisResult.available && (
           <div className="max-w-3xl mx-auto space-y-6">
-            {/* Overall Score */}
+            {/* Honest word-recognition result — no score, no "out of 100" */}
             <div className="bg-surface p-6 rounded-xl border border-line">
               <div className="flex items-center justify-between">
                 <div>
-                  <h3 className="text-lg font-semibold text-ink mb-1">Pronunciation Score</h3>
-                  <p className="text-sm text-ink2">Great effort! Keep practicing.</p>
+                  <h3 className="text-lg font-semibold text-ink mb-1">Words recognised</h3>
+                  <p className="text-sm text-ink2">Compared with the target phrase — not a pronunciation score.</p>
                 </div>
                 <div className="text-right">
-                  <div className={`text-5xl font-bold ${ratingColor(analysisResult.overall)}`}>
-                    {analysisResult.overall}
+                  <div className="text-4xl font-bold text-ink tabular-nums">
+                    {analysisResult.matched} / {analysisResult.total}
                   </div>
-                  <div className="text-sm text-ink3">out of 100</div>
-                </div>
-              </div>
-              
-              {/* Detailed Metrics */}
-              <div className="grid grid-cols-3 gap-4 mt-6">
-                <div className="text-center">
-                  <div className="text-2xl mb-1">{getFeedbackIcon(analysisResult.clarity)}</div>
-                  <div className={`text-xl font-bold ${ratingColor(analysisResult.clarity)}`}>{analysisResult.clarity}</div>
-                  <div className="text-xs text-ink3">Clarity</div>
-                </div>
-                <div className="text-center">
-                  <div className="text-2xl mb-1">{getFeedbackIcon(analysisResult.fluency)}</div>
-                  <div className={`text-xl font-bold ${ratingColor(analysisResult.fluency)}`}>{analysisResult.fluency}</div>
-                  <div className="text-xs text-ink3">Fluency</div>
-                </div>
-                <div className="text-center">
-                  <div className="text-2xl mb-1">{getFeedbackIcon(analysisResult.accuracy)}</div>
-                  <div className={`text-xl font-bold ${ratingColor(analysisResult.accuracy)}`}>{analysisResult.accuracy}</div>
-                  <div className="text-xs text-ink3">Accuracy</div>
+                  <div className="text-sm text-ink3">words recognised</div>
                 </div>
               </div>
             </div>
 
-            {/* Syllable-by-Syllable Breakdown */}
+            {/* Word-by-word breakdown of what was recognised */}
             <div className="bg-surface p-6 rounded-xl border border-line">
-              <h4 className="font-semibold text-ink mb-4">Word-by-Word Breakdown</h4>
-              <div className="space-y-3">
-                {analysisResult.syllableScores.map((item, idx) => (
-                  <div key={idx} className="flex items-center justify-between">
-                    <span className="text-ink font-medium">{item.word}</span>
-                    <div className="flex items-center gap-3 flex-1 justify-end">
-                      <div className="flex-1 max-w-32 h-2 bg-surface3 rounded-full overflow-hidden">
-                        <div
-                          className={`h-full ${
-                            item.score >= 90 ? 'bg-emerald-500' :
-                            item.score >= 75 ? 'bg-blue-500' :
-                            item.score >= 60 ? 'bg-amber-500' :
-                            'bg-red-500'
-                          }`}
-                          style={{ width: `${item.score}%` }}
-                        />
-                      </div>
-                      <span className={`text-sm font-semibold ${ratingColor(item.score)}`}>{Math.round(item.score)}</span>
-                    </div>
-                  </div>
+              <h4 className="font-semibold text-ink mb-4">Word-by-word comparison</h4>
+              <div className="flex flex-wrap gap-2">
+                {analysisResult.targetWords.map((word, idx) => (
+                  <span
+                    key={idx}
+                    className={`rounded-full px-3 py-1 text-sm font-medium ${
+                      analysisResult.hits[idx]
+                        ? 'bg-emerald-500/15 text-emerald-700'
+                        : 'bg-surface3 text-ink3 line-through'
+                    }`}
+                  >
+                    {analysisResult.hits[idx] ? '✓' : '○'} {word}
+                  </span>
                 ))}
               </div>
+              <p className="mt-4 text-xs text-ink3">
+                Underlined/struck-through words were not present in what the recognizer heard.
+              </p>
             </div>
 
-            {/* Identified Issues */}
-            {analysisResult.issues.length > 0 && (
-              <div className="bg-surface p-6 rounded-xl border border-line border-amber-500/30">
-                <h4 className="font-semibold text-ink mb-4 flex items-center gap-2">
-                  <span>🎯</span> Areas to Improve
-                </h4>
-                <div className="space-y-3">
-                  {analysisResult.issues.map((issue, idx) => (
-                    <div key={idx} className="bg-surface2 p-4 rounded-lg">
-                      <div className="flex items-start justify-between">
-                        <div>
-                          <p className="font-medium text-ink">{issue.name}</p>
-                          <p className="text-sm text-ink2">{issue.tip}</p>
-                        </div>
-                        <span className={`text-xs px-2 py-1 rounded-full ${
-                          issue.severity === 'minor' ? 'bg-blue-500/10 text-blue-600' :
-                          'bg-amber-500/10 text-amber-600'
-                        }`}>
-                          {issue.severity}
-                        </span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
+            {/* The real transcript */}
+            <div className="bg-surface p-6 rounded-xl border border-line">
+              <h4 className="font-semibold text-ink mb-2">What your browser heard</h4>
+              <p className="text-sm text-ink2" lang="fr-FR">{analysisResult.heard}</p>
+            </div>
 
-            {/* Practice Tips */}
-            <div className="bg-surface p-6 rounded-xl border border-line border-purple-500/30">
-              <h4 className="font-semibold text-ink mb-4 flex items-center gap-2">
-                <span>💡</span> Pro Tips
-              </h4>
+            {/* Generic practice tips — clearly not derived from an analysis */}
+            <div className="bg-surface p-6 rounded-xl border border-line">
+              <h4 className="font-semibold text-ink mb-4">General practice tips</h4>
               <ul className="space-y-2">
-                {analysisResult.tips.map((tip, idx) => (
-                  <li key={idx} className="flex items-start gap-3 text-sm text-ink2">
-                    <span className="text-purple-500 mt-1">•</span>
-                    <span>{tip}</span>
-                  </li>
-                ))}
+                <li className="flex items-start gap-3 text-sm text-ink2">
+                  <span className="text-purple-500 mt-1">•</span>
+                  <span>Speak slower and enunciate each syllable clearly</span>
+                </li>
+                <li className="flex items-start gap-3 text-sm text-ink2">
+                  <span className="text-purple-500 mt-1">•</span>
+                  <span>Focus on nasal sounds - let air escape through your nose</span>
+                </li>
+                <li className="flex items-start gap-3 text-sm text-ink2">
+                  <span className="text-purple-500 mt-1">•</span>
+                  <span>Keep your lips rounded for "u" and "o" sounds</span>
+                </li>
               </ul>
             </div>
 
             {/* Action Buttons */}
             <div className="flex gap-4">
               <button
-                onClick={retryPractice}
+                onClick={() => { setAnalysisResult(null); transcriptRef.current = ''; }}
                 className="flex-1 bg-accent text-onaccent px-6 py-3 rounded-xl font-semibold hover:bg-accent/90 transition-colors"
               >
                 Try Again

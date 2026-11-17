@@ -27,6 +27,18 @@ const VOCAB_DICT = (() => {
   return dict;
 })();
 
+// Honesty metadata for a comprehension score. A quiz answered with the
+// English translation on screen was scaffolded, never an independent pass —
+// the same contract Listening.jsx uses for a revealed transcript. Exported so
+// the rule can be asserted without a render harness.
+export function readingAssistanceMeta(translationSeen) {
+  return {
+    independent: !translationSeen,
+    assistance: translationSeen ? 'scaffolded' : 'none',
+    translationRevealed: !!translationSeen,
+  };
+}
+
 export default function Reading({ apiKey, mockMode, onXp, onActivity }) {
   const [textId, setTextId] = useState(null);
   const text = textId ? getText(textId) : null;
@@ -204,9 +216,24 @@ function TextReader({ text, apiKey, mockMode, onXp, onActivity, onBack }) {
   const [showEnglish, setShowEnglish] = useState(false);
   const [quiz, setQuiz] = useState(null);
   const { lookup, onWord, close } = useWordLookup(text, apiKey, mockMode);
+  // A ref, not render state: the translation can be turned on and off mid-quiz.
+  // Once it has been visible during an attempt, that attempt is scaffolded —
+  // even if the learner hides it again before picking an answer. Reset it when
+  // a fresh attempt starts.
+  const translationSeenRef = useRef(false);
 
   // Authored questions keep the correct option at index 0 — shuffle per run.
   const freshQuiz = () => ({ index: 0, correct: 0, picked: null, done: false, gained: 0, questions: (text.questions || []).map(shuffleOptions) });
+  const startQuiz = () => {
+    // Already showing English when the quiz opens counts as assistance.
+    translationSeenRef.current = showEnglish;
+    setQuiz(freshQuiz());
+  };
+  const toggleEnglish = () => {
+    const next = !showEnglish;
+    setShowEnglish(next);
+    if (next && quiz && !quiz.done) translationSeenRef.current = true;
+  };
 
   const answer = (i) => {
     if (quiz.picked != null) return;
@@ -218,10 +245,13 @@ function TextReader({ text, apiKey, mockMode, onXp, onActivity, onBack }) {
       const gained = Math.max(1, quiz.correct * 5);
       onXp(gained);
       const score = Math.round((quiz.correct / quiz.questions.length) * 100);
-      recordSkillScore('reading', score);
+      const support = readingAssistanceMeta(translationSeenRef.current);
+      recordSkillScore('reading', score, support);
       // Feed the shared recovery loop: a weak reading comprehension is a gap
       // the next session targets, exactly like a listening or grammar slip.
-      onActivity?.({ type: 'reading', textId: text.id, score, label: text.title || 'Reading comprehension', encounterId: newEncounterId(), activityId: text.id });
+      // Carry the support label on the activity event too, so a pass made with
+      // the translation open is never logged as independent.
+      onActivity?.({ type: 'reading', textId: text.id, score, label: text.title || 'Reading comprehension', encounterId: newEncounterId(), activityId: text.id, ...support });
       setQuiz({ ...quiz, done: true, gained });
     }
   };
@@ -231,7 +261,7 @@ function TextReader({ text, apiKey, mockMode, onXp, onActivity, onBack }) {
       <div className="flex items-center justify-between">
         <span className="px-1.5 py-0.5 rounded-md border border-line text-[10px] font-semibold text-ink3">{text.cefr}</span>
         <button
-          onClick={() => setShowEnglish((v) => !v)}
+          onClick={toggleEnglish}
           className="text-[11px] font-semibold text-ink2 hover:text-ink min-h-8"
         >
           {showEnglish ? 'Hide English' : 'Dual-language'}
@@ -249,7 +279,7 @@ function TextReader({ text, apiKey, mockMode, onXp, onActivity, onBack }) {
           <h3 className="text-[11px] font-bold uppercase tracking-wider text-ink2">Comprehension check</h3>
           {!quiz ? (
             <button
-              onClick={() => setQuiz(freshQuiz())}
+              onClick={startQuiz}
               className="btn btn-primary w-full min-h-11 rounded-xl text-sm"
             >
               Start the quiz
@@ -261,7 +291,7 @@ function TextReader({ text, apiKey, mockMode, onXp, onActivity, onBack }) {
                 {quiz.correct === quiz.questions.length ? 'Perfect comprehension.' : 'Reread and try again.'} +{quiz.gained} XP
               </p>
               <button
-                onClick={() => setQuiz(freshQuiz())}
+                onClick={startQuiz}
                 className="btn btn-secondary min-h-10 px-4 rounded-xl text-xs"
               >
                 <RefreshCw size={12} /> Retake

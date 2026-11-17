@@ -82,6 +82,9 @@ export default function Pronunciation({ mode, apiKey, mockMode, level, onXp, onA
           score: accuracy,
           accuracy,
           label: shadow ? 'Shadowing clarity' : 'Read-aloud clarity',
+          // Same one-sentence encounter the gap event already cites: a "Try
+          // again" keeps this id, so retries never count as independent passes.
+          encounterId: encounterRef.current,
         });
         // Phonological breakdown: decode the SAME blob we just transcribed
         // and measure rhythm, intonation, voicing and phoneme-family proxies

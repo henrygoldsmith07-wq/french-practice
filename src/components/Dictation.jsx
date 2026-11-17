@@ -27,6 +27,11 @@ export default function Dictation({ ttsRate, level: cefr = 'B1', onXp, onActivit
   const lvlMeta = DICTATION_LEVELS.find(l=> l.id===level) || DICTATION_LEVELS[0];
   const speed = dictationSpeed(level);
   const strict = diacriticStrict(level);
+  // One arbitrary sentence from the shared pool, at EVERY level. The level
+  // changes only TTS speed and accent strictness — it never changes the kind
+  // of content. The labels in DICTATION_LEVELS now say exactly that, rather
+  // than promising word/chunk/sentence/paragraph/authentic tiers we never
+  // delivered.
   const [sentence, setSentence] = useState(() => randomSentence());
   const [input, setInput] = useState('');
   const [played, setPlayed] = useState(false);
@@ -99,6 +104,9 @@ export default function Dictation({ ttsRate, level: cefr = 'B1', onXp, onActivit
           <h2 className="text-lg font-semibold text-ink">Dictée</h2>
           <p className="text-xs text-ink2 mt-1">
             Level {level} — {lvlMeta.label}: {lvlMeta.hint} · {strict ? 'accents strict' : 'accents lenient'} · {speed}×
+          </p>
+          <p className="text-[11px] text-ink3 mt-1">
+            Every level draws one sentence from the same pool — only playback speed and accent strictness change. Audio is synthesized speech, not a human recording.
           </p>
         </div>
 

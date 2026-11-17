@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react';
 import { recordSkillScore } from '../lib/storage';
+import { newEncounterId } from '../lib/evidenceIdentity';
 import { useTimeout } from '../hooks/useTimeout';
 import { RefreshCw, Check, X, Play } from './icons';
 import { EMPTY_CARD } from '../components/classNames.js';
@@ -38,7 +39,10 @@ export default function AccentDrill({ onXp, onActivity, sessionMode, onDone }) {
 
   const start = () => {
     const first = draw([]);
-    setGame({ n: 1, wordIdx: first, used: [first], input: '', checked: false, correct: 0 });
+    // One 10-word round = one presentation = one encounter. Minted here, at
+    // the start of the run, and carried to the scored event below; "Again"
+    // calls start again, which is a new presentation with a new encounter.
+    setGame({ n: 1, wordIdx: first, used: [first], input: '', checked: false, correct: 0, encounterId: newEncounterId() });
   };
 
   const insert = (ch) => {
@@ -66,7 +70,7 @@ export default function AccentDrill({ onXp, onActivity, sessionMode, onDone }) {
       // forever. The activity event is what closes the loop; the pronunciation
       // gap itself is now repaired by a real read-aloud drill instead.
       recordSkillScore('writing', score);
-      onActivity?.({ type: 'writing', mode: 'accent-retype', score, label: 'Accent retype accuracy' });
+      onActivity?.({ type: 'writing', mode: 'accent-retype', score, label: 'Accent retype accuracy', encounterId: game.encounterId });
       onXp(Math.max(1, game.correct * 2));
       setGame({ ...game, done: true, score });
       return;

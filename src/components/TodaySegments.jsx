@@ -550,6 +550,15 @@ export function DelayedReview({ count, onXp, onDone }) {
       }
     } catch { /* graph bookkeeping must never break review */ }
     onXp(remembered ? 2 : 1);
+    // Reveal only AFTER the learner has committed to an unaided answer. A
+    // self-mark made while the correction is on screen is assisted and must
+    // never feed the mastery lifecycle (the old flow recorded the retest here,
+    // after reveal, so reading the answer and clicking "I said it right" could
+    // silently retire a live weakness).
+    setRevealed(true);
+  };
+
+  const next = () => {
     setRevealed(false);
     setIdx((i) => i + 1);
   };
@@ -561,13 +570,17 @@ export function DelayedReview({ count, onXp, onDone }) {
         {revealed ? (
           <>
             <p className="text-lg font-semibold text-ink" lang={activeLanguage().id}>{entry.corrected}</p>
-            <div className="grid grid-cols-2 gap-2">
-              <button onClick={() => mark(true)} className="btn btn-secondary min-h-11 rounded-xl text-sm">I said it right</button>
-              <button onClick={() => mark(false)} className="btn btn-secondary min-h-11 rounded-xl text-sm">Needed the answer</button>
-            </div>
+            <p className="text-[11px] text-ink3">Your answer was recorded before the correction was shown.</p>
+            <button onClick={next} className="btn btn-primary min-h-11 px-6 rounded-xl text-sm">Next</button>
           </>
         ) : (
-          <button onClick={() => setRevealed(true)} className="btn btn-primary min-h-11 px-6 rounded-xl text-sm">Say it, then reveal</button>
+          <>
+            <p className="text-[11px] text-ink3">Say it out loud, then answer honestly before seeing the correction.</p>
+            <div className="grid grid-cols-2 gap-2">
+              <button onClick={() => mark(true)} className="btn btn-secondary min-h-11 rounded-xl text-sm">I said it right</button>
+              <button onClick={() => mark(false)} className="btn btn-secondary min-h-11 rounded-xl text-sm">Needed help</button>
+            </div>
+          </>
         )}
       </div>
     </div>

@@ -15,6 +15,15 @@ import WritingRepairLoop from './WritingRepairLoop';
 // prompt → write → AI review with corrections, strengths, suggestions and
 // scores. Word count guides length; XP scales with the overall score.
 
+// A validated score of 0 is a real mark, not a missing one. `|| 50` inflated it
+// to a middling pass (and 5 XP instead of 2). Only a finite number is usable;
+// anything else is reported as null so the caller can decline to score rather
+// than invent a number. Exported so the rule is testable without a render.
+export function resolveOverallScore(r) {
+  const overall = r?.scores?.overall;
+  return Number.isFinite(overall) ? overall : null;
+}
+
 // The AI's corrections arrive as free text lines ("original → corrected").
 // Parse them into the structured shape the repair loop prioritises. Any line
 // that is not a clear correction pair is skipped — never guessed at.
@@ -81,54 +90,61 @@ export default function WritingStudio({ depth, apiKey, mockMode, level, onXp, on
     try {
       const r = await writingFeedback(apiKey, { text: text.trim(), prompt: prompt.fr, level, depth, mock: mockMode });
       if (!aliveRef.current || encounterRef.current !== encounterId) return;
-      const overall = r.scores.overall || 50;
-      onXp(Math.max(2, Math.round(overall / 10)));
-      recordSkillScore('writing', overall);
-      onActivity?.({
-        type: 'writing', score: overall,
-        mode: essay ? 'essay' : 'free-writing',
-        label: essay ? 'Essay studio' : 'Free writing',
-        // Same prompt (including post-feedback revisions) = same encounter;
-        // revisions are flagged assisted so the model treats them honestly.
-        encounterId,
-        activityId: essay ? 'essay-studio' : 'free-writing',
-        assisted: revised || undefined,
-      });
-      // Corpus seed: store the AI side now so a human rater can pair their
-      // mark against it later (updateCorpusHumanMark). Never fabricates the
-      // human half — the entry simply waits as AI-only until a rater adds one.
-      try {
-        recordCorpusEntry({
-          mode: 'writing',
-          prompt: prompt.fr,
-          response: text.trim(),
-          aiScore: overall,
-          aiCorrections: r.corrections,
-          criterion: 'accuracy',
+      const overall = resolveOverallScore(r);
+      if (overall == null) {
+        // Honest fallback: the review returned no usable mark. Show the
+        // feedback it did return, but fabricate no score — no XP, no skill
+        // metric, no scored activity and no corpus/learner-error seed.
+        setError('The review came back without a valid score, so nothing was scored. Please try again.');
+      } else {
+        onXp(Math.max(2, Math.round(overall / 10)));
+        recordSkillScore('writing', overall);
+        onActivity?.({
+          type: 'writing', score: overall,
+          mode: essay ? 'essay' : 'free-writing',
+          label: essay ? 'Essay studio' : 'Free writing',
+          // Same prompt (including post-feedback revisions) = same encounter;
+          // revisions are flagged assisted so the model treats them honestly.
+          encounterId,
+          activityId: essay ? 'essay-studio' : 'free-writing',
+          assisted: revised || undefined,
         });
-      } catch { /* corpus logging must never break feedback */ }
-      // Seed error notebook from corrections (each line becomes a retype task)
-      try{
-        const lines = String(r.corrections||'').split(/\n+/).slice(0,5);
-        for(const line of lines){
-          const m = line.match(/(.+?)\s*[→\-–]\s*(.+)/);
-          if(m) {
-            const original = m[1].replace(/^[^a-zA-ZÀ-ÿ]+/,'');
-            const corrected = m[2].trim();
-            const why = explainCorrection(m[1], m[2]);
-            addErrorNotebook({ original, corrected, why });
-            recordLearnerError({
-              category: 'grammar',
-              key: `writing:${original.toLowerCase()}=>${corrected.toLowerCase()}`,
-              label: `${original} → ${corrected}`,
-              mode: essay ? 'essay' : 'writing',
-              score: overall,
-              source: 'writing-correction',
-              detail: why,
-            });
+        // Corpus seed: store the AI side now so a human rater can pair their
+        // mark against it later (updateCorpusHumanMark). Never fabricates the
+        // human half — the entry simply waits as AI-only until a rater adds one.
+        try {
+          recordCorpusEntry({
+            mode: 'writing',
+            prompt: prompt.fr,
+            response: text.trim(),
+            aiScore: overall,
+            aiCorrections: r.corrections,
+            criterion: 'accuracy',
+          });
+        } catch { /* corpus logging must never break feedback */ }
+        // Seed error notebook from corrections (each line becomes a retype task)
+        try{
+          const lines = String(r.corrections||'').split(/\n+/).slice(0,5);
+          for(const line of lines){
+            const m = line.match(/(.+?)\s*[→\-–]\s*(.+)/);
+            if(m) {
+              const original = m[1].replace(/^[^a-zA-ZÀ-ÿ]+/,'');
+              const corrected = m[2].trim();
+              const why = explainCorrection(m[1], m[2]);
+              addErrorNotebook({ original, corrected, why });
+              recordLearnerError({
+                category: 'grammar',
+                key: `writing:${original.toLowerCase()}=>${corrected.toLowerCase()}`,
+                label: `${original} → ${corrected}`,
+                mode: essay ? 'essay' : 'writing',
+                score: overall,
+                source: 'writing-correction',
+                detail: why,
+              });
+            }
           }
-        }
-      }catch{}
+        }catch{}
+      }
       setReview(r);
     } catch (e) {
       if (!aliveRef.current) return;
@@ -188,6 +204,9 @@ export default function WritingStudio({ depth, apiKey, mockMode, level, onXp, on
         </div>
       ) : (
         <div className="fade-in space-y-4">
+          {/* e.g. the AI returned no valid overall score: feedback shown, but
+              nothing was scored — say so where the learner will see it. */}
+          {error && <p role="alert" className="text-xs text-ink text-center">{error}</p>}
           {/* scores */}
           <div className="bg-surface border border-line rounded-2xl p-5">
             <div className="flex items-center justify-around text-center">

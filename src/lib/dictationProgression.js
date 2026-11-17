@@ -1,12 +1,20 @@
-// Dictation progression: 5 levels — word → chunk → sentence → paragraph → authentic.
-// Speed and diacritic strictness ramp with level.
+// Dictation progression: five levels. One sentence from the shared pool is
+// played at every level — the content is identical; what ramps is the TTS
+// playback speed and the diacritic strictness of the grading.
+//
+// The audio is always synthesized speech, never a human recording. These
+// labels deliberately describe only what the code actually varies. An earlier
+// version advertised "Word / Chunk / Sentence / Paragraph / Authentic" content
+// tiers, but the drill always played one arbitrary sentence from the shared
+// pool: those tiers were never delivered. "Authentic / natural speech" was
+// also a provenance claim the app does not make anywhere else for TTS audio.
 
 export const DICTATION_LEVELS = [
-  { id: 1, label: 'Word', hint: 'Single words, slow' },
-  { id: 2, label: 'Chunk', hint: '2–3 word chunks' },
-  { id: 3, label: 'Sentence', hint: 'Full sentence, natural speed' },
-  { id: 4, label: 'Paragraph', hint: 'Two sentences, faster' },
-  { id: 5, label: 'Authentic', hint: 'Natural speech, all accents strict' },
+  { id: 1, label: 'Slow', hint: 'One sentence, slow synthesized speech' },
+  { id: 2, label: 'Easy', hint: 'Same sentence pool, easy pace' },
+  { id: 3, label: 'Steady', hint: 'Same sentence pool, steady pace' },
+  { id: 4, label: 'Quick', hint: 'Same sentence pool, quick pace' },
+  { id: 5, label: 'Fast', hint: 'Same sentence pool, fast synthesized speech' },
 ];
 
 export function levelForSrs(srs){

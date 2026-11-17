@@ -259,7 +259,14 @@ export function TrackPlayer({ track, baseRate, level = 'B1', onXp, onActivity, o
 
   // Authored questions keep the correct option at index 0 — shuffle per run
   // or the top button always scores.
-  const freshQuiz = () => ({ index: 0, correct: 0, picked: null, done: false, gained: 0, questions: track.questions.map(shuffleOptions) });
+  // One quiz run = one presentation = one encounter. Mint it when the run is
+  // created and reuse it on the scored activity event; "Retake" calls freshQuiz
+  // again, which is a new presentation and therefore a new encounter.
+  const freshQuiz = () => ({
+    index: 0, correct: 0, picked: null, done: false, gained: 0,
+    encounterId: newEncounterId(),
+    questions: track.questions.map(shuffleOptions),
+  });
 
   const answer = (i) => {
     if (quiz.picked != null) return;
@@ -306,6 +313,9 @@ export function TrackPlayer({ track, baseRate, level = 'B1', onXp, onActivity, o
         score,
         label: track.title,
         mode: 'track',
+        // Same encounter id as the rest of this quiz run, so a same-session
+        // pass can count as independent recovery evidence.
+        encounterId: quiz.encounterId,
         // The support label travels with the activity event, not just the skill
         // metric: this is what tells the error model a pass was scaffolded by a
         // revealed transcript rather than earned.

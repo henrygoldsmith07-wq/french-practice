@@ -88,7 +88,7 @@ export function stopSpeaking() {
  */
 export function speakSegment(text, { rate = 1, voiceIndex = 0, onEnd } = {}) {
   if (!ttsSupported() || !text) {
-    if (onEnd) setTimeout(onEnd, 0);
+    if (typeof onEnd === 'function') setTimeout(onEnd, 0);
     return;
   }
   const utterance = new SpeechSynthesisUtterance(text);
@@ -117,7 +117,10 @@ export function adaptiveTtsRate(level){
 }
 
 export function speakLines(lines, { rate = 1, accentId = null, onLine, onEnd } = {}) {
-  if (!ttsSupported() || !lines.length) return;
+  if (!ttsSupported() || !lines.length) {
+    if (typeof onEnd === 'function') setTimeout(onEnd, 0);
+    return;
+  }
   window.speechSynthesis.cancel();
   const installed = langVoices();
   const accentVoice = accentId ? resolveVoice(accentId, installed).voice : null;

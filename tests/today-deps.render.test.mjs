@@ -352,13 +352,16 @@ for (const order of ORDERS) {
       await new Promise((r) => setTimeout(r, 25));
     });
 
-    const reveal = [...container.querySelectorAll('button')].find((b) => b.textContent === 'Say it, then reveal');
-    assert.ok(reveal, 'a corrected item enters delayed review');
-    await act(async () => { reveal.click(); });
-
+    // The self-mark is collected BEFORE the correction is revealed, so an
+    // assisted answer can never be recorded as independent delayed recall.
     const remembered = [...container.querySelectorAll('button')].find((b) => b.textContent === 'I said it right');
-    assert.ok(remembered, 'the learner can self-mark delayed recall');
+    assert.ok(remembered, 'a corrected item enters delayed review and can be self-marked');
     await act(async () => { remembered.click(); });
+
+    // Only now is the correction shown, with a non-scoring Next action.
+    const next = [...container.querySelectorAll('button')].find((b) => b.textContent === 'Next');
+    assert.ok(next, 'the correction is revealed with a Next action');
+    await act(async () => { next.click(); });
     await waitForCompletion(() => completed > 0);
     assert.equal(completed, 1, 'completed delayed review advances exactly once');
   } finally {
@@ -970,9 +973,7 @@ for (const order of ORDERS) {
         onXp: (n) => { xp += n; },
       }));
     });
-    const reveal = [...container.querySelectorAll('button')].find((b) => b.textContent === 'Say it, then reveal');
-    assert.ok(reveal);
-    await act(async () => { reveal.click(); });
+    // Self-mark first (before the answer is shown), then advance with Next.
     const remembered = [...container.querySelectorAll('button')].find((b) => b.textContent === 'I said it right');
     assert.ok(remembered);
     await act(async () => {
@@ -980,6 +981,10 @@ for (const order of ORDERS) {
       remembered.click();
       await new Promise((r) => setTimeout(r, 20));
     });
+    // The second click lands on the post-reveal Next button and must not
+    // record a second result.
+    const next = [...container.querySelectorAll('button')].find((b) => b.textContent === 'Next');
+    await act(async () => { next?.click(); });
     assert.ok(container.textContent.includes('Prompt 2/2'), 'double tap advances exactly one review item');
     assert.equal(xp, 2, 'double tap awards one review result');
   } finally {

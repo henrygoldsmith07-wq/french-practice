@@ -4,6 +4,23 @@ import { contentLang } from '../lib/content/active.js';
 import { CheckCircle, Target, Volume2, ArrowRight } from './icons';
 import { SpeakButton } from './ui';
 
+// The read-aloud studio records a synthetic 'overall' pseudo-phoneme whose
+// attempts are per-WORD hits (Pronunciation.jsx). That is word-recognition
+// accuracy, not a phoneme, so including it in the phoneme health summary
+// reports the wrong thing. Only real phoneme keys count. Exported for tests.
+export const SYNTHETIC_PHONEME_KEYS = new Set(['overall']);
+
+export function phonemeAttemptTotals(profile) {
+  let totalAttempts = 0;
+  let totalMisses = 0;
+  for (const [key, stats] of Object.entries(profile || {})) {
+    if (SYNTHETIC_PHONEME_KEYS.has(key) || !stats || typeof stats !== 'object') continue;
+    totalAttempts += stats.attempts || 0;
+    totalMisses += stats.misses || 0;
+  }
+  return { totalAttempts, totalMisses };
+}
+
 /**
  * PronunciationInsightsPanel - Shows deep phoneme-level feedback
  * Replaces generic "pronunciation score" with specific sound targets
@@ -27,9 +44,9 @@ export default function PronunciationInsightsPanel({ mode = 'read-aloud' }) {
 
       setActivePhonemes(weaknessData.filter(p => p.stats.attempts > 0));
 
-      // Calculate recent attempt summary
-      const totalAttempts = Object.values(profile || {}).reduce((sum, stats) => sum + (stats.attempts || 0), 0);
-      const totalMisses = Object.values(profile || {}).reduce((sum, stats) => sum + (stats.misses || 0), 0);
+      // Calculate recent attempt summary from real phonemes only — the
+      // synthetic 'overall' key holds word hits, not phoneme evidence.
+      const { totalAttempts, totalMisses } = phonemeAttemptTotals(profile);
 
       setRecentAttempts({
         totalAttempts,
@@ -95,7 +112,7 @@ function PhonemeHealthSummary({ attempts }) {
         </div>
         <div className="flex-1">
           <p className="text-sm text-ink2">
-            You miss {attempts.totalMisses} out of {attempts.totalAttempts} attempts ({weaknessRate}%). Focus on the sounds below to improve.
+            Across your sound-level checks you missed {attempts.totalMisses} of {attempts.totalAttempts} ({weaknessRate}%). Focus on the sounds below to improve.
           </p>
         </div>
       </div>

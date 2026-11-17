@@ -4,6 +4,7 @@ import {
   buildQueue, gradeAnswer, recordResult, weakestAreas,
 } from '../lib/conjugationDrill';
 import { getConjugationProgress, saveConjugationProgress } from '../lib/storage';
+import { newEncounterId } from '../lib/evidenceIdentity';
 import { SpeakButton } from './ui';
 import { Check, X, ChevronLeft } from './icons';
 
@@ -74,8 +75,13 @@ export default function ConjugationDrill({ onXp, onActivity, onBack }) {
     const conjScore = graded.verdict === 'correct'
       ? 100
       : graded.verdict === 'accent-error' ? 40 : 0;
+    // One queue item = one presentation = one encounter. `submit` is guarded
+    // by `result`, so it fires once per item; the id travels with the scored
+    // event the learner model uses as independent recovery evidence.
+    const encounterId = newEncounterId();
     onActivity?.({
       type: 'conjugation',
+      encounterId,
       id: current.id,
       itemId: current.id,
       score: conjScore,
