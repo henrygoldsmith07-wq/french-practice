@@ -118,9 +118,10 @@ Defined once in `scripts/lib/security-headers.mjs` and consumed by **both**
 `vercel.json` (production) and `vite.config.js` (dev/preview), so the Playwright
 suite exercises the real policy.
 
-- CSP: `default-src 'self'`, `object-src 'none'`, `frame-ancestors 'none'`
-  (via `frame-src`/`X-Frame-Options`), `connect-src` allowlisting only the app
-  origin, the provider used by bring-your-own-key mode, and archive.org audio.
+- CSP: `default-src 'self'`, `object-src 'none'`, `frame-src 'none'` and
+  `frame-ancestors 'none'` (backed by `X-Frame-Options: DENY` for older
+  browsers), `connect-src` allowlisting only the app origin, the provider used
+  by bring-your-own-key mode, and archive.org audio.
   `blob:`/`data:` are allowed for `media-src`/`worker-src` because MediaRecorder
   and the WAV re-encode need them — a stricter policy silently breaks mic
   capture.

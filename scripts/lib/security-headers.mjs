@@ -16,6 +16,8 @@
 //     NOT covered by this policy and the browser would block its AI calls.
 //     Adding a relay host here is an explicit deployment decision.
 //   - frame-ancestors 'none': nothing embeds Le Studio, so nothing needs to.
+//     X-Frame-Options covers older browsers; CSP frame-ancestors is the
+//     modern control and must be present in its own right.
 //   - microphone=() — the app asks for the mic itself, but Le Studio must never
 //     be embedded by a third party that could capture audio.
 const CSP_DIRECTIVES = [
@@ -32,6 +34,7 @@ const CSP_DIRECTIVES = [
   "worker-src 'self' blob:",
   "connect-src 'self' https://integrate.api.nvidia.com https://archive.org",
   "frame-src 'none'",
+  "frame-ancestors 'none'",
   "form-action 'self'",
   "manifest-src 'self'",
 ];

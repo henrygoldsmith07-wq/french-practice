@@ -34,6 +34,7 @@ test('vercel.json declares the full security-header set', () => {
 
 test('the CSP forbids framing and third-party object embeds', () => {
   ok(/frame-src 'none'/.test(csp), 'frame-src must be none — Le Studio is never embedded');
+  ok(/frame-ancestors 'none'/.test(csp), 'frame-ancestors must be none — the modern anti-framing control');
   ok(/object-src 'none'/.test(csp), 'object-src must be none');
   ok(/base-uri 'self'/.test(csp), 'base-uri must be self');
 });
